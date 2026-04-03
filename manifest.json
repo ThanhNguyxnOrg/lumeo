@@ -1,0 +1,46 @@
+{
+"update_url": "https://clients2.google.com/service/update2/crx",
+
+  "manifest_version": 3,
+  "name": "YouTube Translate & Speak",
+  "version": "1.2.1",
+  "description": "Translate YouTube subtitles into 90+ languages with bilingual display and text-to-speech. Works even on videos without subtitles.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://*.youtube.com/*",
+    "https://translate.googleapis.com/*",
+    "https://translation.googleapis.com/*",
+    "https://texttospeech.googleapis.com/*",
+    "https://api.openai.com/*"
+  ],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["subtitle.css"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["sniffer.js", "audio-processor.js"],
+      "matches": ["https://www.youtube.com/*"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
