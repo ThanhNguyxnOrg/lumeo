@@ -1,10 +1,9 @@
 {
-"update_url": "https://clients2.google.com/service/update2/crx",
-
   "manifest_version": 3,
   "name": "YouTube Translate & Speak",
   "version": "1.2.1",
-  "description": "Translate YouTube subtitles into 90+ languages with bilingual display and text-to-speech. Works even on videos without subtitles.",
+  "description": "Translate YouTube subtitles into 90+ languages with bilingual display and text-to-speech.",
+  "homepage_url": "https://github.com/ThanhNguyxn07/lumen-subtitle-studio",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": [
     "https://www.youtube.com/*",
