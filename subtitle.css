@@ -71,6 +71,7 @@
   bottom: 60px !important;
   right: 12px !important;
   width: 300px;
+  max-height: min(78vh, 620px) !important;
   background: #1a1a1a !important;
   color: #eee !important;
   border-radius: 10px !important;
@@ -82,6 +83,8 @@
   pointer-events: auto;
   line-height: normal !important;
   text-align: left !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 
 /* Reset YouTube player CSS overrides */
@@ -110,7 +113,13 @@
 
 .yt-trans-header:hover { background: #aa0000 !important; }
 
-.yt-trans-body { padding: 12px 14px !important; }
+.yt-trans-body {
+  padding: 12px 14px !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+}
 
 .yt-trans-btns {
   display: flex !important;
@@ -144,6 +153,12 @@
   margin-top: 8px !important;
   font-size: 12px !important;
   color: #888 !important;
+  line-height: 1.35 !important;
+  max-height: 84px !important;
+  overflow-y: auto !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  scrollbar-width: thin !important;
 }
 
 #yt-trans-progress {
