@@ -1368,7 +1368,7 @@
     return required.filter(([, value]) => !value).map(([name]) => name);
   }
 
-  function renderCaptionFallbackChoice(video, token, pipeline, reason) {
+  function renderCaptionFallbackChoice(video, token, pipeline, reason, diagnostics) {
     session = {
       token,
       type: "caption",
@@ -1390,9 +1390,31 @@
     const wrap = document.createElement("div");
     wrap.className = "ec-choice";
     const title = document.createElement("strong");
-    title.textContent = "No YouTube captions found.";
+    title.textContent = diagnostics?.reason === "no-target-language"
+      ? "No matching caption language"
+      : diagnostics?.reason === "timedtext-empty-body"
+        ? "YouTube returned empty captions"
+        : "No YouTube captions found";
     const copy = document.createElement("small");
     copy.textContent = reason || "This video did not expose a readable caption track.";
+
+    let trackInfo = null;
+    if (Array.isArray(diagnostics?.tracks) && diagnostics.tracks.length) {
+      trackInfo = document.createElement("div");
+      trackInfo.className = "ec-choice-tracks";
+      const head = document.createElement("strong");
+      head.textContent = `Detected tracks (${diagnostics.tracks.length})`;
+      trackInfo.appendChild(head);
+      const list = document.createElement("ul");
+      for (const track of diagnostics.tracks.slice(0, 12)) {
+        const li = document.createElement("li");
+        const tag = track.kind === "asr" ? " · auto" : "";
+        li.textContent = `${track.languageCode}${tag}${track.name ? ` — ${track.name}` : ""}`;
+        list.appendChild(li);
+      }
+      trackInfo.appendChild(list);
+    }
+
     const actions = document.createElement("div");
     actions.className = "ec-choice-actions";
 
@@ -1459,8 +1481,23 @@
       emitEnded("Caption fallback cancelled.");
     });
 
-    actions.append(sonioxBtn, standardBtn, cancelBtn);
-    wrap.append(title, copy, actions);
+    const retryBtn = document.createElement("button");
+    retryBtn.type = "button";
+    retryBtn.className = "ec-choice-btn ec-choice-btn-muted";
+    retryBtn.textContent = "Retry caption fetch";
+    retryBtn.addEventListener("click", async () => {
+      pipeline.stop?.();
+      session = null;
+      const reply = await startCaptionSession();
+      if (!reply?.ok) {
+        showToast(reply?.error || "Retry failed.", 7000);
+      }
+    });
+
+    actions.append(sonioxBtn, standardBtn, retryBtn, cancelBtn);
+    wrap.append(title, copy);
+    if (trackInfo) wrap.append(trackInfo);
+    wrap.append(actions);
     elements.target.appendChild(wrap);
     emitState({
       running: true,
@@ -1528,7 +1565,13 @@
       return { ok: false, error: "Cancelled before captions loaded." };
     }
     if (!result?.ok) {
-      renderCaptionFallbackChoice(video, token, pipeline, result?.error || "Could not load captions.");
+      renderCaptionFallbackChoice(
+        video,
+        token,
+        pipeline,
+        result?.error || "Could not load captions.",
+        result?.diagnostics,
+      );
       return { ok: true, errorCode: "missing-caption-track" };
     }
 

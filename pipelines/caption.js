@@ -49,6 +49,35 @@
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
   }
 
+  function explainCaptionFailure(diagnostics, targetLanguageName) {
+    const reason = diagnostics?.reason;
+    const tracks = diagnostics?.tracks || [];
+    const tracksLabel = tracks.length
+      ? tracks
+          .slice(0, 6)
+          .map((t) => `${t.languageCode}${t.kind === "asr" ? " auto" : ""}`)
+          .join(", ")
+      : "";
+    if (reason === "no-tracks") {
+      return "YouTube did not expose any caption tracks for this video. The channel likely disabled subtitles and auto-captions.";
+    }
+    if (reason === "no-target-language") {
+      return tracksLabel
+        ? `Found tracks (${tracksLabel}) but none in ${targetLanguageName}. Pick a language YouTube has, or use a fallback below.`
+        : `No caption track matches ${targetLanguageName}.`;
+    }
+    if (reason === "timedtext-empty-body" || reason === "timedtext-fetch-failed") {
+      return `YouTube returned an empty caption body${tracksLabel ? ` (tracks: ${tracksLabel})` : ""}. This is a known PoToken throttle in 2026 — try opening the on-player CC button once, then retry, or use a fallback below.`;
+    }
+    if (reason === "timedtext-unparsable") {
+      return "Caption body downloaded but could not be parsed. Try the choices below.";
+    }
+    if (reason === "no-video-id") {
+      return "Open a /watch?v= page to use Caption Free.";
+    }
+    return "Could not load YouTube captions for this video.";
+  }
+
   class CaptionPipeline {
     constructor() {
       this.token = 0;
@@ -73,14 +102,20 @@
 
       const targetLanguage = options.targetLanguage || DEFAULT_TARGET_LANGUAGE;
       const provider = options.translateProvider || DEFAULT_TRANSLATE_PROVIDER;
+      const diagnostics = {};
       const subtitles = await window.LumeoCaptions.fetchSubtitles({
         targetLanguage,
         videoId: options.videoId,
+        diagnostics,
       });
       withAbortError(signal);
       if (token !== this.token) return { ok: false, error: "stale" };
       if (!subtitles?.cues?.length) {
-        return { ok: false, error: "This video does not expose a YouTube caption track." };
+        return {
+          ok: false,
+          error: explainCaptionFailure(diagnostics, options.targetLanguageName || targetLanguage),
+          diagnostics,
+        };
       }
 
       const key = cacheKey(subtitles.videoId, targetLanguage, provider, subtitles.sourceLanguage);

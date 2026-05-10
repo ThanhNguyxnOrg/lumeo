@@ -2,7 +2,12 @@
   'use strict';
 
   const PATCH_FLAG = '__ytTransSnifferPatched__';
-  if (window[PATCH_FLAG]) return;
+  if (window[PATCH_FLAG]) {
+    if (typeof window.__ytTransSnifferRepublish === 'function') {
+      window.__ytTransSnifferRepublish();
+    }
+    return;
+  }
 
   Object.defineProperty(window, PATCH_FLAG, {
     value: true,
@@ -21,14 +26,11 @@
   const postSnifferMessage = (type, payload) => {
     try {
       window.postMessage(
-        {
-          source: SOURCE,
-          type,
-          ...payload,
-        },
+        { source: SOURCE, type, ...payload },
         TARGET_ORIGIN,
       );
     } catch {
+      // postMessage can throw on cross-origin frames; safe to drop.
     }
   };
 
@@ -57,18 +59,68 @@
     return originalXhrOpen.call(this, method, url, ...rest);
   };
 
+  let lastSummaryKey = '';
+
   const publishCaptionTracks = () => {
     try {
-      const tracks =
-        window.ytInitialPlayerResponse?.captions?.playerCaptionsTracklistRenderer
-          ?.captionTracks;
+      const renderer =
+        window.ytInitialPlayerResponse?.captions?.playerCaptionsTracklistRenderer;
+      const tracks = renderer?.captionTracks;
       if (Array.isArray(tracks) && tracks.length > 0) {
-        postSnifferMessage('caption-tracks', { tracks });
+        const summary = tracks.map((track) => ({
+          languageCode: track.languageCode,
+          name: track.name?.simpleText || track.name?.runs?.[0]?.text || '',
+          kind: track.kind || '',
+        }));
+        const summaryKey = JSON.stringify(summary);
+        if (summaryKey !== lastSummaryKey) {
+          lastSummaryKey = summaryKey;
+          postSnifferMessage('caption-tracks', { tracks, summary });
+        }
+        return true;
       }
+      postSnifferMessage('caption-tracks-empty', {
+        hasRenderer: !!renderer,
+        hasPlayerResponse: !!window.ytInitialPlayerResponse,
+      });
+      return false;
     } catch {
+      return false;
     }
   };
 
-  publishCaptionTracks();
-  setTimeout(publishCaptionTracks, 500);
+  // Stagger republishes: ytInitialPlayerResponse can be hydrated late on slow
+  // networks or after SPA navigation. Hammering early then backing off catches
+  // both fast and slow loads without spamming postMessage.
+  const PUBLISH_DELAYS = [0, 200, 500, 1000, 2000, 4000, 8000];
+  let activeTimers = [];
+
+  const schedulePublishes = () => {
+    activeTimers.forEach(clearTimeout);
+    lastSummaryKey = '';
+    activeTimers = PUBLISH_DELAYS.map((delay) =>
+      setTimeout(publishCaptionTracks, delay),
+    );
+  };
+
+  Object.defineProperty(window, '__ytTransSnifferRepublish', {
+    value: schedulePublishes,
+    configurable: false,
+    enumerable: false,
+    writable: false,
+  });
+
+  schedulePublishes();
+
+  window.addEventListener('yt-navigate-finish', () => {
+    setTimeout(schedulePublishes, 50);
+  });
+
+  let lastUrl = location.href;
+  setInterval(() => {
+    if (location.href !== lastUrl) {
+      lastUrl = location.href;
+      schedulePublishes();
+    }
+  }, 750);
 })();

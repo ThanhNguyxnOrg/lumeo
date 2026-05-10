@@ -214,6 +214,29 @@
   border-color: var(--lumeo-line);
 }
 .ec-choice-btn-muted:hover { background: var(--lumeo-panel); }
+.ec-choice-tracks {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--lumeo-panel-2);
+  border: 1px solid var(--lumeo-line);
+  border-radius: 6px;
+  color: var(--lumeo-ivory-dim);
+  font: 11px/1.35 var(--lumeo-mono);
+}
+.ec-choice-tracks strong {
+  color: var(--lumeo-ivory);
+  font: 700 10px/1 var(--lumeo-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.ec-choice-tracks ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 3px;
+}
 
 .ec-style-popover {
   position: absolute;

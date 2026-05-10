@@ -8,6 +8,8 @@
   const TIMEDTEXT_MIN_CHARS = 40;
   const sniffedLinks = new Map();
   let sniffedTracks = null;
+  let sniffedTrackSummary = null;
+  let sniffedEmptyReason = null;
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -50,6 +52,15 @@
 
     if (data.type === "caption-tracks" && Array.isArray(data.tracks)) {
       sniffedTracks = data.tracks;
+      if (Array.isArray(data.summary)) sniffedTrackSummary = data.summary;
+      sniffedEmptyReason = null;
+    }
+
+    if (data.type === "caption-tracks-empty") {
+      sniffedEmptyReason = {
+        hasRenderer: !!data.hasRenderer,
+        hasPlayerResponse: !!data.hasPlayerResponse,
+      };
     }
   }
 
@@ -271,25 +282,85 @@
     return null;
   }
 
-  async function fetchViaPageData(targetLanguage) {
-    const videoId = getVideoId();
+  async function waitForTracks(maxWaitMs = 4500) {
     let tracks = readCaptionTracksFromScripts();
-    for (let attempt = 0; attempt < 4 && !tracks?.length; attempt += 1) {
-      await sleep(400);
+    if (tracks?.length) return tracks;
+    const start = Date.now();
+    while (Date.now() - start < maxWaitMs) {
+      await sleep(250);
       tracks = readCaptionTracksFromScripts();
+      if (tracks?.length) return tracks;
     }
-    if (!tracks?.length) tracks = await readCaptionTracksFromWatchHtml();
-    if (!tracks?.length) tracks = await readCaptionTracksFromInnertube(videoId);
-    if (!tracks?.length) tracks = await readCaptionTracksFromTimedTextList(videoId);
-    if (!tracks?.length) return null;
+    return null;
+  }
+
+  async function fetchViaPageData(targetLanguage, options = {}) {
+    const videoId = getVideoId();
+    const diagnostics = options.diagnostics || {};
+    diagnostics.steps = diagnostics.steps || [];
+
+    let tracks = await waitForTracks(4500);
+    if (tracks?.length) diagnostics.steps.push("scripts");
+
+    if (!tracks?.length) {
+      // Force YT player to load timedtext URLs by toggling the CC button.
+      diagnostics.steps.push("cc-trigger");
+      void triggerCCButton();
+      tracks = await waitForTracks(2500);
+      if (tracks?.length) diagnostics.steps.push("scripts-after-cc");
+    }
+
+    if (!tracks?.length) {
+      tracks = await readCaptionTracksFromWatchHtml();
+      if (tracks?.length) diagnostics.steps.push("watch-html");
+    }
+    if (!tracks?.length) {
+      tracks = await readCaptionTracksFromInnertube(videoId);
+      if (tracks?.length) diagnostics.steps.push("innertube");
+    }
+    if (!tracks?.length) {
+      tracks = await readCaptionTracksFromTimedTextList(videoId);
+      if (tracks?.length) diagnostics.steps.push("timedtext-list");
+    }
+
+    if (!tracks?.length) {
+      diagnostics.reason = "no-tracks";
+      diagnostics.snifferEmpty = sniffedEmptyReason;
+      return null;
+    }
+
+    diagnostics.tracks = tracks.map((track) => ({
+      languageCode: track.languageCode,
+      kind: track.kind || "manual",
+      name: track.name?.simpleText || track.name?.runs?.[0]?.text || "",
+    }));
 
     const track = chooseCaptionTrack(tracks, targetLanguage);
-    if (!track) return null;
+    if (!track) {
+      diagnostics.reason = "no-target-language";
+      return null;
+    }
+    diagnostics.chosen = {
+      languageCode: track.languageCode,
+      kind: track.kind || "manual",
+    };
+
     const sourceLanguage = track.languageCode || "";
     const url = buildTimedTextUrl(track);
     const xml = await fetchText(url);
-    const cues = xml && xml.length > TIMEDTEXT_MIN_CHARS ? parseSubtitleXml(xml) : [];
-    if (!cues.length) return null;
+    if (!xml) {
+      diagnostics.reason = "timedtext-fetch-failed";
+      return null;
+    }
+    if (xml.length <= TIMEDTEXT_MIN_CHARS) {
+      diagnostics.reason = "timedtext-empty-body";
+      return null;
+    }
+    const cues = parseSubtitleXml(xml);
+    if (!cues.length) {
+      diagnostics.reason = "timedtext-unparsable";
+      return null;
+    }
 
     return {
       cues,
@@ -357,12 +428,19 @@
     injectSniffer();
     const targetLanguage = options.targetLanguage || "vi";
     const videoId = options.videoId || getVideoId();
-    if (!videoId) return null;
+    const diagnostics = options.diagnostics || {};
+    if (!videoId) {
+      diagnostics.reason = "no-video-id";
+      return null;
+    }
 
     const source =
-      await fetchViaPageData(targetLanguage) ||
+      await fetchViaPageData(targetLanguage, { diagnostics }) ||
       await fetchViaSniff(videoId);
-    if (!source?.cues?.length) return null;
+    if (!source?.cues?.length) {
+      diagnostics.snifferTracks = sniffedTrackSummary;
+      return null;
+    }
 
     const targetBase = targetLanguage.split("-")[0];
     const isAlreadyTarget =
@@ -386,6 +464,14 @@
     return { ...source, nativeTarget: false, videoId };
   }
 
+  function getDiagnosticsSummary() {
+    return {
+      sniffedTracks: sniffedTrackSummary,
+      sniffedEmpty: sniffedEmptyReason,
+      sniffedUrlCount: sniffedLinks.size,
+    };
+  }
+
   window.LumeoCaptions = {
     __loaded: true,
     injectSniffer,
@@ -395,5 +481,6 @@
     readCaptionTracksFromInnertube,
     fetchSubtitles,
     mergeBilingualCues,
+    getDiagnosticsSummary,
   };
 })();
