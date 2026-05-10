@@ -1,0 +1,5 @@
+# Phase 3 — overlay subcomponents will land here:
+#   overlay.js          (extracted from content.js — drag/resize/layout)
+#   side-panel.js       (Caption tier — clickable subtitle list with seek)
+#   subtitle-overlay.js (Caption tier — styled bilingual on-video overlay)
+#   style-editor.js     (Caption tier — font/size/color/BG/stroke editor)

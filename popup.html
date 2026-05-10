@@ -1,25 +1,96 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <style>
-    body { width: 280px; padding: 14px; font-family: Arial, sans-serif; }
-    h3 { margin: 0 0 12px; }
-    button { width: 100%; padding: 10px; margin: 4px 0; border-radius: 5px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; color: #fff; }
-    .start { background: #cc0000; }
-    .start:hover { background: #ee0000; }
-    .stop { background: #555; }
-    .stop:hover { background: #777; }
-    #status { margin-top: 10px; font-size: 13px; color: #555; text-align: center; }
-    .info { font-size: 11px; color: #888; text-align: center; margin-top: 8px; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lumen Subtitle Studio</title>
+<link rel="stylesheet" href="popup.css" />
 </head>
-<body>
-  <h3>🎬 YouTube Translate & Speak</h3>
-  <button id="startBtn" class="start">▶ Translate</button>
-  <button id="stopBtn" class="stop">⏹ Stop</button>
-  <div id="status">Ready.</div>
-  <div class="info">Google Translate • Bilingual display</div>
-  <script src="popup.js"></script>
+<body data-state="idle">
+
+<main class="shell">
+
+  <header class="topline">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+          <path d="M7 9v6M11 6v12M15 8v8M19 11v2"/>
+        </svg>
+      </span>
+      <div>
+        <p class="eyebrow">Captions &amp; Live Dub</p>
+        <h1>Lumen</h1>
+      </div>
+    </div>
+    <span class="dot" data-status-dot aria-hidden="true"></span>
+  </header>
+
+  <section class="row">
+    <label for="tier">Tier</label>
+    <select id="tier">
+      <option value="realtime">Realtime · clones speaker · &lt;1s</option>
+      <option value="standard">Standard · ~5s lag · cheaper</option>
+    </select>
+  </section>
+
+  <section class="row">
+    <label for="voice">Voice</label>
+    <select id="voice"></select>
+  </section>
+
+  <section class="row">
+    <label for="lang">Language</label>
+    <select id="lang"></select>
+  </section>
+
+  <section class="secret">
+    <div class="row">
+      <label for="kymaKey">Kyma key</label>
+      <span id="keyBadge" class="badge">missing</span>
+    </div>
+    <input id="kymaKey" type="password" placeholder="ky-..." autocomplete="off" spellcheck="false" />
+  </section>
+
+  <button class="action" id="toggle">Start</button>
+
+  <section class="mix">
+    <div class="mix-row">
+      <label for="originalVolume">Original</label>
+      <input id="originalVolume" type="range" min="0" max="100" value="18" />
+      <output id="originalOut">18</output>
+    </div>
+    <div class="mix-row">
+      <label for="voiceVolume">Voice</label>
+      <input id="voiceVolume" type="range" min="0" max="100" value="100" />
+      <output id="voiceOut">100</output>
+    </div>
+  </section>
+
+  <label class="toggle-row">
+    <span>Show source captions</span>
+    <input id="showSource" type="checkbox" />
+  </label>
+
+  <details class="advanced">
+    <summary>Advanced</summary>
+    <div class="advanced-body">
+      <div>
+        <strong>Pricing</strong>: Realtime ~$0.46 per 10 min · Standard ~$0.25 per 10 min. Charged from your Kyma balance.
+      </div>
+      <div>
+        Manage your account: <a href="https://kymaapi.com/billing" target="_blank">billing</a> ·
+        <a href="https://kymaapi.com/dashboard" target="_blank">session log</a>.
+      </div>
+      <div class="hint">
+        Sessions auto-stop at 60 minutes. Press Stop to end early.
+      </div>
+    </div>
+  </details>
+
+  <p class="status" id="status">Ready.</p>
+
+</main>
+
+<script src="popup.js"></script>
 </body>
 </html>

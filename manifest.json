@@ -1,45 +1,56 @@
 {
   "manifest_version": 3,
-  "name": "YouTube Translate & Speak",
-  "version": "1.2.1",
-  "description": "Translate YouTube subtitles into 90+ languages with bilingual display and text-to-speech.",
-  "homepage_url": "https://github.com/ThanhNguyxn07/lumen-subtitle-studio",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "name": "Lumen Subtitle Studio",
+  "short_name": "Lumen",
+  "version": "2.0.0",
+  "version_name": "2.0.0-beta.1",
+  "description": "Live AI dub + bilingual captions for YouTube. Three tiers: free caption translation, Standard dub (~5s), Realtime dub (<1s).",
+  "homepage_url": "https://github.com/ThanhNguyxnOrg/lumen-subtitle-studio",
+  "minimum_chrome_version": "116",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'"
+  },
   "host_permissions": [
-    "https://www.youtube.com/*",
     "https://*.youtube.com/*",
+    "https://youtube.com/*",
+    "https://api.kymaapi.com/*",
+    "https://api.openai.com/*",
     "https://translate.googleapis.com/*",
     "https://translation.googleapis.com/*",
     "https://texttospeech.googleapis.com/*",
-    "https://api.openai.com/*"
+    "https://stt-rt.soniox.com/*"
   ],
   "icons": {
-    "16": "icon16.png",
-    "48": "icon48.png",
-    "128": "icon128.png"
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Lumen Subtitle Studio",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*"],
+      "matches": ["https://*.youtube.com/*", "https://youtube.com/*"],
       "js": ["content.js"],
-      "css": ["subtitle.css"]
+      "css": ["content.css"],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["sniffer.js", "audio-processor.js"],
-      "matches": ["https://www.youtube.com/*"]
+      "resources": ["services/sniffer.js", "services/audio-processor.js"],
+      "matches": ["https://*.youtube.com/*", "https://youtube.com/*"]
     }
-  ],
-  "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icon16.png",
-      "48": "icon48.png",
-      "128": "icon128.png"
-    }
-  },
-  "background": {
-    "service_worker": "background.js"
-  }
+  ]
 }

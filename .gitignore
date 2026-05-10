@@ -2,6 +2,18 @@
 .DS_Store
 Thumbs.db
 
+# Vendor source archives kept locally for reference, not committed
+echoly-main.zip
+_echoly_extracted/
+
+# Built release zips
+*.zip
+!store-assets/*.zip
+
+# Editor
+.vscode/
+.idea/
+
 # Logs
 *.log
 yt_console_errors.log

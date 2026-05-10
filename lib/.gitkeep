@@ -1,0 +1,3 @@
+# Phase 2 — shared low-level helpers will land here:
+#   token-guard.js  (page-level async token guard pattern)
+#   audio-utils.js  (captureWithRetry, downmix, WAV encode, computeGain)

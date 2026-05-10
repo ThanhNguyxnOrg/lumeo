@@ -1,0 +1,4 @@
+# Phase 2 — pipeline modules will land here:
+#   caption.js   (Lumen v1 caption pipeline, rewritten clean)
+#   standard.js  (extracted from content.js — Whisper → Gemini → MiniMax)
+#   realtime.js  (extracted from content.js — WebRTC P2P to OpenAI Realtime)

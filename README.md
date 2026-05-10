@@ -1,135 +1,188 @@
 # Lumen Subtitle Studio
 
 <p align="center">
-  <img src="./icon128.png" alt="Lumen Subtitle Studio" width="96" height="96" />
+  <img src="./icons/icon-128.png" alt="Lumen Subtitle Studio" width="96" height="96" />
 </p>
 
 <p align="center">
-  <strong>Professional YouTube subtitle translation + speech extension for Chrome (Manifest V3).</strong>
+  <strong>Captions and live AI dubbing for YouTube. One Chrome MV3 extension. Three tiers, your call.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/ThanhNguyxn07/lumen-subtitle-studio/blob/main/LICENSE"><img src="https://img.shields.io/github/license/ThanhNguyxn07/lumen-subtitle-studio?style=for-the-badge" alt="License"></a>
-  <a href="https://github.com/ThanhNguyxn07/lumen-subtitle-studio/stargazers"><img src="https://img.shields.io/github/stars/ThanhNguyxn07/lumen-subtitle-studio?style=for-the-badge" alt="Stars"></a>
-  <a href="https://github.com/ThanhNguyxn07/lumen-subtitle-studio/network/members"><img src="https://img.shields.io/github/forks/ThanhNguyxn07/lumen-subtitle-studio?style=for-the-badge" alt="Forks"></a>
-  <a href="https://github.com/ThanhNguyxn07/lumen-subtitle-studio/commits/main/"><img src="https://img.shields.io/github/last-commit/ThanhNguyxn07/lumen-subtitle-studio?style=for-the-badge" alt="Last Commit"></a>
+  <img src="https://img.shields.io/badge/version-2.0.0--beta.1-ff7a45?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/Chrome-MV3-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome MV3">
+  <img src="https://img.shields.io/badge/license-MIT-2ea043?style=for-the-badge" alt="License">
 </p>
 
 ---
 
-## ✨ Highlights
+## Overview
 
-- 🌐 Translate YouTube subtitles into **90+ languages**
-- 🈯 Show **bilingual subtitle lines** for learning and comprehension
-- 🔊 Text-to-speech playback support
-- ⚡ Fast subtitle track detection from active YouTube sessions
-- 🧩 Built as a lightweight Chrome Extension (Manifest V3)
+Lumen Subtitle Studio gives you three ways to consume any YouTube video in your own language. Pick the one that fits the moment:
+
+| Tier | What it does | Latency | Cost | When to use |
+|---|---|---|---|---|
+| **Caption** | Translates YouTube's existing subtitles into 100+ languages, shows bilingual lines + clickable side panel, optional TTS | None — text-based | Free (Google Translate) or your own OpenAI / Google Cloud key | The video already has captions and you want to read along |
+| **Standard** | Captures the audio, runs Whisper → Gemini → MiniMax through Kyma, plays a multilingual dub over the original | ~5 seconds | ~$0.25 / 10 min on your Kyma balance | The video has no usable captions, or you prefer listening |
+| **Realtime** | Captures the audio, opens WebRTC P2P with OpenAI Realtime via a Kyma ephemeral token, dubs with sub-second lag and optional speaker voice cloning | <1 second | ~$0.46 / 10 min on your Kyma balance | Live streams, podcasts, anywhere lag matters |
+
+13 dubbing target languages (English, Vietnamese, Japanese, Korean, Chinese, French, Spanish, German, Portuguese, Hindi, Indonesian, Italian, Russian) and 100+ caption-translation languages. No account, no telemetry, no Lumen-operated server.
 
 ---
 
-## 🧱 Architecture
+## Project status — v2.0 merge
+
+This repository is the merge of two predecessor projects, both authored by the same maintainer:
+
+- **Lumen v1** — caption-based bilingual translator with Soniox STT fallback, polyglot TTS, and SRT export. Source preserved on the [`v1-legacy`](../../tree/v1-legacy) branch.
+- **Echoly v0.2.1** — live AI dub engine with Realtime + Standard tiers, polished overlay, state-machine architecture. Vendored as the v2 baseline.
+
+The merge is in progress on `v2-rewrite`:
+
+- ✅ **Phase 1** — Echoly baseline rebranded as Lumen, manifest merged, scaffold for `pipelines/`, `services/`, `lib/`, `ui/` ready, store-assets refreshed.
+- 🚧 **Phase 2** — Reverse and rewrite Lumen v1 caption pipeline (currently obfuscated in `v1-legacy`) into clean modules under `pipelines/caption.js` and `services/`.
+- 🚧 **Phase 3** — Extend overlay + popup to expose all three tiers, add subtitle style editor and clickable side panel.
+- 🚧 **Phase 4** — SRT/ZIP export across all tiers, auto-tier picker, per-video cache.
+- 🚧 **Phase 5** — Final store assets, screenshots, packaging, Web Store submission.
+
+See [`CHANGELOG.md`](./CHANGELOG.md) for the running merge log.
+
+---
+
+## Architecture
 
 ```text
-YouTube Page
-   ├─ content.js          (inject + orchestration + subtitle flow)
-   ├─ sniffer.js          (timedtext/caption track interception)
-   └─ subtitle.css        (overlay styling)
+YouTube tab
+├─ content.js                  in-page orchestrator + overlay panel
+├─ content.css                 overlay styling (.ec- namespace)
+└─ services/sniffer.js         timedtext + caption-track interceptor (Caption tier)
 
-Extension Runtime
-   ├─ popup.html/js       (UI + user settings)
-   ├─ background.js       (fetch proxy + websocket bridge)
-   └─ audio-processor.js  (audio pipeline helper)
+Extension runtime
+├─ background.js               state machine — single source of truth
+├─ popup.html / .css / .js     passive renderer over background state
+└─ services/audio-processor.js PCM AudioWorklet (Soniox STT fallback)
+
+(Phase 2+) modular pipelines
+├─ pipelines/caption.js        free YouTube caption translation
+├─ pipelines/standard.js       Whisper → Gemini → MiniMax via Kyma
+└─ pipelines/realtime.js       WebRTC P2P to OpenAI Realtime via Kyma
+
+(Phase 2+) shared services
+├─ services/translate.js       Google free / Google Cloud / OpenAI / Gemini
+├─ services/tts-browser.js     speechSynthesis + Google Cloud TTS
+├─ services/stt-soniox.js      Soniox WebSocket STT
+├─ services/srt-export.js      SRT + ZIP packer
+└─ services/kyma-client.js     Kyma error parser, heartbeat, end
+
+(Phase 2+) shared lib
+├─ lib/token-guard.js          page-level async token guard
+└─ lib/audio-utils.js          captureStream retry, downmix, WAV encode
+```
+
+State flow (Echoly baseline, applies to every tier):
+
+```text
+popup ◄── BACKGROUND_STATE_UPDATE ─── background ◄── CONTENT_STATE ─── content
+       ── START / UPDATE_SETTINGS ──►             ── CONTENT_START ──►
 ```
 
 ---
 
-## 📁 Repository Structure
+## Quick start (developer mode)
 
-```text
-.
-├─ .github/
-│  ├─ ISSUE_TEMPLATE/
-│  ├─ workflows/
-│  └─ PULL_REQUEST_TEMPLATE.md
-├─ audio-processor.js
-├─ background.js
-├─ content.js
-├─ icon16.png
-├─ icon48.png
-├─ icon128.png
-├─ manifest.json
-├─ popup.html
-├─ popup.js
-├─ sniffer.js
-├─ subtitle.css
-├─ CHANGELOG.md
-├─ CODE_OF_CONDUCT.md
-├─ CONTRIBUTING.md
-├─ LICENSE
-├─ README.md
-└─ SECURITY.md
-```
-
----
-
-## 🚀 Quick Start (Local)
-
-1. Clone repository:
+1. Clone the repo and switch to the v2 working branch:
    ```bash
-   git clone https://github.com/ThanhNguyxn07/lumen-subtitle-studio.git
+   git clone https://github.com/ThanhNguyxnOrg/lumen-subtitle-studio.git
    cd lumen-subtitle-studio
+   git checkout v2-rewrite
    ```
-2. Open `chrome://extensions`
-3. Enable **Developer mode**
-4. Click **Load unpacked**
-5. Select this project folder
+2. Open `chrome://extensions`.
+3. Toggle **Developer mode** (top-right).
+4. Click **Load unpacked** and select the project folder.
+5. Pin Lumen to the toolbar.
+
+Update with `git pull` and click the reload icon on the extension card.
 
 ---
 
-## ⚙️ Permissions & APIs
+## Use
 
-Defined in `manifest.json`:
+1. Open any YouTube video.
+2. Click the Lumen toolbar icon.
+3. Pick a tier:
+   - **Caption** — pick a target language, choose a translate provider (free Google by default), press Start. Bilingual subtitles + side panel will populate.
+   - **Standard** or **Realtime** — paste a Kyma key from [kymaapi.com](https://kymaapi.com), pick a target language and voice, press Start. The dub plays over the video and the panel shows live translation.
+4. Drag the panel by its toolbar; resize from any edge or corner.
 
-- Extension permissions: `storage`, `activeTab`, `scripting`
-- Host permissions:
-  - `https://www.youtube.com/*`
-  - `https://*.youtube.com/*`
-  - Google translate/TTS endpoints
-  - Optional OpenAI endpoint
-
-> Do not hardcode personal API keys in source. Use user-side extension settings or secure secret management in your release process.
+You can change voice or language mid-session — Realtime hot-swaps in <1s, Standard picks up the change on the next 5s chunk, Caption re-translates the remaining lines on the fly.
 
 ---
 
-## 🛡️ Security Notes
+## Permissions
 
-- Message passing between page context and content script should validate source/origin and payload shape.
-- Subtitle extraction relies on YouTube internals (`ytInitialPlayerResponse` / timedtext paths), which may change.
-- Review [`SECURITY.md`](./SECURITY.md) before production distribution.
+| Permission | Why |
+|---|---|
+| `activeTab`, `scripting` | Inject the overlay into the YouTube tab on Start |
+| `storage` | Remember your settings + any keys you save |
+| `https://*.youtube.com/*`, `https://youtube.com/*` | Read captions / capture audio of the video you're watching |
+| `https://api.kymaapi.com/*` | Standard + Realtime tiers — gateway for AI providers |
+| `https://api.openai.com/*` | Realtime tier (P2P after Kyma mints an ephemeral token); also OpenAI translate option in the Caption tier |
+| `https://translate.googleapis.com/*` | Caption tier — free Google Translate option |
+| `https://translation.googleapis.com/*` | Caption tier — Google Cloud Translation if you supply a key |
+| `https://texttospeech.googleapis.com/*` | Caption tier — Google Cloud TTS if you supply a key |
+| `https://stt-rt.soniox.com/*` | Caption tier — Soniox STT fallback when the video has no captions |
+
+The Kyma key is stored at `TRUSTED_CONTEXTS` access level so that page scripts on youtube.com cannot read it.
 
 ---
 
-## 🗺️ Roadmap
+## Privacy
 
-- [ ] Store settings sync and profile presets
-- [ ] Better subtitle fallback for videos without standard tracks
-- [ ] Enhanced translation quality options
-- [ ] Optional word-level timestamp UX
-- [ ] CI checks for extension packaging sanity
+Lumen does not collect, store, or sell any personal data. API keys you enter stay on your device. Subtitle text or audio you choose to translate is sent directly to the provider you pick, for the sole purpose of producing the translation, then discarded. There is no Lumen-operated server.
+
+Full policy: [`store-assets/privacy-policy.html`](store-assets/privacy-policy.html).
 
 ---
 
-## 🤝 Contributing
+## Build a release zip
 
-PRs are welcome. Please read:
+```bash
+./pack.sh
+# → ~/lumen-subtitle-studio-vX.Y.Z.zip
+```
+
+Reads the version from `manifest.json`, excludes `.git`, `.DS_Store`, `node_modules`, vendor archives. Drop the resulting zip into the Chrome Web Store Developer Console for an update, or share it for manual sideload.
+
+---
+
+## Roadmap (post-merge)
+
+- [ ] Per-tab session log with live cost meter (Standard + Realtime)
+- [ ] Language warming on hover (sub-200ms switches in Realtime)
+- [ ] Dictionary lookup on highlighted source caption text
+- [ ] Auto-pick tier — start with Caption if YouTube already has captions, fall back to Standard otherwise
+- [ ] Firefox port (MV3 manifest portability TBD)
+
+---
+
+## Contributing
+
+PRs are welcome on `v2-rewrite`. Please read:
 
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md)
 - [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md)
 - [`SECURITY.md`](./SECURITY.md)
 
+The codebase is plain vanilla JS — no build step, no dependencies. Pre-flight before opening a PR:
+
+- `node --check content.js && node --check background.js && node --check popup.js`
+- Manual test in a freshly reloaded extension on at least one English YouTube video, on whichever tier you touched.
+- If you bump `manifest.json`, also bump `LUMEN_VERSION` in `content.js` (or run `./release.sh patch`).
+
 ---
 
-## 📜 License
+## License
 
-This project is licensed under the **MIT License** — see [`LICENSE`](./LICENSE).
+[MIT](./LICENSE) © 2026 Lumen Subtitle Studio contributors.
+
+This v2 is a direct merge / rebuild of two prior MIT-licensed projects by the same maintainer. The Echoly v0.2.1 baseline (background.js, content.js, popup, content.css, store-assets) carries forward its original copyright in commit history; Lumen v1 carries forward as the `v1-legacy` branch.
