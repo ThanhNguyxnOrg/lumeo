@@ -131,10 +131,11 @@ const CONTENT_SCRIPT_FILES = [
   "services/stt-soniox.js",
   "services/providers.js",
   "services/captions.js",
-      "services/kyma-client.js",
+  "services/kyma-client.js",
   "pipelines/caption.js",
   "content.js",
 ];
+const EXPECTED_CONTENT_VERSION = "2.0.0-beta.5";
 const CAPTION_CACHE_KEY = "lumeoCaptionCacheV1";
 
 async function readCaptionCache() {
@@ -151,9 +152,11 @@ async function writeCaptionCache(cache) {
 // are missing (common after extension reload on an already-open YouTube tab),
 // inject support files again before starting.
 async function ensureContentScript(tabId) {
+  let shouldReset = false;
   try {
     const reply = await chrome.tabs.sendMessage(tabId, { type: "CONTENT_PING" });
     if (reply?.ok &&
+        reply.version === EXPECTED_CONTENT_VERSION &&
         reply.captionPipeline &&
         reply.translateService &&
         reply.captionService &&
@@ -163,8 +166,34 @@ async function ensureContentScript(tabId) {
         reply.sonioxService) {
       return;
     }
+    shouldReset = !!reply?.ok;
   } catch {
     // Not yet injected.
+  }
+  if (shouldReset) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          delete window.__lumeoContentVersion;
+          for (const key of [
+            "LumeoProviders",
+            "LumeoTranslate",
+            "LumeoSrtExport",
+            "LumeoTTS",
+            "LumeoSonioxSTT",
+            "LumeoCaptions",
+            "LumeoKyma",
+            "LumeoCaptionPipeline",
+          ]) {
+            try { delete window[key]; } catch {}
+          }
+          document.querySelectorAll(".ec-root").forEach((el) => el.remove());
+        },
+      });
+    } catch {
+      // If reset fails, the following injection still covers fresh tabs.
+    }
   }
   await chrome.scripting.executeScript({
     target: { tabId },
@@ -285,6 +314,13 @@ async function handleStop() {
 
 async function handleUpdateSettings(settings) {
   await persistSettings(settings || {});
+  if (!state.running && !state.connecting) {
+    state.errorMessage = "";
+    state.errorCode = "";
+    state.missingProviders = [];
+    state.slotsMissingKeys = [];
+    state.status = "Ready";
+  }
   broadcastToPopup();
   if (state.tabId && (state.running || state.connecting)) {
     try {
@@ -472,6 +508,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       switch (message?.type) {
         case "GET_STATE":
           await loadSettings();
+          if (!state.running && !state.connecting) {
+            state.errorMessage = "";
+            state.errorCode = "";
+            state.missingProviders = [];
+            state.slotsMissingKeys = [];
+            state.status = "Ready";
+          }
           sendResponse({ ok: true, state: snapshot() });
           break;
         case "START":

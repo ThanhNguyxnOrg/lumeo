@@ -11,7 +11,7 @@
 
 (() => {
   // ───── F9 — Idempotent version guard ──────────────────────────────────────
-  const LUMEO_VERSION = "2.0.0-beta.4";
+  const LUMEO_VERSION = "2.0.0-beta.5";
   const GLOBAL_KEY = "__lumeoContentVersion";
   if (window[GLOBAL_KEY] === LUMEO_VERSION) return;
   // Older copy may have left UI behind; clean up before re-installing listeners.

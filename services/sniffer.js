@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const PATCH_FLAG = '__ytTransSnifferPatched__';
+  const PATCH_FLAG = '__ytTransSnifferPatchedV2__';
   if (window[PATCH_FLAG]) {
     if (typeof window.__ytTransSnifferRepublish === 'function') {
       window.__ytTransSnifferRepublish();
