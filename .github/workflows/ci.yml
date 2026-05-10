@@ -19,12 +19,36 @@ jobs:
           node-version: 20
 
       - name: Validate manifest JSON
-        run: node -e "JSON.parse(require('fs').readFileSync('manifest.json','utf8')); console.log('manifest.json OK')"
-
-      - name: Check JavaScript syntax
         run: |
-          node --check content.js
-          node --check sniffer.js
-          node --check background.js
-          node --check popup.js
-          node --check audio-processor.js
+          node -e "
+            const m = JSON.parse(require('fs').readFileSync('manifest.json','utf8'));
+            if (!m.name || !m.version || m.manifest_version !== 3) {
+              throw new Error('manifest.json missing required MV3 fields');
+            }
+            console.log('manifest.json OK — name:', m.name, '· version:', m.version);
+          "
+
+      - name: Validate package structure
+        run: |
+          set -e
+          for f in content.js background.js popup.js popup.html popup.css content.css; do
+            test -f "$f" || { echo "::error::missing root file $f"; exit 1; }
+          done
+          for f in services/sniffer.js services/audio-processor.js; do
+            test -f "$f" || { echo "::error::missing $f"; exit 1; }
+          done
+          for f in icons/icon-16.png icons/icon-48.png icons/icon-128.png; do
+            test -f "$f" || { echo "::error::missing $f"; exit 1; }
+          done
+          echo "package layout OK"
+
+      - name: Check JavaScript syntax (all tracked .js)
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r f; do
+            echo "→ $f"
+            node --check "$f" || fail=1
+          done < <(git ls-files '*.js')
+          exit $fail
