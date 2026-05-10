@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="280" viewBox="0 0 440 280" role="img" aria-labelledby="title desc">
+  <title id="title">Lumeo promo tile</title>
+  <desc id="desc">Bilingual captions and live AI dubbing for YouTube.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101113"/>
+      <stop offset="0.58" stop-color="#16181c"/>
+      <stop offset="1" stop-color="#2a160d"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff8a35"/>
+      <stop offset="1" stop-color="#ff6a1a"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#26292f" stroke-width="1" opacity="0.65"/>
+    </pattern>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="440" height="280" rx="24" fill="url(#bg)"/>
+  <rect width="440" height="280" rx="24" fill="url(#grid)" opacity="0.9"/>
+
+  <g filter="url(#softShadow)">
+    <rect x="34" y="38" width="372" height="204" rx="18" fill="#16181c" stroke="#26292f"/>
+    <rect x="34" y="38" width="372" height="36" rx="18" fill="#1c1f24"/>
+    <path d="M34 74H406" stroke="#26292f"/>
+  </g>
+
+  <g transform="translate(56 50)">
+    <rect width="34" height="34" rx="8" fill="url(#accent)"/>
+    <path d="M10 12v10M17 8v18M24 12v10" fill="none" stroke="#101113" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <text x="102" y="72" fill="#f2ede3" font-family="Inter, system-ui, sans-serif" font-size="28" font-weight="800" letter-spacing="-0.6">Lumeo</text>
+  <text x="102" y="96" fill="#7a7c82" font-family="JetBrains Mono, ui-monospace, monospace" font-size="11" letter-spacing="2">YOUTUBE CAPTIONS + AI DUB</text>
+
+  <g transform="translate(58 126)">
+    <rect width="184" height="58" rx="10" fill="#101113" stroke="#26292f"/>
+    <text x="16" y="24" fill="#ff6a1a" font-family="JetBrains Mono, ui-monospace, monospace" font-size="11" letter-spacing="1.6">CAPTION FREE</text>
+    <text x="16" y="44" fill="#f2ede3" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="700">100+ languages</text>
+  </g>
+
+  <g transform="translate(58 190)">
+    <rect width="284" height="20" rx="4" fill="#101113" stroke="#26292f"/>
+    <rect x="16" y="7" width="44" height="6" rx="2" fill="#ff6a1a"/>
+    <rect x="68" y="7" width="26" height="6" rx="2" fill="#54565b"/>
+    <rect x="102" y="7" width="66" height="6" rx="2" fill="#54565b"/>
+    <rect x="176" y="7" width="38" height="6" rx="2" fill="#54565b"/>
+    <rect x="222" y="7" width="42" height="6" rx="2" fill="#54565b"/>
+  </g>
+
+  <g transform="translate(266 126)">
+    <rect width="82" height="26" rx="5" fill="#ff6a1a"/>
+    <text x="41" y="17" text-anchor="middle" fill="#101113" font-family="JetBrains Mono, ui-monospace, monospace" font-size="10" font-weight="800">REALTIME</text>
+    <rect x="0" y="34" width="82" height="26" rx="5" fill="#101113" stroke="#26292f"/>
+    <text x="41" y="51" text-anchor="middle" fill="#c9c3b6" font-family="JetBrains Mono, ui-monospace, monospace" font-size="10">&lt;1s dub</text>
+  </g>
+
+  <text x="58" y="232" fill="#c9c3b6" font-family="Inter, system-ui, sans-serif" font-size="14">Bilingual subtitles. Live translated voice.</text>
+</svg>

@@ -47,4 +47,4 @@ Tool: macOS `Cmd+Shift+4` then drag a 1280×800 region. Or use CleanShot / Kap (
 
 Web Store wants a **440×280 PNG** "Small promo tile" used in search results.
 
-Spec for v2: Lumeo wordmark + a small flame / lantern glyph at 80×80 + tagline "Captions and live AI dub for YouTube" on the brand orange-to-black gradient. ~30 sec to render in Figma or via the helper script in `store-assets/promo-tile.svg`.
+Base source included: `store-assets/promo-tile-440x280.svg`. Export that SVG to PNG at 440×280 before Web Store submission.

@@ -4,6 +4,55 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.0-beta.3] - 2026-05-09 — Caption tier merge + design reference port
+
+This release is the first functional merge of the best parts of Lumen v1 and Echoly v0.2.1 under the Lumeo brand.
+
+### Added
+
+- Ported the latest user-provided design reference into the vanilla extension UI:
+  - popup now uses the media-remote / subtitle-tool visual direction instead of the old orange glass UI;
+  - in-page overlay now uses the graphite transcript/timeline style system;
+  - no React, Vite, Tailwind, or shadcn runtime from the design export was added to the extension.
+- Added `ROADMAP.md` with the full source analysis, feature merge matrix, 3-tier architecture, phase plan, AI provider plan, and cleanup checklist.
+- Added `DESIGN_BRIEF.md` with the finalized UI/UX direction for future design iterations.
+- Added Caption-tier services:
+  - `services/providers.js` — canonical provider/mode/key registry so Mode, Engine, Key Vault, and Fallback are no longer conflated.
+  - `services/captions.js` — YouTube caption track detection, timedtext sniff fallback, XML parser, native target-language track merge.
+  - `services/translate.js` — Google Free, Gemini, OpenRouter, Groq, OpenAI, Google Cloud Translation, LibreTranslate.
+  - `services/tts-browser.js` — Browser SpeechSynthesis + Google Cloud Chirp3-HD TTS.
+  - `services/stt-soniox.js` — content-side tab audio capture + PCM bridge for Soniox fallback.
+  - `services/srt-export.js` — SRT + ZIP export.
+  - `services/kyma-client.js` — shared Kyma error parsing, session heartbeat, and session end helpers for the upcoming Standard/Realtime module split.
+  - `pipelines/caption.js` — Caption tier orchestrator with local cache and AbortController cancellation.
+- Added provider key vault fields in the popup for Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, and Soniox.
+- Added typed startup errors (`missing-caption-track`, `missingProviders`) so the popup can open/highlight the relevant key vault section instead of relying on error-string regexes.
+- Added Caption Free mode to the popup and content runtime. Main Caption Free mode now uses Google Free by default; BYOK caption engines live under Advanced rather than the main mode controls.
+- Added caption transcript side panel with clickable seek rows, active-row highlight, Export ZIP button, and a small caption style popover.
+- Added `pack.ps1` so Windows contributors can build the Web Store zip without WSL/Git Bash.
+
+### Changed
+
+- Default tier is now `caption`, so Lumeo can start with a free/no-Kyma path.
+- Background manual injection now injects all service scripts and `pipelines/caption.js` before `content.js`, so pre-existing YouTube tabs work after extension reload.
+- Background service worker now carries forward the useful Lumen v1 helpers:
+  - `fetchUrl`
+  - `fetchJSON`
+  - Soniox WebSocket bridge
+- Manifest host permissions expanded for the new provider matrix:
+  - Gemini
+  - OpenRouter
+  - Groq
+  - Hugging Face
+  - LibreTranslate managed/self-hosted URL support
+
+### Removed
+
+- Local design export zip and extracted reference folder after porting the usable UI pieces.
+- Any product/docs references to a specific design tool; design-tool references stay generic.
+
+---
+
 ## [2.0.0-beta.2] - 2026-05-09 — Rebrand to Lumeo + CI fix
 
 A naming and infrastructure pass on top of beta.1.

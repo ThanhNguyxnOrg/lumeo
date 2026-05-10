@@ -13,8 +13,31 @@
 // it with Caption-tier scaffolding for the v2.0 merge.
 
 const DEFAULT_SETTINGS = {
-  tier: "realtime",
+  tier: "caption",
   targetLanguage: "vi",
+  translateProvider: "google-free",
+  sttProvider: "none",
+  captionTtsProvider: "off",
+  dubProvider: "kyma",
+  realtimeProvider: "kyma-realtime",
+  openaiKey: "",
+  openaiModel: "gpt-4o-mini",
+  geminiKey: "",
+  geminiModel: "gemini-2.5-flash-lite",
+  openRouterKey: "",
+  openRouterModel: "openrouter/free",
+  groqApiKey: "",
+  groqModel: "llama-3.3-70b-versatile",
+  huggingFaceToken: "",
+  hfModel: "",
+  googleCloudKey: "",
+  libreTranslateUrl: "",
+  libreTranslateKey: "",
+  sonioxApiKey: "",
+  elevenLabsKey: "",
+  minimaxKey: "",
+  replicateKey: "",
+  translationContext: "",
   realtimeVoice: "marin",
   // Standard tier (Minimax chunked pipeline). Default voice is Magnetic Man,
   // the male voice Son ranked highest in the 2026-05-08 listening test.
@@ -34,6 +57,9 @@ const state = {
   tabId: null,
   status: "Ready",
   errorMessage: "",
+  errorCode: "",
+  missingProviders: [],
+  slotsMissingKeys: [],
   ...DEFAULT_SETTINGS,
 };
 
@@ -45,6 +71,8 @@ chrome.storage.local
 
 let lastBroadcastAt = 0;
 const BROADCAST_DEBOUNCE_MS = 50;
+let sonioxWs = null;
+let sonioxTabId = null;
 
 function snapshot() {
   return { ...state };
@@ -66,6 +94,25 @@ async function relayToContent(tabId, message) {
   return chrome.tabs.sendMessage(tabId, message);
 }
 
+async function fetchText(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.text();
+}
+
+async function fetchJSON(url, init = {}) {
+  const response = await fetch(url, {
+    method: init.method || "GET",
+    headers: init.headers || {},
+    body: init.body || undefined,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error?.message || data?.error || `HTTP ${response.status}`);
+  }
+  return data;
+}
+
 function isYouTubeUrl(url) {
   return typeof url === "string" && /^https?:\/\/[^/]*youtube\.com\//.test(url);
 }
@@ -77,19 +124,51 @@ async function activeYouTubeTab() {
   return tab;
 }
 
-// Ensure content script is alive in the target tab. PING first; on no-reply,
-// inject. This is what makes Start work in tabs that were open before the
-// extension was installed or reloaded.
+const CONTENT_SCRIPT_FILES = [
+  "services/translate.js",
+  "services/srt-export.js",
+  "services/tts-browser.js",
+  "services/stt-soniox.js",
+  "services/providers.js",
+  "services/captions.js",
+      "services/kyma-client.js",
+  "pipelines/caption.js",
+  "content.js",
+];
+const CAPTION_CACHE_KEY = "lumeoCaptionCacheV1";
+
+async function readCaptionCache() {
+  const stored = await chrome.storage.local.get(CAPTION_CACHE_KEY);
+  return stored[CAPTION_CACHE_KEY] || { entries: {} };
+}
+
+async function writeCaptionCache(cache) {
+  await chrome.storage.local.set({ [CAPTION_CACHE_KEY]: cache || { entries: {} } });
+}
+
+// Ensure content script and its support modules are alive in the target tab.
+// PING first; if the old content script is present but the new Caption modules
+// are missing (common after extension reload on an already-open YouTube tab),
+// inject support files again before starting.
 async function ensureContentScript(tabId) {
   try {
     const reply = await chrome.tabs.sendMessage(tabId, { type: "CONTENT_PING" });
-    if (reply?.ok) return;
+    if (reply?.ok &&
+        reply.captionPipeline &&
+        reply.translateService &&
+        reply.captionService &&
+        reply.kymaService &&
+        reply.srtService &&
+        reply.ttsService &&
+        reply.sonioxService) {
+      return;
+    }
   } catch {
     // Not yet injected.
   }
   await chrome.scripting.executeScript({
     target: { tabId },
-    files: ["content.js"],
+    files: CONTENT_SCRIPT_FILES,
   });
   // Inserting CSS via scripting API too, since content_scripts manifest entry
   // does not run on the just-injected page if the tab pre-existed extension.
@@ -134,6 +213,9 @@ async function handleStart(settings) {
   state.tabId = tab.id;
   state.connecting = true;
   state.errorMessage = "";
+  state.errorCode = "";
+  state.missingProviders = [];
+  state.slotsMissingKeys = [];
   state.status = "Connecting";
   broadcastToPopup();
 
@@ -144,7 +226,22 @@ async function handleStart(settings) {
       settings: snapshot(),
     });
     if (!reply?.ok) {
-      throw new Error(reply?.error || "Could not start translation.");
+      state.connecting = false;
+      state.running = false;
+      state.errorMessage = reply?.error || "Could not start translation.";
+      state.errorCode = reply?.errorCode || "";
+      state.missingProviders = reply?.missingProviders || [];
+      state.slotsMissingKeys = reply?.slotsMissingKeys || [];
+      state.status = state.errorMessage;
+      broadcastToPopup();
+      return {
+        ok: false,
+        error: state.errorMessage,
+        errorCode: state.errorCode,
+        missingProviders: state.missingProviders,
+        slotsMissingKeys: state.slotsMissingKeys,
+        state: snapshot(),
+      };
     }
     state.connecting = false;
     state.running = true;
@@ -155,6 +252,9 @@ async function handleStart(settings) {
     state.connecting = false;
     state.running = false;
     state.errorMessage = err.message || String(err);
+    state.errorCode = err.errorCode || err.code || "";
+    state.missingProviders = err.missingProviders || [];
+    state.slotsMissingKeys = err.slotsMissingKeys || [];
     state.status = state.errorMessage;
     broadcastToPopup();
     return { ok: false, error: state.errorMessage };
@@ -166,6 +266,10 @@ async function handleStop() {
   state.running = false;
   state.connecting = false;
   state.paused = false;
+  state.errorMessage = "";
+  state.errorCode = "";
+  state.missingProviders = [];
+  state.slotsMissingKeys = [];
   state.status = "Stopped";
   broadcastToPopup();
   if (tabId) {
@@ -220,12 +324,23 @@ async function handleUpdateVolume(originalVolume, voiceVolume) {
 
 // Content-side push: session live state + transient events.
 function handleContentEvent(message) {
+  if (message.type === "UPDATE_SETTINGS" && message.settings && typeof message.settings === "object") {
+    void persistSettings(message.settings).then(() => broadcastToPopup());
+  }
   if (message.type === "CONTENT_STATE") {
     if (typeof message.running === "boolean") state.running = message.running;
     if (typeof message.paused === "boolean") state.paused = message.paused;
     if (typeof message.status === "string") state.status = message.status;
     if (typeof message.errorMessage === "string") state.errorMessage = message.errorMessage;
+    if (typeof message.errorCode === "string") state.errorCode = message.errorCode;
+    if (Array.isArray(message.missingProviders)) state.missingProviders = message.missingProviders;
+    if (Array.isArray(message.slotsMissingKeys)) state.slotsMissingKeys = message.slotsMissingKeys;
     broadcastToPopup();
+  }
+  if (message.type === "OPEN_POPUP_TO_SLOT") {
+    chrome.runtime
+      .sendMessage({ type: "OPEN_POPUP_TO_SLOT", slot: message.slot || message.provider || "" })
+      .catch(() => {});
   }
   if (message.type === "CONTENT_ENDED") {
     state.running = false;
@@ -237,8 +352,113 @@ function handleContentEvent(message) {
   }
 }
 
+function startSonioxWebSocket(apiKey, langHints) {
+  closeSonioxWebSocket();
+
+  sonioxWs = new WebSocket("wss://stt-rt.soniox.com/transcribe-websocket");
+
+  sonioxWs.onopen = () => {
+    sonioxWs.send(JSON.stringify({
+      api_key: apiKey,
+      model: "stt-rt-preview",
+      audio_format: "pcm_s16le",
+      sample_rate: 16000,
+      num_channels: 1,
+      language_hints: langHints || [],
+      enable_endpoint_detection: true,
+      enable_language_identification: true,
+    }));
+    forwardToSonioxTab({ action: "sonioxStatus", status: "connected" });
+  };
+
+  sonioxWs.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.error_code) {
+        forwardToSonioxTab({
+          action: "sonioxError",
+          error: `${data.error_code}: ${data.error_message}`,
+        });
+        closeSonioxWebSocket();
+        return;
+      }
+      forwardToSonioxTab({ action: "sonioxResult", data });
+    } catch {
+      // Ignore malformed upstream frames; the next valid frame recovers.
+    }
+  };
+
+  sonioxWs.onerror = () => {
+    forwardToSonioxTab({ action: "sonioxError", error: "WebSocket connection failed" });
+  };
+
+  sonioxWs.onclose = () => {
+    forwardToSonioxTab({ action: "sonioxResult", data: { tokens: [], finished: true } });
+    sonioxWs = null;
+  };
+}
+
+function closeSonioxWebSocket() {
+  if (!sonioxWs) return;
+  try {
+    if (sonioxWs.readyState === WebSocket.OPEN) sonioxWs.send("");
+  } catch {
+    // Best-effort flush before closing.
+  }
+  try { sonioxWs.close(); } catch {}
+  sonioxWs = null;
+}
+
+function forwardToSonioxTab(msg) {
+  if (sonioxTabId) chrome.tabs.sendMessage(sonioxTabId, msg).catch(() => {});
+}
+
+function handleLegacyCaptionMessage(message, sender, sendResponse) {
+  switch (message?.action) {
+    case "fetchUrl":
+      fetchText(message.url)
+        .then((text) => sendResponse({ ok: true, text }))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
+    case "fetchJSON":
+      fetchJSON(message.url, message)
+        .then((data) => sendResponse({ ok: true, data }))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
+    case "startSonioxWs":
+      sonioxTabId = sender.tab?.id || state.tabId;
+      startSonioxWebSocket(message.apiKey, message.langHints);
+      sendResponse({ ok: true });
+      return false;
+    case "sonioxAudio":
+      if (sonioxWs?.readyState === WebSocket.OPEN) {
+        sonioxWs.send(new Int16Array(message.samples).buffer);
+      }
+      return false;
+    case "stopSonioxWs":
+      closeSonioxWebSocket();
+      sendResponse({ ok: true });
+      return false;
+    case "captionCacheGet":
+      readCaptionCache()
+        .then((cache) => sendResponse({ ok: true, cache }))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
+    case "captionCacheSet":
+      writeCaptionCache(message.cache)
+        .then(() => sendResponse({ ok: true }))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
+    default:
+      return null;
+  }
+}
+
 // Popup → background → content router.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const legacyHandled = handleLegacyCaptionMessage(message, sender, sendResponse);
+  if (legacyHandled !== null) return legacyHandled;
+
   // Content-originated messages (have sender.tab).
   if (sender.tab) {
     handleContentEvent(message);
@@ -269,6 +489,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             message.voiceVolume,
           ));
           break;
+        case "OPEN_POPUP_TO_SLOT":
+          chrome.runtime
+            .sendMessage({ type: "OPEN_POPUP_TO_SLOT", slot: message.slot || message.provider || "" })
+            .catch(() => {});
+          sendResponse({ ok: true });
+          break;
         default:
           sendResponse({ ok: false, error: "Unknown message: " + message?.type });
       }
@@ -281,6 +507,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Tab close / navigate away → stop session cleanly so Kyma sees the /end.
 chrome.tabs.onRemoved.addListener((tabId) => {
+  if (tabId === sonioxTabId) {
+    closeSonioxWebSocket();
+    sonioxTabId = null;
+  }
   if (tabId === state.tabId) {
     void handleStop();
   }

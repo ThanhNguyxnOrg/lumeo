@@ -22,7 +22,7 @@ Lumeo gives you three ways to consume any YouTube video in your own language. Pi
 
 | Tier | What it does | Latency | Cost | When to use |
 |---|---|---|---|---|
-| **Caption** | Translates YouTube's existing subtitles into 100+ languages, shows bilingual lines + clickable side panel, optional TTS | None — text-based | Free (Google Translate) or your own OpenAI / Google Cloud key | The video already has captions and you want to read along |
+| **Caption** | Translates YouTube's existing subtitles into 100+ languages, shows bilingual lines + clickable side panel, optional TTS, and can fall back to Soniox STT when no captions exist | None for captions; live for STT fallback | Free (Google Translate) or your own Gemini / OpenRouter / Groq / OpenAI / Google Cloud / LibreTranslate / Soniox key | Reading captions first; STT fallback when a video has no caption track |
 | **Standard** | Captures the audio, runs Whisper → Gemini → MiniMax through Kyma, plays a multilingual dub over the original | ~5 seconds | ~$0.25 / 10 min on your Kyma balance | The video has no usable captions, or you prefer listening |
 | **Realtime** | Captures the audio, opens WebRTC P2P with OpenAI Realtime via a Kyma ephemeral token, dubs with sub-second lag and optional speaker voice cloning | <1 second | ~$0.46 / 10 min on your Kyma balance | Live streams, podcasts, anywhere lag matters |
 
@@ -37,7 +37,7 @@ This repository is the merge of two predecessor projects, both authored by the s
 - **Lumen v1** — caption-based bilingual translator with Soniox STT fallback, polyglot TTS, and SRT export. Source preserved on the [`v1-legacy`](../../tree/v1-legacy) branch.
 - **Echoly v0.2.1** — live AI dub engine with Realtime + Standard tiers, polished overlay, state-machine architecture. Vendored as the v2 baseline.
 
-The merge is in progress on `v2-rewrite`:
+The merge is in progress on `main`:
 
 - ✅ **Phase 1** — Echoly baseline rebranded as Lumeo (interim "Lumen Subtitle Studio" naming dropped — see CHANGELOG entry [2.0.0-beta.2]), manifest merged, scaffold for `pipelines/`, `services/`, `lib/`, `ui/` ready, store-assets refreshed.
 - 🚧 **Phase 2** — Reverse and rewrite Lumen v1 caption pipeline (currently obfuscated in `v1-legacy`) into clean modules under `pipelines/caption.js` and `services/`.
@@ -45,7 +45,7 @@ The merge is in progress on `v2-rewrite`:
 - 🚧 **Phase 4** — SRT/ZIP export across all tiers, auto-tier picker, per-video cache.
 - 🚧 **Phase 5** — Final store assets, screenshots, packaging, Web Store submission.
 
-See [`CHANGELOG.md`](./CHANGELOG.md) for the running merge log.
+See [`ROADMAP.md`](./ROADMAP.md) for the working task plan, [`DESIGN_BRIEF.md`](./DESIGN_BRIEF.md) for the UI/UX redesign prompt, [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) for developer-mode debugging, and [`CHANGELOG.md`](./CHANGELOG.md) for the running merge log.
 
 ---
 
@@ -63,12 +63,12 @@ Extension runtime
 └─ services/audio-processor.js PCM AudioWorklet (Soniox STT fallback)
 
 (Phase 2+) modular pipelines
-├─ pipelines/caption.js        free YouTube caption translation
+├─ pipelines/caption.js        free/BYOK YouTube caption translation
 ├─ pipelines/standard.js       Whisper → Gemini → MiniMax via Kyma
 └─ pipelines/realtime.js       WebRTC P2P to OpenAI Realtime via Kyma
 
 (Phase 2+) shared services
-├─ services/translate.js       Google free / Google Cloud / OpenAI / Gemini
+├─ services/translate.js       Google free / Gemini / OpenRouter / Groq / OpenAI / Google Cloud / LibreTranslate
 ├─ services/tts-browser.js     speechSynthesis + Google Cloud TTS
 ├─ services/stt-soniox.js      Soniox WebSocket STT
 ├─ services/srt-export.js      SRT + ZIP packer
@@ -103,6 +103,8 @@ popup ◄── BACKGROUND_STATE_UPDATE ─── background ◄── CONTENT_S
 
 Update with `git pull` and click the reload icon on the extension card.
 
+When testing in developer mode, reload both the extension card and the YouTube tab after code changes. YouTube tabs that were already open can retain an older content script until the tab is refreshed.
+
 ---
 
 ## Use
@@ -127,10 +129,15 @@ You can change voice or language mid-session — Realtime hot-swaps in <1s, Stan
 | `https://*.youtube.com/*`, `https://youtube.com/*` | Read captions / capture audio of the video you're watching |
 | `https://api.kymaapi.com/*` | Standard + Realtime tiers — gateway for AI providers |
 | `https://api.openai.com/*` | Realtime tier (P2P after Kyma mints an ephemeral token); also OpenAI translate option in the Caption tier |
+| `https://generativelanguage.googleapis.com/*` | Caption tier — Gemini translation if you supply a key |
+| `https://openrouter.ai/*` | Caption tier — OpenRouter free model router / BYOK models |
+| `https://api.groq.com/*` | Caption tier — planned Groq STT/translation provider |
+| `https://api-inference.huggingface.co/*`, `https://huggingface.co/*` | Caption tier — planned Hugging Face Inference Provider option |
 | `https://translate.googleapis.com/*` | Caption tier — free Google Translate option |
 | `https://translation.googleapis.com/*` | Caption tier — Google Cloud Translation if you supply a key |
 | `https://texttospeech.googleapis.com/*` | Caption tier — Google Cloud TTS if you supply a key |
 | `https://stt-rt.soniox.com/*` | Caption tier — Soniox STT fallback when the video has no captions |
+| `https://libretranslate.com/*`, `http://localhost/*`, `http://127.0.0.1/*` | Caption tier — LibreTranslate managed/self-hosted endpoint |
 
 The Kyma key is stored at `TRUSTED_CONTEXTS` access level so that page scripts on youtube.com cannot read it.
 
@@ -148,7 +155,14 @@ Full policy: [`store-assets/privacy-policy.html`](store-assets/privacy-policy.ht
 
 ```bash
 ./pack.sh
-# → ~/lumeo-vX.Y.Z.zip
+# -> ~/lumeo-vX.Y.Z.zip
+```
+
+On Windows / PowerShell:
+
+```powershell
+.\pack.ps1
+# -> $HOME\lumeo-vX.Y.Z.zip
 ```
 
 Reads the version from `manifest.json`, excludes `.git`, `.DS_Store`, `node_modules`, vendor archives. Drop the resulting zip into the Chrome Web Store Developer Console for an update, or share it for manual sideload.

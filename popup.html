@@ -10,7 +10,7 @@
 
 <main class="shell">
 
-  <header class="topline">
+  <header class="topline remote-bar">
     <div class="brand">
       <span class="mark" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
@@ -18,49 +18,116 @@
         </svg>
       </span>
       <div>
-        <p class="eyebrow">Captions &amp; Live Dub</p>
+        <p class="eyebrow">YouTube companion</p>
         <h1>Lumeo</h1>
       </div>
     </div>
-    <span class="dot" data-status-dot aria-hidden="true"></span>
+    <div class="header-actions" aria-hidden="true">
+      <span class="tiny-key" id="buildBadge">build…</span>
+      <span class="dot" data-status-dot></span>
+    </div>
   </header>
 
-  <section class="row">
-    <label for="tier">Tier</label>
-    <select id="tier">
+  <section class="status-strip">
+    <span class="status-chip"><span class="status-led"></span><span id="status">Ready.</span></span>
+    <span class="status-meter" id="tierMeta">Dub pipeline</span>
+  </section>
+
+  <section class="context-card" id="tabContext" aria-label="Current video context">
+    <span class="video-thumb">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M8 5v14l11-7z"/>
+      </svg>
+      <span>YT</span>
+    </span>
+    <span class="context-copy">
+      <strong id="tabTitle">Checking active tab...</strong>
+      <small id="tabMeta">Attach Lumeo to captions or live audio</small>
+    </span>
+    <span class="attached" id="tabBadge">CHECK</span>
+  </section>
+
+  <section class="section-block">
+    <div class="section-label">Mode</div>
+    <div class="mode-shell">
+      <label class="mode-row mode-caption" title="Translate existing YouTube captions for free">
+        <input type="radio" name="modeProxy" value="caption" checked />
+        <span class="mode-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 6h16v12H4z"/><path d="M7 10h4M7 14h7"/>
+          </svg>
+        </span>
+        <span class="mode-copy">
+          <strong>Caption Free</strong>
+          <small>100+ languages · optional STT fallback</small>
+        </span>
+        <span class="mode-meter">free</span>
+      </label>
+      <label class="mode-row">
+        <input type="radio" name="modeProxy" value="standard" />
+        <span class="mode-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 3v18"/><path d="M8 7v10M16 7v10M4 10v4M20 10v4"/>
+          </svg>
+        </span>
+        <span class="mode-copy">
+          <strong>Standard Dub</strong>
+          <small>5s chunks, lower cost</small>
+        </span>
+        <span class="mode-meter">~5s</span>
+      </label>
+      <label class="mode-row">
+        <input type="radio" name="modeProxy" value="realtime" />
+        <span class="mode-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          </svg>
+        </span>
+        <span class="mode-copy">
+          <strong>Realtime Dub</strong>
+          <small>Voice clone or OpenAI voice</small>
+        </span>
+        <span class="mode-meter">&lt;1s</span>
+      </label>
+    </div>
+    <select id="tier" class="visually-hidden" aria-label="Tier">
+      <option value="caption">Caption Free · 100+ languages</option>
       <option value="realtime">Realtime · clones speaker · &lt;1s</option>
       <option value="standard">Standard · ~5s lag · cheaper</option>
     </select>
   </section>
 
-  <section class="row">
-    <label for="voice">Voice</label>
-    <select id="voice"></select>
-  </section>
-
-  <section class="row">
-    <label for="lang">Language</label>
-    <select id="lang"></select>
-  </section>
-
-  <section class="secret">
-    <div class="row">
-      <label for="kymaKey">Kyma key</label>
-      <span id="keyBadge" class="badge">missing</span>
+  <section class="section-block">
+    <div class="section-label">Routing</div>
+    <div class="grid-two">
+      <label class="field">
+        <span>Target language</span>
+        <select id="lang"></select>
+      </label>
+      <label class="field">
+        <span>Voice</span>
+        <select id="voice"></select>
+      </label>
     </div>
-    <input id="kymaKey" type="password" placeholder="ky-..." autocomplete="off" spellcheck="false" />
   </section>
 
-  <button class="action" id="toggle">Start</button>
+  <section class="setup-stack" id="setupStack" aria-label="Provider setup">
+    <div class="slot-card">
+      <span class="slot-kicker">Provider marketplace</span>
+      <strong>Loading providers...</strong>
+      <small>Mode controls which providers are shown here.</small>
+    </div>
+  </section>
 
-  <section class="mix">
+  <section class="section-block mix">
+    <div class="section-label">Mix</div>
     <div class="mix-row">
-      <label for="originalVolume">Original</label>
+      <label for="originalVolume">ORIGINAL</label>
       <input id="originalVolume" type="range" min="0" max="100" value="18" />
       <output id="originalOut">18</output>
     </div>
     <div class="mix-row">
-      <label for="voiceVolume">Voice</label>
+      <label for="voiceVolume">DUB VOICE</label>
       <input id="voiceVolume" type="range" min="0" max="100" value="100" />
       <output id="voiceOut">100</output>
     </div>
@@ -71,26 +138,25 @@
     <input id="showSource" type="checkbox" />
   </label>
 
-  <details class="advanced">
-    <summary>Advanced</summary>
-    <div class="advanced-body">
-      <div>
-        <strong>Pricing</strong>: Realtime ~$0.46 per 10 min · Standard ~$0.25 per 10 min. Charged from your Kyma balance.
-      </div>
-      <div>
-        Manage your account: <a href="https://kymaapi.com/billing" target="_blank">billing</a> ·
-        <a href="https://kymaapi.com/dashboard" target="_blank">session log</a>.
-      </div>
-      <div class="hint">
-        Sessions auto-stop at 60 minutes. Press Stop to end early.
-      </div>
+  <details class="advanced key-vault-all" id="keyVaultAll">
+    <summary>
+      <span>Manage all keys</span>
+      <span id="keyVaultBadge" class="badge">0 saved</span>
+    </summary>
+    <div class="advanced-body" id="keyVaultAllBody">
+      <p>Saved keys and provider help links appear here after the marketplace loads.</p>
     </div>
   </details>
 
-  <p class="status" id="status">Ready.</p>
+  <div class="timeline-motif" aria-hidden="true">
+    <span></span><i style="--w: 18%"></i><i style="--w: 9%"></i><i style="--w: 24%"></i><i style="--w: 12%"></i><i style="--w: 19%"></i><span></span>
+  </div>
+
+  <button class="action" id="toggle">Start</button>
 
 </main>
 
+<script src="services/providers.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>

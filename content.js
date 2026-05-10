@@ -11,7 +11,7 @@
 
 (() => {
   // ───── F9 — Idempotent version guard ──────────────────────────────────────
-  const LUMEO_VERSION = "2.0.0-beta.1";
+  const LUMEO_VERSION = "2.0.0-beta.4";
   const GLOBAL_KEY = "__lumeoContentVersion";
   if (window[GLOBAL_KEY] === LUMEO_VERSION) return;
   // Older copy may have left UI behind; clean up before re-installing listeners.
@@ -28,6 +28,7 @@
   const HISTORY_MAX = 16;
   const VOICE_GAIN_MAX = 2.0;          // unity at slider 50, 2× boost at 100
   const LAYOUT_KEY = "lumeoOverlayLayout";
+  const CAPTION_STYLE_KEY = "lumeoCaptionStyle";
   const RTL_LANGS = new Set(["ar", "fa", "he", "ur"]);
 
   const LANGUAGES = [
@@ -41,6 +42,11 @@
   const REALTIME_VOICES = [
     "marin", "alloy", "ash", "ballad", "coral",
     "echo", "sage", "shimmer", "verse",
+  ];
+  const CAPTION_TTS_OPTIONS = [
+    ["off", "TTS Off"],
+    ["browser", "Browser TTS"],
+    ["google-cloud", "Google Cloud TTS"],
   ];
   // Standard tier voices — Minimax `speech-02-turbo` IDs. Cross-language: each
   // voice handles all 13 target languages. Curated 2026-05-08.
@@ -86,6 +92,7 @@
   let onYTPlay = null;
   let lastSpaUrl = location.href;
   let layout = loadLayout();
+  let captionStyle = loadCaptionStyle();
 
   // ───── Background channel ─────────────────────────────────────────────────
   function notifyBackground(msg) {
@@ -114,6 +121,25 @@
   }
   function saveLayout() {
     try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch {}
+  }
+  function loadCaptionStyle() {
+    try {
+      return {
+        fontSize: 22,
+        showSource: true,
+        ...JSON.parse(localStorage.getItem(CAPTION_STYLE_KEY) || "{}"),
+      };
+    } catch {
+      return { fontSize: 22, showSource: true };
+    }
+  }
+  function saveCaptionStyle() {
+    try { localStorage.setItem(CAPTION_STYLE_KEY, JSON.stringify(captionStyle)); } catch {}
+  }
+  function applyCaptionStyle() {
+    if (!root) return;
+    root.style.setProperty("--lumeo-caption-font-size", `${captionStyle.fontSize || 22}px`);
+    root.classList.toggle("ec-hide-source-line", captionStyle.showSource === false);
   }
   function clampLayout() {
     const maxW = Math.max(300, window.innerWidth - 24);
@@ -170,11 +196,23 @@
         <span class="ec-spacer"></span>
         <select class="ec-select" data-ec-language aria-label="Target language"></select>
         <select class="ec-select" data-ec-voice aria-label="Voice"></select>
+        <button class="ec-btn" type="button" data-ec-style hidden>Style</button>
+        <button class="ec-btn" type="button" data-ec-export hidden>Export</button>
         <button class="ec-btn" type="button" data-ec-hide>Hide</button>
         <button class="ec-btn ec-btn-primary" type="button" data-ec-stop>Stop</button>
       </div>
       <div class="ec-body">
         <div class="ec-main">
+          <div class="ec-style-popover" data-ec-style-panel hidden>
+            <label>
+              <span>Size</span>
+              <input type="range" min="16" max="36" step="1" data-ec-style-size />
+            </label>
+            <label>
+              <span>Source</span>
+              <input type="checkbox" data-ec-style-source />
+            </label>
+          </div>
           <div class="ec-target" data-ec-target></div>
         </div>
         <div class="ec-side" data-ec-side>
@@ -200,8 +238,13 @@
       target: root.querySelector("[data-ec-target]"),
       source: root.querySelector("[data-ec-source]"),
       history: root.querySelector("[data-ec-history]"),
+      styleBtn: root.querySelector("[data-ec-style]"),
+      stylePanel: root.querySelector("[data-ec-style-panel]"),
+      styleSize: root.querySelector("[data-ec-style-size]"),
+      styleSource: root.querySelector("[data-ec-style-source]"),
       hideBtn: root.querySelector("[data-ec-hide]"),
       stopBtn: root.querySelector("[data-ec-stop]"),
+      exportBtn: root.querySelector("[data-ec-export]"),
       drag: root.querySelector("[data-ec-drag]"),
     };
 
@@ -218,7 +261,11 @@
 
     elements.langSelect.addEventListener("change", () => {
       const newLang = elements.langSelect.value;
-      if (settings?.tier === "standard") {
+      if (settings?.tier === "caption") {
+        settings.targetLanguage = newLang;
+        notifyBackground({ type: "UPDATE_SETTINGS", settings: { targetLanguage: newLang } });
+        showToast("Stop and Start to retranslate captions", 5000);
+      } else if (settings?.tier === "standard") {
         // Standard pipeline picks up the new prompt on the next chunk; no
         // tear-down needed. Push to background so popup stays in sync.
         settings.targetLanguage = newLang;
@@ -231,7 +278,10 @@
     });
     elements.voiceSelect.addEventListener("change", () => {
       const newVoice = elements.voiceSelect.value;
-      if (settings?.tier === "standard") {
+      if (settings?.tier === "caption") {
+        settings.captionTtsProvider = newVoice;
+        notifyBackground({ type: "UPDATE_SETTINGS", settings: { captionTtsProvider: newVoice } });
+      } else if (settings?.tier === "standard") {
         settings.standardVoice = newVoice;
         notifyBackground({ type: "UPDATE_SETTINGS", settings: { standardVoice: newVoice } });
       } else {
@@ -248,11 +298,37 @@
       notifyBackground({ type: "CONTENT_STATE", running: false, status: "Stopped" });
       emitEnded("Stopped");
     });
+    elements.exportBtn.addEventListener("click", () => {
+      exportSessionTranscript();
+    });
+    elements.styleBtn.addEventListener("click", () => {
+      if (!elements.stylePanel) return;
+      elements.stylePanel.hidden = !elements.stylePanel.hidden;
+    });
+    elements.styleSize.addEventListener("input", () => {
+      captionStyle.fontSize = Number(elements.styleSize.value);
+      saveCaptionStyle();
+      applyCaptionStyle();
+    });
+    elements.styleSource.addEventListener("change", () => {
+      captionStyle.showSource = elements.styleSource.checked;
+      saveCaptionStyle();
+      applyCaptionStyle();
+    });
 
     bindDragResize();
+    if (elements.styleSize) elements.styleSize.value = String(captionStyle.fontSize || 22);
+    if (elements.styleSource) elements.styleSource.checked = captionStyle.showSource !== false;
+    applyCaptionStyle();
     applyLayout();
 
     window.addEventListener("resize", applyLayout);
+  }
+
+  function applyTierToolbar() {
+    if (elements.exportBtn) elements.exportBtn.hidden = !session;
+    if (elements.styleBtn) elements.styleBtn.hidden = settings?.tier !== "caption";
+    if (elements.stylePanel && settings?.tier !== "caption") elements.stylePanel.hidden = true;
   }
 
   // Tier-aware voice list rebuild. Realtime exposes 9 OpenAI voices + Auto;
@@ -261,7 +337,14 @@
   function populateVoicePicker(tier) {
     if (!elements.voiceSelect) return;
     elements.voiceSelect.replaceChildren();
-    if (tier === "standard") {
+    if (tier === "caption") {
+      for (const [id, name] of CAPTION_TTS_OPTIONS) {
+        const opt = document.createElement("option");
+        opt.value = id; opt.textContent = name;
+        elements.voiceSelect.appendChild(opt);
+      }
+      elements.voiceSelect.value = settings?.captionTtsProvider || "off";
+    } else if (tier === "standard") {
       for (const [id, name] of STANDARD_VOICES) {
         const opt = document.createElement("option");
         opt.value = id; opt.textContent = name;
@@ -398,6 +481,7 @@
     if (!currentTargetText && !opts.marker) return;
     const entry = {
       time: new Date().toTimeString().slice(0, 5),
+      seconds: videoEl?.currentTime || 0,
       target: currentTargetText.slice(0, 280),
       source: currentSourceText.slice(0, 220),
       lang: settings?.targetLanguage,
@@ -438,6 +522,91 @@
       item.append(meta, text);
       elements.history.appendChild(item);
     }
+  }
+
+  function exportSessionTranscript() {
+    if (session?.type === "caption") {
+      session.pipeline?.exportZip?.(getVideoTitle());
+      showToast("Subtitle ZIP exported", 2500);
+      return;
+    }
+    if (!history.length) {
+      showToast("No transcript yet", 2500);
+      return;
+    }
+    const cues = [...history].reverse().map((turn, index) => {
+      const start = Number(turn.seconds || index * 4);
+      return {
+        start,
+        end: start + 4,
+        text: turn.source || turn.target,
+        translated: turn.target,
+      };
+    });
+    const title = getVideoTitle();
+    const blob = window.LumeoSrtExport.makeSubtitleZip(cues, title);
+    const safeTitle = window.LumeoSrtExport.sanitizeFilename(title);
+    window.LumeoSrtExport.downloadBlob(blob, `${safeTitle}_lumeo_transcript.zip`);
+    showToast("Transcript ZIP exported", 2500);
+  }
+
+  function fmtCaptionTime(seconds) {
+    const total = Math.max(0, Math.floor(Number(seconds || 0)));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function getVideoTitle() {
+    const titleEl =
+      document.querySelector("yt-formatted-string.ytd-watch-metadata") ||
+      document.querySelector("h1.ytd-watch-metadata yt-formatted-string") ||
+      document.querySelector("#title h1");
+    return titleEl?.textContent?.trim() || "youtube-video";
+  }
+
+  function renderCaptionTranscript(cues) {
+    if (!elements.history) return;
+    elements.history.replaceChildren();
+    elements.history.hidden = false;
+    const header = document.createElement("div");
+    header.className = "ec-caption-header";
+    header.textContent = `TRANSCRIPT · ${cues.length} BLOCKS`;
+    elements.history.appendChild(header);
+    for (let i = 0; i < cues.length; i += 1) {
+      const cue = cues[i];
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "ec-caption-row";
+      row.dataset.index = String(i);
+      row.addEventListener("click", () => {
+        const video = videoEl || findVideo();
+        if (video) video.currentTime = cue.start;
+      });
+      const time = document.createElement("span");
+      time.className = "ec-caption-time";
+      time.textContent = fmtCaptionTime(cue.start);
+      const text = document.createElement("span");
+      text.className = "ec-caption-text";
+      const target = document.createElement("strong");
+      target.textContent = cue.translated || cue.text;
+      const source = document.createElement("small");
+      source.textContent = cue.text;
+      text.append(target, source);
+      row.append(time, text);
+      elements.history.appendChild(row);
+    }
+  }
+
+  function updateCaptionTranscriptHighlight(index) {
+    if (!elements.history) return;
+    const active = elements.history.querySelector(".ec-caption-row.is-active");
+    active?.classList.remove("is-active");
+    if (index < 0) return;
+    const row = elements.history.querySelector(`.ec-caption-row[data-index="${index}"]`);
+    if (!row) return;
+    row.classList.add("is-active");
+    row.scrollIntoView({ block: "nearest" });
   }
 
   // ───── F3 — Source caption polling ────────────────────────────────────────
@@ -883,6 +1052,7 @@
       abortController: new AbortController(),
     };
     session = newSession;
+    applyTierToolbar();
 
     setStatusText("Translating");
     setOverlayState("live");
@@ -1186,6 +1356,368 @@
     showToast(parsed.user, { cta: parsed.cta, ctaLabel: parsed.ctaLabel }, 6000);
   }
 
+  function missingCaptionDependencies() {
+    const required = [
+      ["LumeoTranslate", window.LumeoTranslate],
+      ["LumeoSrtExport", window.LumeoSrtExport],
+      ["LumeoTTS", window.LumeoTTS],
+      ["LumeoSonioxSTT", window.LumeoSonioxSTT],
+      ["LumeoCaptions", window.LumeoCaptions],
+      ["LumeoCaptionPipeline", window.LumeoCaptionPipeline],
+    ];
+    return required.filter(([, value]) => !value).map(([name]) => name);
+  }
+
+  function renderCaptionFallbackChoice(video, token, pipeline, reason) {
+    session = {
+      token,
+      type: "caption",
+      choiceOnly: true,
+      pipeline,
+      captionTimer: null,
+      lastCueIndex: -1,
+      kymaKey: null,
+      stream: null,
+      pc: null,
+      dc: null,
+    };
+    applyTierToolbar();
+    setStatusText("Choose fallback");
+    setOverlayState("error");
+    if (elements.history) elements.history.hidden = true;
+    if (!elements.target) return;
+    elements.target.textContent = "";
+    const wrap = document.createElement("div");
+    wrap.className = "ec-choice";
+    const title = document.createElement("strong");
+    title.textContent = "No YouTube captions found.";
+    const copy = document.createElement("small");
+    copy.textContent = reason || "This video did not expose a readable caption track.";
+    const actions = document.createElement("div");
+    actions.className = "ec-choice-actions";
+
+    const sonioxBtn = document.createElement("button");
+    sonioxBtn.type = "button";
+    sonioxBtn.className = "ec-choice-btn";
+    sonioxBtn.textContent = "Try Soniox STT";
+    sonioxBtn.addEventListener("click", async () => {
+      if (!settings.sonioxApiKey) {
+        showToast("Add a Soniox key in the popup marketplace.", 7000);
+        emitState({
+          running: false,
+          status: "Add Soniox key",
+          errorMessage: "Soniox STT needs a Soniox API key.",
+          errorCode: "missing-caption-track",
+          missingProviders: ["soniox"],
+          slotsMissingKeys: ["stt"],
+        });
+        notifyBackground({ type: "OPEN_POPUP_TO_SLOT", slot: "stt" });
+        return;
+      }
+      const reply = await startCaptionSonioxFallback(video, token, pipeline, reason);
+      if (!reply?.ok) {
+        showToast(reply?.error || "Could not start Soniox fallback.", 7000);
+        emitState({ running: false, status: "Soniox error", errorMessage: reply?.error || "Soniox error" });
+      }
+    });
+
+    const standardBtn = document.createElement("button");
+    standardBtn.type = "button";
+    standardBtn.className = "ec-choice-btn";
+    standardBtn.textContent = "Switch to Standard Dub";
+    standardBtn.addEventListener("click", async () => {
+      if (!settings.kymaKey) {
+        showToast("Add a Kyma key in the Standard Dub provider card.", 7000);
+        emitState({
+          running: false,
+          status: "Add Kyma key",
+          errorMessage: "Standard Dub needs a Kyma API key.",
+          errorCode: "missing-dub-key",
+          missingProviders: ["kyma"],
+          slotsMissingKeys: ["dubPipeline"],
+        });
+        notifyBackground({ type: "OPEN_POPUP_TO_SLOT", slot: "dubPipeline" });
+        return;
+      }
+      pipeline.stop?.();
+      settings = { ...settings, tier: "standard" };
+      notifyBackground({ type: "UPDATE_SETTINGS", settings: { tier: "standard" } });
+      const reply = await startStandardSession();
+      if (!reply?.ok) {
+        showToast(reply?.error || "Could not start Standard Dub.", 7000);
+        emitState({ running: false, status: "Standard error", errorMessage: reply?.error || "Standard error" });
+      }
+    });
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "ec-choice-btn ec-choice-btn-muted";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => {
+      stopSession("caption-fallback-cancel");
+      emitEnded("Caption fallback cancelled.");
+    });
+
+    actions.append(sonioxBtn, standardBtn, cancelBtn);
+    wrap.append(title, copy, actions);
+    elements.target.appendChild(wrap);
+    emitState({
+      running: true,
+      paused: false,
+      status: "Choose fallback",
+      errorMessage: "",
+      errorCode: "missing-caption-track",
+      missingProviders: ["soniox", "kyma"],
+      slotsMissingKeys: [],
+    });
+  }
+
+  // ───── Caption tier (free/BYOK text translation) ──────────────────────────
+  // Clean rewrite of the Lumen v1 caption path: use YouTube timedtext tracks
+  // first, translate only when native target captions are unavailable, and
+  // render through the same Lumeo overlay shell used by the dub tiers.
+  async function startCaptionSession() {
+    const video = findVideo();
+    if (!video) return { ok: false, error: "No YouTube video on this page." };
+    videoEl = video;
+
+    buildOverlay();
+    setStatusText("Loading captions");
+    setOverlayState("connecting");
+    applyTierToolbar();
+    applySourceVisibility();
+
+    const token = ++pageToken;
+    const missingDeps = missingCaptionDependencies();
+    if (missingDeps.length) {
+      return {
+        ok: false,
+        error: `Caption dependencies not loaded: ${missingDeps.join(", ")}. Reload the extension and this YouTube tab.`,
+      };
+    }
+    const pipeline = window.LumeoCaptionPipeline.create();
+
+    let result;
+    try {
+      result = await pipeline.start({
+        targetLanguage: settings.targetLanguage || "vi",
+        targetLanguageName: LANG_NAME[settings.targetLanguage] || settings.targetLanguage || "Vietnamese",
+        translateProvider: settings.translateProvider || "google-free",
+        openaiKey: settings.openaiKey,
+        openaiModel: settings.openaiModel,
+        geminiKey: settings.geminiKey,
+        geminiModel: settings.geminiModel,
+        openRouterKey: settings.openRouterKey,
+        openRouterModel: settings.openRouterModel,
+        groqApiKey: settings.groqApiKey,
+        groqModel: settings.groqModel,
+        googleCloudKey: settings.googleCloudKey,
+        libreTranslateUrl: settings.libreTranslateUrl,
+        libreTranslateKey: settings.libreTranslateKey,
+        context: settings.translationContext,
+      });
+    } catch (err) {
+      removeOverlay();
+      return { ok: false, error: err?.message || String(err) };
+    }
+
+    if (token !== pageToken) {
+      pipeline.stop();
+      removeOverlay();
+      return { ok: false, error: "Cancelled before captions loaded." };
+    }
+    if (!result?.ok) {
+      renderCaptionFallbackChoice(video, token, pipeline, result?.error || "Could not load captions.");
+      return { ok: true, errorCode: "missing-caption-track" };
+    }
+
+    session = {
+      token,
+      type: "caption",
+      pipeline,
+      captionTimer: null,
+      lastCueIndex: -1,
+      kymaKey: null,
+      stream: null,
+      pc: null,
+      dc: null,
+    };
+
+    history = [];
+    currentTargetText = "";
+    currentSourceText = "";
+    setStatusText(result.meta?.nativeTarget ? "Native captions" : "Caption Free");
+    setOverlayState("live");
+    renderCaptionTranscript(result.cues || pipeline.cues || []);
+    applyTierToolbar();
+    emitState({ running: true, paused: false, status: "Captioning" });
+
+    const tick = () => {
+      if (session?.type !== "caption" || session.token !== token) return;
+      const current = pipeline.cueAt(video.currentTime);
+      if (current.index === session.lastCueIndex) return;
+      session.lastCueIndex = current.index;
+      if (!current.cue) {
+        currentTargetText = "";
+        currentSourceText = "";
+        setTargetText("");
+        if (elements.source) elements.source.textContent = "";
+        updateCaptionTranscriptHighlight(-1);
+        return;
+      }
+      currentSourceText = current.cue.text;
+      currentTargetText = current.cue.translated || current.cue.text;
+      setTargetText(currentTargetText);
+      if (elements.source && settings.showSource) {
+        elements.source.textContent = currentSourceText.slice(-260);
+      }
+      updateCaptionTranscriptHighlight(current.index);
+      if (settings.captionTtsProvider && settings.captionTtsProvider !== "off") {
+        pipeline.speakCue(current.cue, {
+          provider: settings.captionTtsProvider,
+          targetLanguage: settings.targetLanguage || "vi",
+          googleCloudKey: settings.googleCloudKey,
+          rate: settings.ttsRate || 1,
+        }).catch(() => {});
+      }
+    };
+    session.captionTimer = setInterval(tick, 120);
+    tick();
+
+    onYTPause = () => {
+      setStatusText("Paused");
+      setOverlayState("paused");
+      emitState({ paused: true, status: "Paused" });
+    };
+    onYTPlay = () => {
+      setStatusText("Captioning");
+      setOverlayState("live");
+      emitState({ paused: false, status: "Captioning" });
+    };
+    video.addEventListener("pause", onYTPause);
+    video.addEventListener("play", onYTPlay);
+    return { ok: true };
+  }
+
+  async function startCaptionSonioxFallback(video, token, pipeline, reason) {
+    if (!window.LumeoSonioxSTT) {
+      removeOverlay();
+      return { ok: false, error: "Soniox fallback service not loaded." };
+    }
+    setStatusText("Soniox STT");
+    setOverlayState("connecting");
+    showToast(reason ? `${reason} Starting Soniox fallback.` : "Starting Soniox fallback.", 5000);
+
+    session = {
+      token,
+      type: "caption",
+      liveStt: true,
+      pipeline,
+      captionTimer: null,
+      lastCueIndex: -1,
+      cues: [],
+      tokenBuffer: [],
+      kymaKey: null,
+      stream: null,
+      pc: null,
+      dc: null,
+    };
+    applyTierToolbar();
+    renderCaptionTranscript(session.cues);
+
+    const flushBuffer = async () => {
+      if (session?.type !== "caption" || !session.liveStt || !session.tokenBuffer.length) return;
+      const sourceText = session.tokenBuffer.map((t) => t.text || "").join("").trim();
+      session.tokenBuffer = [];
+      if (!sourceText) return;
+      const start = video.currentTime;
+      const cue = { start, end: start + 4, text: sourceText, translated: "" };
+      try {
+        const [translated] = await window.LumeoTranslate.translateBatch([sourceText], settings.targetLanguage || "vi", {
+          provider: settings.translateProvider || "google-free",
+          targetLanguageName: LANG_NAME[settings.targetLanguage] || settings.targetLanguage || "Vietnamese",
+          openaiKey: settings.openaiKey,
+          openaiModel: settings.openaiModel,
+          geminiKey: settings.geminiKey,
+          geminiModel: settings.geminiModel,
+          openRouterKey: settings.openRouterKey,
+          openRouterModel: settings.openRouterModel,
+          groqApiKey: settings.groqApiKey,
+          groqModel: settings.groqModel,
+          googleCloudKey: settings.googleCloudKey,
+          libreTranslateUrl: settings.libreTranslateUrl,
+          libreTranslateKey: settings.libreTranslateKey,
+          context: settings.translationContext,
+        });
+        cue.translated = translated || sourceText;
+      } catch {
+        cue.translated = sourceText;
+      }
+      if (session?.type !== "caption" || !session.liveStt) return;
+      cue.end = Math.max(video.currentTime, cue.start + 2);
+      session.cues.push(cue);
+      pipeline.cues = session.cues;
+      currentSourceText = cue.text;
+      currentTargetText = cue.translated;
+      setTargetText(currentTargetText);
+      if (elements.source && settings.showSource) elements.source.textContent = currentSourceText.slice(-260);
+      renderCaptionTranscript(session.cues);
+      updateCaptionTranscriptHighlight(session.cues.length - 1);
+      if (settings.captionTtsProvider && settings.captionTtsProvider !== "off") {
+        pipeline.speakCue(cue, {
+          provider: settings.captionTtsProvider,
+          targetLanguage: settings.targetLanguage || "vi",
+          googleCloudKey: settings.googleCloudKey,
+          rate: settings.ttsRate || 1,
+        }).catch(() => {});
+      }
+    };
+
+    try {
+      await window.LumeoSonioxSTT.start({
+        apiKey: settings.sonioxApiKey,
+        onStatus: (status) => {
+          setStatusText(status === "connected" ? "Soniox Live" : status || "Soniox STT");
+          setOverlayState("live");
+          emitState({ running: true, paused: false, status: "Captioning (STT)" });
+        },
+        onError: (error) => {
+          setStatusText("Soniox error");
+          showToast(error || "Soniox error", 7000);
+          emitState({ running: false, paused: false, status: "Soniox error", errorMessage: error || "Soniox error" });
+        },
+        onResult: (data) => {
+          if (data?.finished) {
+            void flushBuffer();
+            return;
+          }
+          const tokens = (data?.tokens || []).filter((t) => t?.text && !String(t.text).startsWith("<"));
+          const finals = tokens.filter((t) => t.is_final);
+          if (finals.length) session.tokenBuffer.push(...finals);
+          const interim = tokens.filter((t) => !t.is_final).map((t) => t.text).join("").trim();
+          const finalText = session.tokenBuffer.map((t) => t.text || "").join("").trim();
+          const preview = (finalText + " " + interim).trim();
+          if (preview) {
+            currentSourceText = preview;
+            setTargetText(preview);
+            if (elements.source && settings.showSource) elements.source.textContent = preview.slice(-260);
+          }
+          if (/[.!?。！？]$/.test(finalText) || finalText.length > 120) {
+            void flushBuffer();
+          }
+        },
+      });
+    } catch (err) {
+      removeOverlay();
+      return { ok: false, error: err?.message || String(err) };
+    }
+
+    setStatusText("Soniox Live");
+    setOverlayState("live");
+    emitState({ running: true, paused: false, status: "Captioning (STT)" });
+    return { ok: true };
+  }
+
   // ───── Start session (token-bumped on each call) ──────────────────────────
   async function startSession(incomingSettings) {
     if (session) return { ok: false, error: "Session already running." };
@@ -1194,6 +1726,9 @@
     currentTargetText = "";
     currentSourceText = "";
 
+    if (settings.tier === "caption") {
+      return startCaptionSession();
+    }
     if (settings.tier === "standard") {
       return startStandardSession();
     }
@@ -1239,6 +1774,7 @@
     }
 
     session = newSession;
+    applyTierToolbar();
     setStatusText("Translating");
     setOverlayState("live");
     startHeartbeat(session.kymaSessionId, session.kymaKey);
@@ -1282,6 +1818,13 @@
     onYTPlay = null;
     if (session) {
       try {
+        if (session.type === "caption") {
+          if (session.captionTimer) {
+            clearInterval(session.captionTimer);
+            session.captionTimer = null;
+          }
+          session.pipeline?.stop?.();
+        }
         // Standard tier: halt the recorder loop so no further chunks fire,
         // and abort any in-flight whisper/translate/TTS fetch so we stop
         // burning Kyma credits the moment the user clicks Stop.
@@ -1336,10 +1879,13 @@
     // Voice select shape depends on tier — repopulate before assigning value
     // so the new id exists in the dropdown.
     if (elements.voiceSelect &&
-        (newSettings.realtimeVoice !== undefined || newSettings.standardVoice !== undefined)) {
+        (newSettings.realtimeVoice !== undefined ||
+         newSettings.standardVoice !== undefined ||
+         newSettings.captionTtsProvider !== undefined)) {
       const tier = settings.tier || "realtime";
       populateVoicePicker(tier);
     }
+    applyTierToolbar();
     if ("showSource" in newSettings) {
       applySourceVisibility();
       if (settings.showSource && session) startCaptionPoll();
@@ -1348,11 +1894,14 @@
     // Realtime swaps require a full session handover (new client_secret +
     // PeerConnection). Standard pipeline picks up new lang/voice on the next
     // chunk — no tear-down required.
-    if (session?.type !== "standard") {
+    if (session && session.type !== "standard" && session.type !== "caption") {
       if (("targetLanguage" in newSettings && newSettings.targetLanguage !== prev.targetLanguage) ||
           ("realtimeVoice" in newSettings && newSettings.realtimeVoice !== prev.realtimeVoice)) {
         void requestHandover(newSettings);
       }
+    } else if (session?.type === "caption" &&
+        ("targetLanguage" in newSettings || "translateProvider" in newSettings)) {
+      showToast("Stop and Start to retranslate captions", 5000);
     }
     if ("originalVolume" in newSettings || "voiceVolume" in newSettings) {
       applyVolumes(settings.originalVolume, settings.voiceVolume);
@@ -1387,7 +1936,17 @@
     (async () => {
       switch (msg?.type) {
         case "CONTENT_PING":
-          sendResponse({ ok: true, version: LUMEO_VERSION });
+          sendResponse({
+            ok: true,
+            version: LUMEO_VERSION,
+            captionPipeline: !!window.LumeoCaptionPipeline,
+            translateService: !!window.LumeoTranslate,
+            captionService: !!window.LumeoCaptions,
+            kymaService: !!window.LumeoKyma,
+            srtService: !!window.LumeoSrtExport,
+            ttsService: !!window.LumeoTTS,
+            sonioxService: !!window.LumeoSonioxSTT,
+          });
           break;
         case "CONTENT_START":
           sendResponse(await startSession(msg.settings || {}));

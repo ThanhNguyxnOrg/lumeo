@@ -29,7 +29,7 @@ footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid rgba(127,127
 <p class="sub">Last updated: 2026-05-09</p>
 
 <div class="tldr">
-<strong>TL;DR.</strong> Lumeo does not collect, store, or sell any personal data. API keys you enter (Kyma, OpenAI, Google Cloud, Soniox) stay on your own device. Subtitle text or audio you choose to translate is sent directly to the provider you pick, for the sole purpose of producing the translation, then discarded. We have no servers, no analytics, no tracking.
+<strong>TL;DR.</strong> Lumeo does not collect, store, or sell any personal data. API keys you enter (Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox) stay on your own device. Subtitle text or audio you choose to translate is sent directly to the provider you pick, for the sole purpose of producing the translation, then discarded. We have no servers, no analytics, no tracking.
 </div>
 
 <h2>What Lumeo is</h2>
@@ -39,8 +39,8 @@ footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid rgba(127,127
 
 <h3>Caption tier (free, BYOK optional)</h3>
 <ul>
-  <li><strong>YouTube subtitle text.</strong> Lumeo reads the captions YouTube already publishes for the video (or, if none exist and you provide a Soniox key, transcribes the tab audio you share via <code>getDisplayMedia</code>). The text is sent to the translate provider you choose: Google Translate (free), Google Cloud Translation (your key), or OpenAI Chat Completions (your key).</li>
-  <li><strong>API keys (optional).</strong> If you opt into Google Cloud, OpenAI, Soniox, or Google Cloud Text-to-Speech, the keys you provide stay in <code>chrome.storage.local</code> and are sent only to those providers as the <code>Authorization</code> header.</li>
+  <li><strong>YouTube subtitle text.</strong> Lumeo reads the captions YouTube already publishes for the video (or, if none exist and you provide a Soniox key, transcribes the tab audio you share via <code>getDisplayMedia</code>). The text is sent only to the translate provider you choose: Google Translate (free/no key), Gemini, OpenRouter, Groq, OpenAI, Google Cloud Translation, or LibreTranslate.</li>
+  <li><strong>API keys (optional).</strong> If you opt into Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox, or Google Cloud Text-to-Speech, the keys you provide stay in <code>chrome.storage.local</code> and are sent only to those providers as the <code>Authorization</code> header or provider-specific key parameter.</li>
   <li><strong>Per-video subtitle cache.</strong> The translated text for each video you process is stored locally so you don't pay to re-translate on revisit. Wipe it from the panel's clear-cache button.</li>
 </ul>
 
@@ -75,8 +75,13 @@ footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid rgba(127,127
 <ul>
   <li><strong>Kyma API</strong> (<code>api.kymaapi.com</code>) — gateway for the Standard and Realtime tiers. Bills your Kyma balance. See <a href="https://kymaapi.com/privacy" target="_blank" rel="noopener">Kyma's privacy policy</a>.</li>
   <li><strong>OpenAI</strong> (<code>api.openai.com</code>) — Realtime tier (peer-to-peer audio); also chat completions for the OpenAI translate option in the Caption tier when you supply an OpenAI key.</li>
+  <li><strong>Gemini</strong> (<code>generativelanguage.googleapis.com</code>) — used only if you provide a Gemini API key and choose Gemini translation.</li>
+  <li><strong>OpenRouter</strong> (<code>openrouter.ai</code>) — used only if you provide an OpenRouter key and choose OpenRouter translation, including the free model router when available.</li>
+  <li><strong>Groq</strong> (<code>api.groq.com</code>) — used only if you provide a Groq key and choose Groq translation/STT options.</li>
+  <li><strong>Hugging Face</strong> (<code>api-inference.huggingface.co</code>, <code>huggingface.co</code>) — planned advanced provider option, used only if you provide a Hugging Face token and select it.</li>
   <li><strong>Google Translate</strong> (<code>translate.googleapis.com</code>) — free public endpoint used by the Caption tier's default translate option. Subtitle text only.</li>
   <li><strong>Google Cloud</strong> (<code>translation.googleapis.com</code>, <code>texttospeech.googleapis.com</code>) — used only if you provide a Google Cloud API key and pick the corresponding option.</li>
+  <li><strong>LibreTranslate</strong> (<code>libretranslate.com</code>, <code>localhost</code>, or a URL you provide) — used only if you choose LibreTranslate translation.</li>
   <li><strong>Soniox</strong> (<code>stt-rt.soniox.com</code>) — used only if you provide a Soniox key and the video has no captions, in which case Lumeo transcribes shared tab audio in real time.</li>
 </ul>
 <p>Each provider processes your data per its own privacy terms. Lumeo is not a party to those terms — your account and direct relationship with each provider are.</p>

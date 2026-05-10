@@ -34,7 +34,19 @@ jobs:
           for f in content.js background.js popup.js popup.html popup.css content.css; do
             test -f "$f" || { echo "::error::missing root file $f"; exit 1; }
           done
-          for f in services/sniffer.js services/audio-processor.js; do
+          test -f "pack.sh" || { echo "::error::missing pack.sh"; exit 1; }
+          test -f "pack.ps1" || { echo "::error::missing pack.ps1"; exit 1; }
+          for f in \
+            services/sniffer.js \
+            services/audio-processor.js \
+            services/captions.js \
+            services/providers.js \
+            services/translate.js \
+            services/tts-browser.js \
+            services/stt-soniox.js \
+            services/srt-export.js \
+            services/kyma-client.js \
+            pipelines/caption.js; do
             test -f "$f" || { echo "::error::missing $f"; exit 1; }
           done
           for f in icons/icon-16.png icons/icon-48.png icons/icon-128.png; do

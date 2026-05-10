@@ -37,7 +37,7 @@ Why Lumeo is different
 Pick a tier per video. Start free. Pay only when you want voice dubbing.
 
 Captions tier in detail
-• 100+ target languages via Google Translate (free) or your own Google Cloud / OpenAI key for higher quality.
+• 100+ target languages via Google Translate (free) or your own Gemini / OpenRouter / Groq / OpenAI / Google Cloud / LibreTranslate key for higher quality or model choice.
 • Bilingual subtitle overlay with full style control — font, size, color, background, stroke, opacity.
 • Side panel listing every line in the video; click any line to seek the player to that moment.
 • Optional TTS playback on each translated line: speech synthesis (free, browser-native voices) or Google Cloud Chirp3-HD voices (your key).
@@ -56,7 +56,7 @@ Standard and Realtime dub
 
 Privacy
 • No account, no telemetry, no analytics, no Lumeo-operated server.
-• Any API key you save (Kyma, OpenAI, Google Cloud, Soniox) stays on your device with TRUSTED_CONTEXTS access level so page scripts can't read it.
+• Any API key you save (Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox) stays on your device with TRUSTED_CONTEXTS access level so page scripts can't read it.
 • Audio and subtitle text are sent only to the provider you pick, used only to produce the translation, then discarded.
 
 Get a Kyma key (only needed for Standard + Realtime tiers): kymaapi.com — free starter credit on signup; pay-as-you-go after that.
@@ -82,7 +82,7 @@ Used by the background service worker to inject the content script into a YouTub
 
 ### `storage`
 ```
-Used to remember the user's settings (tier, target language, voice, volume, subtitle style) and any optional API keys (Kyma, OpenAI, Google Cloud, Soniox) across sessions. Keys are stored at TRUSTED_CONTEXTS access level so that page scripts on youtube.com cannot read them. We do not store any video, audio, transcript, or browsing history.
+Used to remember the user's settings (tier, target language, voice, volume, subtitle style) and any optional API keys (Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox) across sessions. Keys are stored at TRUSTED_CONTEXTS access level so that page scripts on youtube.com cannot read them. We do not store any video, audio, transcript, or browsing history.
 ```
 
 ### `host_permissions: https://*.youtube.com/*` and `https://youtube.com/*`
@@ -98,6 +98,26 @@ Required by the Standard and Realtime tiers to send audio to the Kyma API gatewa
 ### `host_permissions: https://api.openai.com/*`
 ```
 Required only when the user picks the Realtime dub tier (peer-to-peer WebRTC after Kyma mints an ephemeral token, so audio is processed end-to-end with sub-second latency) or the OpenAI Chat Completions translate option in the Caption tier (when the user supplies their own OpenAI key). The Kyma key is never sent to OpenAI; only the ephemeral token or the user's OpenAI key is.
+```
+
+### `host_permissions: https://generativelanguage.googleapis.com/*`
+```
+Caption tier — used only when the user supplies their own Gemini API key and explicitly picks Gemini as the translation provider.
+```
+
+### `host_permissions: https://openrouter.ai/*`
+```
+Caption tier — used only when the user supplies their own OpenRouter key and picks OpenRouter as the translation provider, including OpenRouter's free model router when available.
+```
+
+### `host_permissions: https://api.groq.com/*`
+```
+Caption tier — used only when the user supplies their own Groq key and picks Groq translation or STT options.
+```
+
+### `host_permissions: https://api-inference.huggingface.co/*` and `https://huggingface.co/*`
+```
+Caption tier — reserved for the advanced Hugging Face Inference Providers option. It is used only when the user supplies a Hugging Face token and explicitly selects that provider.
 ```
 
 ### `host_permissions: https://translate.googleapis.com/*`
@@ -120,6 +140,11 @@ Caption tier — used only when the user supplies their own Google Cloud Text-to
 Caption tier — used only when the user supplies their own Soniox API key as a fallback for videos that have no usable captions. With the user's permission, Lumeo captures shared tab audio via getDisplayMedia and streams 16 kHz PCM samples to Soniox's real-time STT WebSocket for transcription.
 ```
 
+### `host_permissions: https://libretranslate.com/*`, `http://localhost/*`, and `http://127.0.0.1/*`
+```
+Caption tier — used only when the user chooses LibreTranslate. The user can use the managed LibreTranslate endpoint or a self-hosted local endpoint such as localhost:5000.
+```
+
 ## Data usage disclosures (Web Store form checkboxes)
 
 When the form asks "Does this extension collect or use any user data?":
@@ -131,7 +156,7 @@ When asked "What types of user data?":
 - Personally identifiable information → **NO**
 - Health information → **NO**
 - Financial and payment information → **NO**
-- Authentication information → **YES** (the user's Kyma / OpenAI / Google Cloud / Soniox API keys, stored locally, sent only to the corresponding provider)
+- Authentication information → **YES** (the user's Kyma / Gemini / OpenRouter / Groq / Hugging Face / OpenAI / Google Cloud / LibreTranslate / Soniox API keys, stored locally, sent only to the corresponding provider)
 - Personal communications → **NO**
 - Location → **NO**
 - Web history → **NO**

@@ -5,6 +5,7 @@ Thumbs.db
 # Vendor source archives kept locally for reference, not committed
 echoly-main.zip
 _echoly_extracted/
+_design_reference/
 
 # Built release zips
 *.zip
