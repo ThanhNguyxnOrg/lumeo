@@ -1404,9 +1404,9 @@
       if (!settings.sonioxApiKey) {
         showToast("Add a Soniox key in the popup marketplace.", 7000);
         emitState({
-          running: false,
+          running: true,
           status: "Add Soniox key",
-          errorMessage: "Soniox STT needs a Soniox API key.",
+          errorMessage: "",
           errorCode: "missing-caption-track",
           missingProviders: ["soniox"],
           slotsMissingKeys: ["stt"],
@@ -1429,9 +1429,9 @@
       if (!settings.kymaKey) {
         showToast("Add a Kyma key in the Standard Dub provider card.", 7000);
         emitState({
-          running: false,
+          running: true,
           status: "Add Kyma key",
-          errorMessage: "Standard Dub needs a Kyma API key.",
+          errorMessage: "",
           errorCode: "missing-dub-key",
           missingProviders: ["kyma"],
           slotsMissingKeys: ["dubPipeline"],
@@ -1440,6 +1440,7 @@
         return;
       }
       pipeline.stop?.();
+      session = null;
       settings = { ...settings, tier: "standard" };
       notifyBackground({ type: "UPDATE_SETTINGS", settings: { tier: "standard" } });
       const reply = await startStandardSession();

@@ -476,7 +476,9 @@ function applyState(s) {
   } else if (state.running) {
     setStateClass("active");
     const langName = CAPTION_LANGUAGES.find(([code]) => code === state.targetLanguage)?.[1] || state.targetLanguage;
-    statusEl.textContent = `Translating to ${langName}.`;
+    statusEl.textContent = state.status && !/^Translating$/i.test(state.status)
+      ? state.status
+      : `Translating to ${langName}.`;
     toggleBtn.textContent = "Stop";
     toggleBtn.classList.add("is-live");
   } else if (state.errorMessage) {
