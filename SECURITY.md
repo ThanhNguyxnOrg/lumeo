@@ -11,7 +11,7 @@ Please do **not** open public issues for security reports.
 Report privately via email:
 
 - **Contact:** thanhnguyentuan2007@gmail.com
-- **Subject:** `[Lumen Subtitle Studio][Security] <short summary>`
+- **Subject:** `[Lumeo][Security] <short summary>`
 
 Include:
 

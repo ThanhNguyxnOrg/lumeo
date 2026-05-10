@@ -1,4 +1,4 @@
-# Lumen Subtitle Studio — Screenshot capture guide
+# Lumeo — Screenshot capture guide
 
 Web Store needs **5 screenshots** at **1280×800** OR **640×400** (PNG, no alpha). Use the bigger size — Web Store auto-resizes; bigger looks crisper on the listing.
 
@@ -10,7 +10,7 @@ Tool: macOS `Cmd+Shift+4` then drag a 1280×800 region. Or use CleanShot / Kap (
 
 ### 01 — Popup idle, ready to start
 - Open any YouTube video in the background (e.g., a TED talk thumbnail visible).
-- Click the Lumen icon. Popup is in `idle` state, key already saved.
+- Click the Lumeo icon. Popup is in `idle` state, key already saved.
 - Capture popup + a strip of the YouTube video behind it for context.
 - Sells: clean UI, "saved" badge, three-tier dropdown visible (Caption / Standard / Realtime), Start button highlighted.
 
@@ -36,7 +36,7 @@ Tool: macOS `Cmd+Shift+4` then drag a 1280×800 region. Or use CleanShot / Kap (
 - Show the export-ZIP button or the menu so the SRT export feature is discoverable.
 
 ## Composition tips
-- YouTube player on the left, Lumen panel on the right — natural English reading flow.
+- YouTube player on the left, Lumeo panel on the right — natural English reading flow.
 - Target the same video in all 5 shots so the listing feels coherent. Suggestion: a recent Apple keynote or a TED talk (English narrator, clear speech, recognizable thumbnail).
 - Keep the YouTube UI clean — pause the video at a non-distracting frame, hide the YT controls (mouse-out for 3s), close any popups.
 - After capture, run through `pngcrush` or just leave as-is — Web Store doesn't care about file size as long as <16 MB each.
@@ -47,4 +47,4 @@ Tool: macOS `Cmd+Shift+4` then drag a 1280×800 region. Or use CleanShot / Kap (
 
 Web Store wants a **440×280 PNG** "Small promo tile" used in search results.
 
-Spec for v2: Lumen wordmark + a small flame / lantern glyph at 80×80 + tagline "Captions and live AI dub for YouTube" on the brand orange-to-black gradient. ~30 sec to render in Figma or via the helper script in `store-assets/promo-tile.svg`.
+Spec for v2: Lumeo wordmark + a small flame / lantern glyph at 80×80 + tagline "Captions and live AI dub for YouTube" on the brand orange-to-black gradient. ~30 sec to render in Figma or via the helper script in `store-assets/promo-tile.svg`.

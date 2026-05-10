@@ -1,4 +1,4 @@
-/* Lumen Subtitle Studio — in-page overlay.
+/* Lumeo — in-page overlay.
    Draggable, resizable panel docked to the YouTube page. The .ec- class prefix
    is preserved from the Echoly v0.2.1 baseline so the merge diff stays
    reviewable; treat it as the namespace prefix for the in-page overlay. */

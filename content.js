@@ -1,21 +1,22 @@
-// Lumen Subtitle Studio content script — owns WebRTC PeerConnection lifecycle,
-// the in-page overlay panel, and YT video element capture. Background tells us
-// when to start/stop/update; we tell background what's happening via
-// CONTENT_STATE. Caption tier (free YouTube subtitle translation) lives
-// alongside the Standard / Realtime audio-dubbing pipelines inherited from the
-// Echoly v0.2.1 baseline (see CHANGELOG for the v2 merge history).
+// Lumeo content script — owns WebRTC PeerConnection lifecycle, the in-page
+// overlay panel, and YT video element capture. Background tells us when to
+// start/stop/update; we tell background what's happening via CONTENT_STATE.
+// Caption tier (free YouTube subtitle translation) lives alongside the
+// Standard / Realtime audio-dubbing pipelines inherited from the Echoly v0.2.1
+// baseline (see CHANGELOG for the v2 merge history — Lumeo = Lumen v1 +
+// Echoly v0.2.1, merged 2026-05-09).
 //
 // Layered: F9 version guard, F6 token-guarded async, F5 captureStream retry,
 // F1 overlay panel, F2 history, F3 source captions, F4 handover.
 
 (() => {
   // ───── F9 — Idempotent version guard ──────────────────────────────────────
-  const LUMEN_VERSION = "2.0.0-beta.1";
-  const GLOBAL_KEY = "__lumenContentVersion";
-  if (window[GLOBAL_KEY] === LUMEN_VERSION) return;
+  const LUMEO_VERSION = "2.0.0-beta.1";
+  const GLOBAL_KEY = "__lumeoContentVersion";
+  if (window[GLOBAL_KEY] === LUMEO_VERSION) return;
   // Older copy may have left UI behind; clean up before re-installing listeners.
   document.querySelectorAll(".ec-root").forEach((el) => el.remove());
-  window[GLOBAL_KEY] = LUMEN_VERSION;
+  window[GLOBAL_KEY] = LUMEO_VERSION;
 
   // ───── Constants ──────────────────────────────────────────────────────────
   const KYMA_BASE = "https://api.kymaapi.com/v1";
@@ -26,7 +27,7 @@
   const CAPTION_POLL_MS = 350;
   const HISTORY_MAX = 16;
   const VOICE_GAIN_MAX = 2.0;          // unity at slider 50, 2× boost at 100
-  const LAYOUT_KEY = "lumenOverlayLayout";
+  const LAYOUT_KEY = "lumeoOverlayLayout";
   const RTL_LANGS = new Set(["ar", "fa", "he", "ur"]);
 
   const LANGUAGES = [
@@ -163,7 +164,7 @@
               <path d="M7 9v6M11 6v12M15 8v8M19 11v2"/>
             </svg>
           </span>
-          <span class="ec-wordmark">Lumen</span>
+          <span class="ec-wordmark">Lumeo</span>
           <span class="ec-state" data-ec-status>Ready</span>
         </span>
         <span class="ec-spacer"></span>
@@ -1386,7 +1387,7 @@
     (async () => {
       switch (msg?.type) {
         case "CONTENT_PING":
-          sendResponse({ ok: true, version: LUMEN_VERSION });
+          sendResponse({ ok: true, version: LUMEO_VERSION });
           break;
         case "CONTENT_START":
           sendResponse(await startSession(msg.settings || {}));

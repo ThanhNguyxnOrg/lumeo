@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lumen Subtitle Studio — Privacy Policy</title>
+<title>Lumeo — Privacy Policy</title>
 <style>
 :root { color-scheme: light dark; }
 body { font: 16px/1.6 -apple-system, system-ui, "Segoe UI", sans-serif;
@@ -25,34 +25,34 @@ footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid rgba(127,127
 </head>
 <body>
 
-<h1>Lumen Subtitle Studio — Privacy Policy</h1>
+<h1>Lumeo — Privacy Policy</h1>
 <p class="sub">Last updated: 2026-05-09</p>
 
 <div class="tldr">
-<strong>TL;DR.</strong> Lumen does not collect, store, or sell any personal data. API keys you enter (Kyma, OpenAI, Google Cloud, Soniox) stay on your own device. Subtitle text or audio you choose to translate is sent directly to the provider you pick, for the sole purpose of producing the translation, then discarded. We have no servers, no analytics, no tracking.
+<strong>TL;DR.</strong> Lumeo does not collect, store, or sell any personal data. API keys you enter (Kyma, OpenAI, Google Cloud, Soniox) stay on your own device. Subtitle text or audio you choose to translate is sent directly to the provider you pick, for the sole purpose of producing the translation, then discarded. We have no servers, no analytics, no tracking.
 </div>
 
-<h2>What Lumen is</h2>
-<p>Lumen Subtitle Studio is a Chrome extension that adds bilingual captions and live AI voice-over to YouTube videos. It offers three tiers — pick whichever fits your needs and budget. The extension runs entirely in your browser; there is no Lumen-operated backend.</p>
+<h2>What Lumeo is</h2>
+<p>Lumeo is a Chrome extension that adds bilingual captions and live AI voice-over to YouTube videos. It offers three tiers — pick whichever fits your needs and budget. The extension runs entirely in your browser; there is no Lumeo-operated backend.</p>
 
 <h2>What data is processed, by tier</h2>
 
 <h3>Caption tier (free, BYOK optional)</h3>
 <ul>
-  <li><strong>YouTube subtitle text.</strong> Lumen reads the captions YouTube already publishes for the video (or, if none exist and you provide a Soniox key, transcribes the tab audio you share via <code>getDisplayMedia</code>). The text is sent to the translate provider you choose: Google Translate (free), Google Cloud Translation (your key), or OpenAI Chat Completions (your key).</li>
+  <li><strong>YouTube subtitle text.</strong> Lumeo reads the captions YouTube already publishes for the video (or, if none exist and you provide a Soniox key, transcribes the tab audio you share via <code>getDisplayMedia</code>). The text is sent to the translate provider you choose: Google Translate (free), Google Cloud Translation (your key), or OpenAI Chat Completions (your key).</li>
   <li><strong>API keys (optional).</strong> If you opt into Google Cloud, OpenAI, Soniox, or Google Cloud Text-to-Speech, the keys you provide stay in <code>chrome.storage.local</code> and are sent only to those providers as the <code>Authorization</code> header.</li>
   <li><strong>Per-video subtitle cache.</strong> The translated text for each video you process is stored locally so you don't pay to re-translate on revisit. Wipe it from the panel's clear-cache button.</li>
 </ul>
 
 <h3>Standard tier (Kyma key required)</h3>
 <ul>
-  <li><strong>YouTube audio.</strong> When you press Start, Lumen captures audio from the active video via <code>HTMLMediaElement.captureStream()</code>, splits it into ~5-second chunks, and uploads each chunk to Kyma which routes through Whisper (transcription) → Gemini (translation) → MiniMax (text-to-speech). The translated voice plays back over the original audio. Lumen itself stores no audio.</li>
+  <li><strong>YouTube audio.</strong> When you press Start, Lumeo captures audio from the active video via <code>HTMLMediaElement.captureStream()</code>, splits it into ~5-second chunks, and uploads each chunk to Kyma which routes through Whisper (transcription) → Gemini (translation) → MiniMax (text-to-speech). The translated voice plays back over the original audio. Lumeo itself stores no audio.</li>
   <li><strong>Kyma API key.</strong> Stored locally with <code>TRUSTED_CONTEXTS</code> access level so that page scripts on youtube.com cannot read it.</li>
 </ul>
 
 <h3>Realtime tier (Kyma key required)</h3>
 <ul>
-  <li><strong>YouTube audio.</strong> Captured the same way and streamed peer-to-peer over WebRTC directly to OpenAI Realtime, after Kyma mints a short-lived ephemeral token. Sub-second latency. Audio does not pass through any Lumen-operated server.</li>
+  <li><strong>YouTube audio.</strong> Captured the same way and streamed peer-to-peer over WebRTC directly to OpenAI Realtime, after Kyma mints a short-lived ephemeral token. Sub-second latency. Audio does not pass through any Lumeo-operated server.</li>
   <li><strong>Kyma API key.</strong> Same handling as Standard tier. The Kyma key itself is never sent to OpenAI; only the ephemeral token is.</li>
 </ul>
 
@@ -77,12 +77,12 @@ footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid rgba(127,127
   <li><strong>OpenAI</strong> (<code>api.openai.com</code>) — Realtime tier (peer-to-peer audio); also chat completions for the OpenAI translate option in the Caption tier when you supply an OpenAI key.</li>
   <li><strong>Google Translate</strong> (<code>translate.googleapis.com</code>) — free public endpoint used by the Caption tier's default translate option. Subtitle text only.</li>
   <li><strong>Google Cloud</strong> (<code>translation.googleapis.com</code>, <code>texttospeech.googleapis.com</code>) — used only if you provide a Google Cloud API key and pick the corresponding option.</li>
-  <li><strong>Soniox</strong> (<code>stt-rt.soniox.com</code>) — used only if you provide a Soniox key and the video has no captions, in which case Lumen transcribes shared tab audio in real time.</li>
+  <li><strong>Soniox</strong> (<code>stt-rt.soniox.com</code>) — used only if you provide a Soniox key and the video has no captions, in which case Lumeo transcribes shared tab audio in real time.</li>
 </ul>
-<p>Each provider processes your data per its own privacy terms. Lumen is not a party to those terms — your account and direct relationship with each provider are.</p>
+<p>Each provider processes your data per its own privacy terms. Lumeo is not a party to those terms — your account and direct relationship with each provider are.</p>
 
 <h2>Data retention</h2>
-<p>Lumen retains nothing on its side. Provider-side retention follows each provider's policy; for transcription, translation, and TTS the data is processed in-memory and not retained. Sessions on the dub tiers automatically end after 60 minutes; closing the tab also ends the session.</p>
+<p>Lumeo retains nothing on its side. Provider-side retention follows each provider's policy; for transcription, translation, and TTS the data is processed in-memory and not retained. Sessions on the dub tiers automatically end after 60 minutes; closing the tab also ends the session.</p>
 
 <h2>Permissions</h2>
 <ul>
@@ -99,16 +99,16 @@ footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid rgba(127,127
 </ul>
 
 <h2>Children</h2>
-<p>Lumen is not directed at children under 13. The extension processes no personal information that would identify a user of any age.</p>
+<p>Lumeo is not directed at children under 13. The extension processes no personal information that would identify a user of any age.</p>
 
 <h2>Changes to this policy</h2>
-<p>If we materially change how Lumen handles data we will update this page and bump the date at the top. Continued use after a change constitutes acceptance.</p>
+<p>If we materially change how Lumeo handles data we will update this page and bump the date at the top. Continued use after a change constitutes acceptance.</p>
 
 <h2>Contact</h2>
-<p>Questions or requests: please open an issue at <a href="https://github.com/ThanhNguyxnOrg/lumen-subtitle-studio/issues" target="_blank" rel="noopener">the project's GitHub issues</a>.</p>
+<p>Questions or requests: please open an issue at <a href="https://github.com/ThanhNguyxnOrg/lumeo/issues" target="_blank" rel="noopener">the project's GitHub issues</a>.</p>
 
 <footer>
-Lumen is open-source. Source: <a href="https://github.com/ThanhNguyxnOrg/lumen-subtitle-studio" target="_blank" rel="noopener">github.com/ThanhNguyxnOrg/lumen-subtitle-studio</a>.
+Lumeo is open-source. Source: <a href="https://github.com/ThanhNguyxnOrg/lumeo" target="_blank" rel="noopener">github.com/ThanhNguyxnOrg/lumeo</a>.
 </footer>
 
 </body>

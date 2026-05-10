@@ -1,4 +1,4 @@
-# Lumen Subtitle Studio — Chrome Web Store submission metadata
+# Lumeo — Chrome Web Store submission metadata
 
 > **Status:** v2.0 draft. Re-validate string lengths and URLs after Phase 5 (final screenshots + pricing). Drop these into the Web Store form fields exactly. Lengths checked against current limits (description 16,000; short description 132).
 
@@ -7,7 +7,7 @@
 ## Name (50 char max)
 
 ```
-Lumen Subtitle Studio — YouTube AI Captions & Dub
+Lumeo — YouTube AI Captions & Dub
 ```
 
 ## Short description (132 char max)
@@ -27,9 +27,9 @@ Bilingual captions in 100+ languages and live AI dubbing for YouTube. Free Capti
 ## Long description (16,000 char max — using ~1,800)
 
 ```
-Lumen Subtitle Studio is the all-in-one YouTube translation extension. Three tiers, you pick what fits the moment.
+Lumeo is the all-in-one YouTube translation extension. Three tiers, you pick what fits the moment.
 
-Why Lumen is different
+Why Lumeo is different
 • Free Caption tier — translate YouTube's existing subtitles into 100+ languages with bilingual on-screen lines, a clickable side panel that scrolls with the video, and optional text-to-speech. No account, no API key required.
 • Standard Dub tier — when a video has no usable captions, capture the audio, run Whisper → Gemini → MiniMax through Kyma, and play a ~5-second-lag dub in 13 target languages over the original. Roughly $0.25 per 10 minutes on your own Kyma balance.
 • Realtime Dub tier — sub-second lag, peer-to-peer WebRTC to OpenAI Realtime via a Kyma-minted ephemeral token. Optionally clones the speaker's voice. Roughly $0.46 per 10 minutes.
@@ -42,7 +42,7 @@ Captions tier in detail
 • Side panel listing every line in the video; click any line to seek the player to that moment.
 • Optional TTS playback on each translated line: speech synthesis (free, browser-native voices) or Google Cloud Chirp3-HD voices (your key).
 • Soniox STT fallback when a video has no captions and you want a free, no-Kyma alternative.
-• Native bilingual mode: when YouTube already publishes a translation track in your target language, Lumen uses that directly — zero translation cost.
+• Native bilingual mode: when YouTube already publishes a translation track in your target language, Lumeo uses that directly — zero translation cost.
 • SRT + ZIP export of every translated transcript.
 
 Standard and Realtime dub
@@ -55,7 +55,7 @@ Standard and Realtime dub
 • Sessions end cleanly when the tab closes — no surprise charges.
 
 Privacy
-• No account, no telemetry, no analytics, no Lumen-operated server.
+• No account, no telemetry, no analytics, no Lumeo-operated server.
 • Any API key you save (Kyma, OpenAI, Google Cloud, Soniox) stays on your device with TRUSTED_CONTEXTS access level so page scripts can't read it.
 • Audio and subtitle text are sent only to the provider you pick, used only to produce the translation, then discarded.
 
@@ -65,14 +65,14 @@ Get a Kyma key (only needed for Standard + Realtime tiers): kymaapi.com — free
 ## Single purpose statement (mandatory)
 
 ```
-Lumen translates the captions or audio of the YouTube video on the active tab into a language the user picks, and presents the translation as on-screen bilingual subtitles, optional spoken TTS, or a live AI voice-over depending on the tier the user selects. That is its sole purpose.
+Lumeo translates the captions or audio of the YouTube video on the active tab into a language the user picks, and presents the translation as on-screen bilingual subtitles, optional spoken TTS, or a live AI voice-over depending on the tier the user selects. That is its sole purpose.
 ```
 
 ## Permission justifications (each ≤ 1,000 char; reviewers read these closely)
 
 ### `activeTab`
 ```
-Used so that when the user clicks the Lumen toolbar icon and presses Start, the extension can run a content script on the YouTube tab they are looking at. We do not act on tabs the user has not explicitly invoked us on.
+Used so that when the user clicks the Lumeo toolbar icon and presses Start, the extension can run a content script on the YouTube tab they are looking at. We do not act on tabs the user has not explicitly invoked us on.
 ```
 
 ### `scripting`
@@ -92,7 +92,7 @@ Required to read existing YouTube subtitle tracks (Caption tier) and to capture 
 
 ### `host_permissions: https://api.kymaapi.com/*`
 ```
-Required by the Standard and Realtime tiers to send audio to the Kyma API gateway for transcription, translation, and text-to-speech. The user's Kyma API key authenticates each request. Kyma is the user's own paid account; the extension does not proxy through any Lumen-operated server.
+Required by the Standard and Realtime tiers to send audio to the Kyma API gateway for transcription, translation, and text-to-speech. The user's Kyma API key authenticates each request. Kyma is the user's own paid account; the extension does not proxy through any Lumeo-operated server.
 ```
 
 ### `host_permissions: https://api.openai.com/*`
@@ -117,7 +117,7 @@ Caption tier — used only when the user supplies their own Google Cloud Text-to
 
 ### `host_permissions: https://stt-rt.soniox.com/*`
 ```
-Caption tier — used only when the user supplies their own Soniox API key as a fallback for videos that have no usable captions. With the user's permission, Lumen captures shared tab audio via getDisplayMedia and streams 16 kHz PCM samples to Soniox's real-time STT WebSocket for transcription.
+Caption tier — used only when the user supplies their own Soniox API key as a fallback for videos that have no usable captions. With the user's permission, Lumeo captures shared tab audio via getDisplayMedia and streams 16 kHz PCM samples to Soniox's real-time STT WebSocket for transcription.
 ```
 
 ## Data usage disclosures (Web Store form checkboxes)
@@ -151,24 +151,24 @@ Required certifications:
 
 ## Privacy policy URL
 
-Host `store-assets/privacy-policy.html` somewhere stable. Suggested: a static GitHub Pages site at `https://thanhnguyxnorg.github.io/lumen-subtitle-studio/privacy.html` or a Vercel project.
+Host `store-assets/privacy-policy.html` somewhere stable. Suggested: a static GitHub Pages site at `https://thanhnguyxnorg.github.io/lumeo/privacy.html` or a Vercel project.
 
 Once hosted, paste the URL into the Web Store form's "Privacy policy" field.
 
 ## Test instructions for reviewer (under "Account" tab in the form)
 
 ```
-Lumen has three tiers. The Caption tier requires no account and works out of the box on any YouTube video with captions; please test that first:
+Lumeo has three tiers. The Caption tier requires no account and works out of the box on any YouTube video with captions; please test that first:
 
-1. Install the unpacked extension and pin the Lumen icon.
+1. Install the unpacked extension and pin the Lumeo icon.
 2. Open any English YouTube video that has captions (e.g., a TED talk).
-3. Click the Lumen icon, leave tier on "Caption · Free", target language Vietnamese, press Start.
+3. Click the Lumeo icon, leave tier on "Caption · Free", target language Vietnamese, press Start.
 4. Within ~3 seconds the bilingual subtitle overlay and the side panel should populate.
 
 For the Standard / Realtime dub tiers, a Kyma API key is required:
 
 5. Sign up for a free account at https://kymaapi.com (free starter credit included).
-6. Copy the API key from the dashboard, paste into the Lumen popup.
+6. Copy the API key from the dashboard, paste into the Lumeo popup.
 7. Switch tier to "Realtime", press Start. Within ~2 seconds the dub should begin.
 
 If you'd prefer a pre-loaded test key, please open an issue at the project's GitHub repo and we'll provide one for the duration of the review.

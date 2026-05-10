@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible bug in Lumen Subtitle Studio
+description: Report a reproducible bug in Lumeo
 title: "[Bug] "
 labels: ["bug"]
 body:

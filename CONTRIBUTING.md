@@ -1,6 +1,6 @@
 # Contributing Guide
 
-Thanks for contributing to **Lumen Subtitle Studio**.
+Thanks for contributing to **Lumeo**.
 
 ## Development Setup
 

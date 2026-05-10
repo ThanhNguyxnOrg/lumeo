@@ -1,7 +1,7 @@
-# Lumen Subtitle Studio
+# Lumeo
 
 <p align="center">
-  <img src="./icons/icon-128.png" alt="Lumen Subtitle Studio" width="96" height="96" />
+  <img src="./icons/icon-128.png" alt="Lumeo" width="96" height="96" />
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
 
 ## Overview
 
-Lumen Subtitle Studio gives you three ways to consume any YouTube video in your own language. Pick the one that fits the moment:
+Lumeo gives you three ways to consume any YouTube video in your own language. Pick the one that fits the moment:
 
 | Tier | What it does | Latency | Cost | When to use |
 |---|---|---|---|---|
@@ -26,7 +26,7 @@ Lumen Subtitle Studio gives you three ways to consume any YouTube video in your 
 | **Standard** | Captures the audio, runs Whisper → Gemini → MiniMax through Kyma, plays a multilingual dub over the original | ~5 seconds | ~$0.25 / 10 min on your Kyma balance | The video has no usable captions, or you prefer listening |
 | **Realtime** | Captures the audio, opens WebRTC P2P with OpenAI Realtime via a Kyma ephemeral token, dubs with sub-second lag and optional speaker voice cloning | <1 second | ~$0.46 / 10 min on your Kyma balance | Live streams, podcasts, anywhere lag matters |
 
-13 dubbing target languages (English, Vietnamese, Japanese, Korean, Chinese, French, Spanish, German, Portuguese, Hindi, Indonesian, Italian, Russian) and 100+ caption-translation languages. No account, no telemetry, no Lumen-operated server.
+13 dubbing target languages (English, Vietnamese, Japanese, Korean, Chinese, French, Spanish, German, Portuguese, Hindi, Indonesian, Italian, Russian) and 100+ caption-translation languages. No account, no telemetry, no Lumeo-operated server.
 
 ---
 
@@ -39,7 +39,7 @@ This repository is the merge of two predecessor projects, both authored by the s
 
 The merge is in progress on `v2-rewrite`:
 
-- ✅ **Phase 1** — Echoly baseline rebranded as Lumen, manifest merged, scaffold for `pipelines/`, `services/`, `lib/`, `ui/` ready, store-assets refreshed.
+- ✅ **Phase 1** — Echoly baseline rebranded as Lumeo (interim "Lumen Subtitle Studio" naming dropped — see CHANGELOG entry [2.0.0-beta.2]), manifest merged, scaffold for `pipelines/`, `services/`, `lib/`, `ui/` ready, store-assets refreshed.
 - 🚧 **Phase 2** — Reverse and rewrite Lumen v1 caption pipeline (currently obfuscated in `v1-legacy`) into clean modules under `pipelines/caption.js` and `services/`.
 - 🚧 **Phase 3** — Extend overlay + popup to expose all three tiers, add subtitle style editor and clickable side panel.
 - 🚧 **Phase 4** — SRT/ZIP export across all tiers, auto-tier picker, per-video cache.
@@ -92,14 +92,14 @@ popup ◄── BACKGROUND_STATE_UPDATE ─── background ◄── CONTENT_S
 
 1. Clone the repo and switch to the v2 working branch:
    ```bash
-   git clone https://github.com/ThanhNguyxnOrg/lumen-subtitle-studio.git
-   cd lumen-subtitle-studio
+   git clone https://github.com/ThanhNguyxnOrg/lumeo.git
+   cd lumeo
    git checkout v2-rewrite
    ```
 2. Open `chrome://extensions`.
 3. Toggle **Developer mode** (top-right).
 4. Click **Load unpacked** and select the project folder.
-5. Pin Lumen to the toolbar.
+5. Pin Lumeo to the toolbar.
 
 Update with `git pull` and click the reload icon on the extension card.
 
@@ -108,7 +108,7 @@ Update with `git pull` and click the reload icon on the extension card.
 ## Use
 
 1. Open any YouTube video.
-2. Click the Lumen toolbar icon.
+2. Click the Lumeo toolbar icon.
 3. Pick a tier:
    - **Caption** — pick a target language, choose a translate provider (free Google by default), press Start. Bilingual subtitles + side panel will populate.
    - **Standard** or **Realtime** — paste a Kyma key from [kymaapi.com](https://kymaapi.com), pick a target language and voice, press Start. The dub plays over the video and the panel shows live translation.
@@ -138,7 +138,7 @@ The Kyma key is stored at `TRUSTED_CONTEXTS` access level so that page scripts o
 
 ## Privacy
 
-Lumen does not collect, store, or sell any personal data. API keys you enter stay on your device. Subtitle text or audio you choose to translate is sent directly to the provider you pick, for the sole purpose of producing the translation, then discarded. There is no Lumen-operated server.
+Lumeo does not collect, store, or sell any personal data. API keys you enter stay on your device. Subtitle text or audio you choose to translate is sent directly to the provider you pick, for the sole purpose of producing the translation, then discarded. There is no Lumeo-operated server.
 
 Full policy: [`store-assets/privacy-policy.html`](store-assets/privacy-policy.html).
 
@@ -148,7 +148,7 @@ Full policy: [`store-assets/privacy-policy.html`](store-assets/privacy-policy.ht
 
 ```bash
 ./pack.sh
-# → ~/lumen-subtitle-studio-vX.Y.Z.zip
+# → ~/lumeo-vX.Y.Z.zip
 ```
 
 Reads the version from `manifest.json`, excludes `.git`, `.DS_Store`, `node_modules`, vendor archives. Drop the resulting zip into the Chrome Web Store Developer Console for an update, or share it for manual sideload.
@@ -177,12 +177,12 @@ The codebase is plain vanilla JS — no build step, no dependencies. Pre-flight 
 
 - `node --check content.js && node --check background.js && node --check popup.js`
 - Manual test in a freshly reloaded extension on at least one English YouTube video, on whichever tier you touched.
-- If you bump `manifest.json`, also bump `LUMEN_VERSION` in `content.js` (or run `./release.sh patch`).
+- If you bump `manifest.json`, also bump `LUMEO_VERSION` in `content.js` (or run `./release.sh patch`).
 
 ---
 
 ## License
 
-[MIT](./LICENSE) © 2026 Lumen Subtitle Studio contributors.
+[MIT](./LICENSE) © 2026 Lumeo contributors.
 
 This v2 is a direct merge / rebuild of two prior MIT-licensed projects by the same maintainer. The Echoly v0.2.1 baseline (background.js, content.js, popup, content.css, store-assets) carries forward its original copyright in commit history; Lumen v1 carries forward as the `v1-legacy` branch.

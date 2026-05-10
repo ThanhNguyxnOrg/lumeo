@@ -30,14 +30,14 @@ esac
 
 echo "Bumping $CUR → $NEW"
 
-# Update both manifest.json and content.js LUMEN_VERSION in lock-step
+# Update both manifest.json and content.js LUMEO_VERSION in lock-step
 node -e "
 const fs = require('fs');
 const m = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
 m.version = '$NEW';
 fs.writeFileSync('manifest.json', JSON.stringify(m, null, 2) + '\n');
 let c = fs.readFileSync('content.js', 'utf8');
-c = c.replace(/const LUMEN_VERSION = \"[^\"]+\";/, 'const LUMEN_VERSION = \"$NEW\";');
+c = c.replace(/const LUMEO_VERSION = \"[^\"]+\";/, 'const LUMEO_VERSION = \"$NEW\";');
 fs.writeFileSync('content.js', c);
 "
 
@@ -58,19 +58,19 @@ git push
 git push --tags
 
 # Optional release notes — paste from CHANGELOG.md or write inline
-ZIP="$HOME/lumen-subtitle-studio-v${NEW}.zip"
+ZIP="$HOME/lumeo-v${NEW}.zip"
 gh release create "v$NEW" "$ZIP" \
   --title "v$NEW" \
-  --notes "Install via developer mode: download \`lumen-subtitle-studio-v${NEW}.zip\`, unzip, drag into chrome://extensions with Developer mode on. Web Store update propagates automatically once Chrome approves."
+  --notes "Install via developer mode: download \`lumeo-v${NEW}.zip\`, unzip, drag into chrome://extensions with Developer mode on. Web Store update propagates automatically once Chrome approves."
 
 echo
 echo "✓ Released v$NEW"
 echo "  Zip:    $ZIP"
-echo "  GitHub: https://github.com/ThanhNguyxnOrg/lumen-subtitle-studio/releases/tag/v$NEW"
+echo "  GitHub: https://github.com/ThanhNguyxnOrg/lumeo/releases/tag/v$NEW"
 echo
 echo "Next manual step (Web Store auto-update):"
 echo "  1. https://chrome.google.com/webstore/devconsole"
-echo "  2. Pick the Lumen Subtitle Studio item"
+echo "  2. Pick the Lumeo item"
 echo "  3. Drag $ZIP into the package upload area"
 echo "  4. Add a one-line changelog and Submit for review"
 echo "  5. Auto-rolls out to users 1-3 days after Chrome approves"

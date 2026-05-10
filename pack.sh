@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# pack.sh — bundle Lumen Subtitle Studio into a zip ready for Web Store upload
-# or beta sideload. Reads the version from manifest.json so the output
-# filename auto-tracks bumps.
+# pack.sh — bundle Lumeo into a zip ready for Web Store upload or beta sideload.
+# Reads the version from manifest.json so the output filename auto-tracks bumps.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 VERSION=$(node -p "require('./manifest.json').version")
-OUT="$HOME/lumen-subtitle-studio-v${VERSION}.zip"
+OUT="$HOME/lumeo-v${VERSION}.zip"
 
 rm -f "$OUT"
 zip -rq "$OUT" . \

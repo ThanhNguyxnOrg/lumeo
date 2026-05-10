@@ -1,4 +1,4 @@
-// Lumen Subtitle Studio — background service worker.
+// Lumeo — background service worker.
 // Single source of truth for session state across the popup and content script.
 //
 // Popup is a passive renderer: it never reads chrome.storage to decide running

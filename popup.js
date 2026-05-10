@@ -1,4 +1,4 @@
-// Lumen Subtitle Studio — popup script.
+// Lumeo — popup script.
 // Passive renderer: background owns state. Popup queries GET_STATE on open,
 // subscribes to BACKGROUND_STATE_UPDATE pushes, and dispatches user actions
 // via runtime messages. Tier list will gain the Caption option in Phase 2 of
