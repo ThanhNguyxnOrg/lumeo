@@ -20,6 +20,8 @@ $excludeNames = @(
   "node_modules",
   "_design_reference",
   "_echoly_extracted",
+  "ext",
+  "output",
   ".vscode",
   ".idea",
   ".DS_Store",

@@ -135,7 +135,7 @@ const CONTENT_SCRIPT_FILES = [
   "pipelines/caption.js",
   "content.js",
 ];
-const EXPECTED_CONTENT_VERSION = "2.0.0-beta.5";
+const EXPECTED_CONTENT_VERSION = "2.0.0-beta.12";
 const CAPTION_CACHE_KEY = "lumeoCaptionCacheV1";
 
 async function readCaptionCache() {

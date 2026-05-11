@@ -11,7 +11,7 @@
 
 (() => {
   // ───── F9 — Idempotent version guard ──────────────────────────────────────
-  const LUMEO_VERSION = "2.0.0-beta.5";
+  const LUMEO_VERSION = "2.0.0-beta.12";
   const GLOBAL_KEY = "__lumeoContentVersion";
   if (window[GLOBAL_KEY] === LUMEO_VERSION) return;
   // Older copy may have left UI behind; clean up before re-installing listeners.
@@ -108,6 +108,7 @@
   // ───── F1 — Overlay panel ─────────────────────────────────────────────────
   let root = null;
   let elements = {};
+  let videoSubOverlay = null;  // In-video subtitle overlay (positioned over the YT player)
 
   function loadLayout() {
     try {
@@ -127,10 +128,13 @@
       return {
         fontSize: 22,
         showSource: true,
+        muteOriginal: false,
+        showTranslatedSub: true,
+        showSourceSub: true,
         ...JSON.parse(localStorage.getItem(CAPTION_STYLE_KEY) || "{}"),
       };
     } catch {
-      return { fontSize: 22, showSource: true };
+      return { fontSize: 22, showSource: true, muteOriginal: false, showTranslatedSub: true, showSourceSub: true };
     }
   }
   function saveCaptionStyle() {
@@ -140,6 +144,15 @@
     if (!root) return;
     root.style.setProperty("--lumeo-caption-font-size", `${captionStyle.fontSize || 22}px`);
     root.classList.toggle("ec-hide-source-line", captionStyle.showSource === false);
+    // Apply to video subtitle overlay
+    if (videoSubOverlay) {
+      videoSubOverlay.style.setProperty("--lumeo-caption-font-size", `${captionStyle.fontSize || 22}px`);
+      videoSubOverlay.classList.toggle("lumeo-hide-translated", !captionStyle.showTranslatedSub);
+      videoSubOverlay.classList.toggle("lumeo-hide-source", !captionStyle.showSourceSub);
+    }
+    // Mute/unmute original video audio
+    const video = videoEl || findVideo();
+    if (video) video.muted = !!captionStyle.muteOriginal;
   }
   function clampLayout() {
     const maxW = Math.max(300, window.innerWidth - 24);
@@ -184,40 +197,44 @@
     root.dataset.state = "ready";
     root.innerHTML = `
       <div class="ec-toolbar" data-ec-drag>
-        <span class="ec-brand">
-          <span class="ec-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
-              <path d="M7 9v6M11 6v12M15 8v8M19 11v2"/>
-            </svg>
-          </span>
-          <span class="ec-wordmark">Lumeo</span>
-          <span class="ec-state" data-ec-status>Ready</span>
-        </span>
-        <span class="ec-spacer"></span>
+        <span class="ec-dot"></span>
         <select class="ec-select" data-ec-language aria-label="Target language"></select>
+        <span class="ec-toolbar-cap" data-ec-tts-cap hidden>Speech</span>
         <select class="ec-select" data-ec-voice aria-label="Voice"></select>
-        <button class="ec-btn" type="button" data-ec-style hidden>Style</button>
+        <span class="ec-spacer"></span>
         <button class="ec-btn" type="button" data-ec-export hidden>Export</button>
         <button class="ec-btn" type="button" data-ec-hide>Hide</button>
         <button class="ec-btn ec-btn-primary" type="button" data-ec-stop>Stop</button>
       </div>
       <div class="ec-body">
         <div class="ec-main">
-          <div class="ec-style-popover" data-ec-style-panel hidden>
-            <label>
-              <span>Size</span>
-              <input type="range" min="16" max="36" step="1" data-ec-style-size />
-            </label>
-            <label>
-              <span>Source</span>
-              <input type="checkbox" data-ec-style-source />
-            </label>
+          <div class="ec-controls">
+            <div class="ec-control-group">
+              <span class="ec-control-heading">AUDIO</span>
+              <label class="ec-toggle">
+                <input type="checkbox" data-ec-mute-original />
+                <span class="ec-toggle-label">Mute original</span>
+              </label>
+              <label class="ec-toggle">
+                <span class="ec-toggle-label">Voice</span>
+              </label>
+            </div>
+            <div class="ec-control-group">
+              <span class="ec-control-heading">SUBTITLES</span>
+              <label class="ec-toggle">
+                <input type="checkbox" data-ec-show-translated checked />
+                <span class="ec-toggle-label">Translated</span>
+              </label>
+              <label class="ec-toggle">
+                <input type="checkbox" data-ec-show-source checked />
+                <span class="ec-toggle-label">Original</span>
+              </label>
+            </div>
+            <div class="ec-control-group">
+              <span class="ec-control-heading">SIZE</span>
+              <input type="range" min="16" max="36" step="1" data-ec-style-size class="ec-range" />
+            </div>
           </div>
-          <div class="ec-target" data-ec-target></div>
-        </div>
-        <div class="ec-side" data-ec-side>
-          <div class="ec-source" data-ec-source hidden></div>
-          <div class="ec-history" data-ec-history hidden></div>
         </div>
       </div>
       <span class="ec-resize-edge ec-resize-edge-n" data-ec-resize="n"></span>
@@ -232,20 +249,17 @@
     document.documentElement.appendChild(root);
 
     elements = {
-      status: root.querySelector("[data-ec-status]"),
       langSelect: root.querySelector("[data-ec-language]"),
       voiceSelect: root.querySelector("[data-ec-voice]"),
-      target: root.querySelector("[data-ec-target]"),
-      source: root.querySelector("[data-ec-source]"),
-      history: root.querySelector("[data-ec-history]"),
-      styleBtn: root.querySelector("[data-ec-style]"),
-      stylePanel: root.querySelector("[data-ec-style-panel]"),
-      styleSize: root.querySelector("[data-ec-style-size]"),
-      styleSource: root.querySelector("[data-ec-style-source]"),
+      ttsCap: root.querySelector("[data-ec-tts-cap]"),
       hideBtn: root.querySelector("[data-ec-hide]"),
       stopBtn: root.querySelector("[data-ec-stop]"),
       exportBtn: root.querySelector("[data-ec-export]"),
       drag: root.querySelector("[data-ec-drag]"),
+      styleSize: root.querySelector("[data-ec-style-size]"),
+      muteOriginal: root.querySelector("[data-ec-mute-original]"),
+      showTranslated: root.querySelector("[data-ec-show-translated]"),
+      showSource: root.querySelector("[data-ec-show-source]"),
     };
 
     // Populate language picker
@@ -301,24 +315,35 @@
     elements.exportBtn.addEventListener("click", () => {
       exportSessionTranscript();
     });
-    elements.styleBtn.addEventListener("click", () => {
-      if (!elements.stylePanel) return;
-      elements.stylePanel.hidden = !elements.stylePanel.hidden;
+
+    // Toggle controls for subtitle/audio
+    elements.muteOriginal.addEventListener("change", () => {
+      captionStyle.muteOriginal = elements.muteOriginal.checked;
+      saveCaptionStyle();
+      applyCaptionStyle();
+    });
+    elements.showTranslated.addEventListener("change", () => {
+      captionStyle.showTranslatedSub = elements.showTranslated.checked;
+      saveCaptionStyle();
+      applyCaptionStyle();
+    });
+    elements.showSource.addEventListener("change", () => {
+      captionStyle.showSourceSub = elements.showSource.checked;
+      captionStyle.showSource = elements.showSource.checked;
+      saveCaptionStyle();
+      applyCaptionStyle();
     });
     elements.styleSize.addEventListener("input", () => {
       captionStyle.fontSize = Number(elements.styleSize.value);
       saveCaptionStyle();
       applyCaptionStyle();
     });
-    elements.styleSource.addEventListener("change", () => {
-      captionStyle.showSource = elements.styleSource.checked;
-      saveCaptionStyle();
-      applyCaptionStyle();
-    });
 
     bindDragResize();
     if (elements.styleSize) elements.styleSize.value = String(captionStyle.fontSize || 22);
-    if (elements.styleSource) elements.styleSource.checked = captionStyle.showSource !== false;
+    if (elements.muteOriginal) elements.muteOriginal.checked = !!captionStyle.muteOriginal;
+    if (elements.showTranslated) elements.showTranslated.checked = captionStyle.showTranslatedSub !== false;
+    if (elements.showSource) elements.showSource.checked = captionStyle.showSourceSub !== false;
     applyCaptionStyle();
     applyLayout();
 
@@ -327,8 +352,7 @@
 
   function applyTierToolbar() {
     if (elements.exportBtn) elements.exportBtn.hidden = !session;
-    if (elements.styleBtn) elements.styleBtn.hidden = settings?.tier !== "caption";
-    if (elements.stylePanel && settings?.tier !== "caption") elements.stylePanel.hidden = true;
+    if (elements.ttsCap) elements.ttsCap.hidden = settings?.tier !== "caption";
   }
 
   // Tier-aware voice list rebuild. Realtime exposes 9 OpenAI voices + Auto;
@@ -338,6 +362,8 @@
     if (!elements.voiceSelect) return;
     elements.voiceSelect.replaceChildren();
     if (tier === "caption") {
+      elements.voiceSelect.setAttribute("aria-label", "Caption speech (read aloud)");
+      elements.voiceSelect.title = "Read translated captions aloud. Pick Browser TTS for free on-device speech.";
       for (const [id, name] of CAPTION_TTS_OPTIONS) {
         const opt = document.createElement("option");
         opt.value = id; opt.textContent = name;
@@ -345,6 +371,8 @@
       }
       elements.voiceSelect.value = settings?.captionTtsProvider || "off";
     } else if (tier === "standard") {
+      elements.voiceSelect.setAttribute("aria-label", "Dub voice");
+      elements.voiceSelect.removeAttribute("title");
       for (const [id, name] of STANDARD_VOICES) {
         const opt = document.createElement("option");
         opt.value = id; opt.textContent = name;
@@ -352,6 +380,8 @@
       }
       elements.voiceSelect.value = settings?.standardVoice || STANDARD_DEFAULT_VOICE;
     } else {
+      elements.voiceSelect.setAttribute("aria-label", "Realtime voice");
+      elements.voiceSelect.removeAttribute("title");
       const autoOpt = document.createElement("option");
       autoOpt.value = ""; autoOpt.textContent = "Auto";
       elements.voiceSelect.appendChild(autoOpt);
@@ -372,9 +402,85 @@
   }
   function setTargetText(text) {
     if (!elements.target) return;
-    elements.target.textContent = text;
+    elements.target.textContent = text == null ? "" : String(text);
     const lang = settings?.targetLanguage;
     elements.target.dir = RTL_LANGS.has(lang) ? "rtl" : "ltr";
+  }
+  /**
+   * Show a cue as a proper bilingual subtitle pair:
+   *   Line 1 (bold): translated text
+   *   Line 2 (dim):  original source text (if showSource enabled)
+   * Updates BOTH the panel target and the in-video subtitle overlay.
+   */
+  function setTargetCue(cue) {
+    // Update the side panel target
+    if (elements.target) {
+      elements.target.textContent = "";
+      if (cue) {
+        const translated = document.createElement("div");
+        translated.className = "ec-target-translated";
+        translated.textContent = cue.translated || cue.text || "";
+        elements.target.appendChild(translated);
+        if (captionStyle.showSource !== false && cue.text && cue.text !== cue.translated) {
+          const source = document.createElement("div");
+          source.className = "ec-target-source";
+          source.textContent = cue.text;
+          elements.target.appendChild(source);
+        }
+        const lang = settings?.targetLanguage;
+        elements.target.dir = RTL_LANGS.has(lang) ? "rtl" : "ltr";
+      }
+    }
+    // Update the in-video subtitle overlay
+    updateVideoSub(cue);
+  }
+
+  // ───── In-video subtitle overlay ──────────────────────────────────────────
+  // Renders translated+source text centred at the bottom of the YouTube
+  // video player, exactly like native CC subtitles.
+  function buildVideoSubOverlay() {
+    if (videoSubOverlay) return;
+    const player = document.querySelector("#movie_player") ||
+                   document.querySelector(".html5-video-player");
+    if (!player) return;
+    // Ensure the player is a positioning context
+    const playerPos = getComputedStyle(player).position;
+    if (playerPos === "static") player.style.position = "relative";
+
+    videoSubOverlay = document.createElement("div");
+    videoSubOverlay.className = "lumeo-video-sub";
+    videoSubOverlay.setAttribute("aria-live", "polite");
+    player.appendChild(videoSubOverlay);
+  }
+
+  function removeVideoSubOverlay() {
+    if (videoSubOverlay) {
+      videoSubOverlay.remove();
+      videoSubOverlay = null;
+    }
+  }
+
+  function updateVideoSub(cue) {
+    if (!videoSubOverlay) buildVideoSubOverlay();
+    if (!videoSubOverlay) return;
+    videoSubOverlay.textContent = "";
+    if (!cue) {
+      videoSubOverlay.hidden = true;
+      return;
+    }
+    videoSubOverlay.hidden = false;
+    const translated = document.createElement("div");
+    translated.className = "lumeo-video-sub-translated";
+    translated.textContent = cue.translated || cue.text || "";
+    videoSubOverlay.appendChild(translated);
+    if (captionStyle.showSource !== false && cue.text && cue.text !== cue.translated) {
+      const source = document.createElement("div");
+      source.className = "lumeo-video-sub-source";
+      source.textContent = cue.text;
+      videoSubOverlay.appendChild(source);
+    }
+    const lang = settings?.targetLanguage;
+    videoSubOverlay.dir = RTL_LANGS.has(lang) ? "rtl" : "ltr";
   }
   // Toast accepts plain text + optional CTA. Built via DOM APIs (not innerHTML)
   // because the text often comes from upstream API errors — a crafted error
@@ -406,6 +512,7 @@
     root.remove();
     root = null;
     elements = {};
+    removeVideoSubOverlay();
   }
 
   // ───── Drag + resize ──────────────────────────────────────────────────────
@@ -574,28 +681,40 @@
     header.textContent = `TRANSCRIPT · ${cues.length} BLOCKS`;
     elements.history.appendChild(header);
     for (let i = 0; i < cues.length; i += 1) {
-      const cue = cues[i];
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "ec-caption-row";
-      row.dataset.index = String(i);
-      row.addEventListener("click", () => {
-        const video = videoEl || findVideo();
-        if (video) video.currentTime = cue.start;
-      });
-      const time = document.createElement("span");
-      time.className = "ec-caption-time";
-      time.textContent = fmtCaptionTime(cue.start);
-      const text = document.createElement("span");
-      text.className = "ec-caption-text";
-      const target = document.createElement("strong");
-      target.textContent = cue.translated || cue.text;
-      const source = document.createElement("small");
-      source.textContent = cue.text;
-      text.append(target, source);
-      row.append(time, text);
-      elements.history.appendChild(row);
+      appendCaptionRow(cues[i], i);
     }
+  }
+
+  /** Append a single row to the sidebar transcript — avoids full DOM rebuild. */
+  function appendCaptionRow(cue, index) {
+    if (!elements.history) return;
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "ec-caption-row";
+    row.dataset.index = String(index);
+    row.addEventListener("click", () => {
+      const video = videoEl || findVideo();
+      if (video) video.currentTime = cue.start;
+    });
+    const time = document.createElement("span");
+    time.className = "ec-caption-time";
+    time.textContent = fmtCaptionTime(cue.start);
+    const text = document.createElement("span");
+    text.className = "ec-caption-text";
+    const target = document.createElement("strong");
+    target.textContent = cue.translated || cue.text;
+    const source = document.createElement("small");
+    source.textContent = cue.text;
+    text.append(target, source);
+    row.append(time, text);
+    elements.history.appendChild(row);
+  }
+
+  /** Update the sidebar header count without rebuilding rows. */
+  function updateCaptionTranscriptCount(count) {
+    if (!elements.history) return;
+    const header = elements.history.querySelector(".ec-caption-header");
+    if (header) header.textContent = `TRANSCRIPT · ${count} BLOCKS`;
   }
 
   function updateCaptionTranscriptHighlight(index) {
@@ -611,9 +730,56 @@
 
   // ───── F3 — Source caption polling ────────────────────────────────────────
   let lastSeenCaption = "";
+
+  /** Prefer the in-player caption window so we do not merge the whole CC stack into one paragraph. */
+  function getYtpCaptionWindow() {
+    return (
+      document.querySelector(".ytp-caption-window-bottom") ||
+      document.querySelector(".ytp-caption-window-top") ||
+      document.querySelector(".ytp-caption-window-rollup") ||
+      document.querySelector(".html5-video-player .ytp-caption-window-container")
+    );
+  }
+
+  /**
+   * Text currently shown on the YouTube CC overlay — one or two lines like normal TV subtitles,
+   * not every visible segment concatenated (that produced full-verse walls of text).
+   */
   function readYTCaptions() {
-    const segs = document.querySelectorAll(".ytp-caption-segment");
-    return Array.from(segs).map((s) => s.textContent).join(" ").trim().replace(/\s+/g, " ");
+    const win = getYtpCaptionWindow();
+    const segs = win
+      ? win.querySelectorAll(".ytp-caption-segment")
+      : document.querySelectorAll(".ytp-caption-segment");
+    if (!segs.length) return "";
+
+    if (win) {
+      const rowLines = [];
+      for (const child of win.children) {
+        if (!(child instanceof HTMLElement)) continue;
+        const parts = child.querySelectorAll(".ytp-caption-segment");
+        if (!parts.length) continue;
+        const line = Array.from(parts)
+          .map((s) => String(s.textContent || "").replace(/\s+/g, " ").trim())
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        if (line) rowLines.push(line);
+      }
+      if (rowLines.length) {
+        return rowLines.slice(-2).join("\n");
+      }
+    }
+
+    const flat = Array.from(segs)
+      .map((s) => String(s.textContent || "").replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+    if (!flat.length) return "";
+    const avgLen = flat.reduce((n, t) => n + t.length, 0) / flat.length;
+    // Karaoke / word-by-word: many short segments → one spoken line.
+    if (flat.length >= 6 && avgLen < 22) {
+      return flat.join(" ");
+    }
+    return flat.slice(-2).join("\n");
   }
   function startCaptionPoll() {
     stopCaptionPoll();
@@ -1510,6 +1676,140 @@
     });
   }
 
+  async function enableYouTubeCaptions() {
+    const button = document.querySelector(".ytp-subtitles-button");
+    if (!button) return false;
+    const label = button.getAttribute("aria-label") || "";
+    if (/unavailable/i.test(label)) return false;
+    if (button.getAttribute("aria-pressed") !== "true") {
+      button.click();
+      await new Promise((resolve) => setTimeout(resolve, 900));
+    }
+    return button.getAttribute("aria-pressed") === "true";
+  }
+
+  async function translateLiveCaptionLine(text) {
+    const [translated] = await window.LumeoTranslate.translateBatch([text], settings.targetLanguage || "vi", {
+      provider: settings.translateProvider || "google-free",
+      targetLanguageName: LANG_NAME[settings.targetLanguage] || settings.targetLanguage || "Vietnamese",
+      openaiKey: settings.openaiKey,
+      openaiModel: settings.openaiModel,
+      geminiKey: settings.geminiKey,
+      geminiModel: settings.geminiModel,
+      openRouterKey: settings.openRouterKey,
+      openRouterModel: settings.openRouterModel,
+      groqApiKey: settings.groqApiKey,
+      groqModel: settings.groqModel,
+      googleCloudKey: settings.googleCloudKey,
+      libreTranslateUrl: settings.libreTranslateUrl,
+      libreTranslateKey: settings.libreTranslateKey,
+      context: settings.translationContext,
+    });
+    return translated || text;
+  }
+
+  async function startCaptionDomFallback(video, token, pipeline, reason, diagnostics) {
+    const captionsEnabled = await enableYouTubeCaptions();
+    if (token !== pageToken) return { ok: false, error: "Stale session." };
+    session = {
+      token,
+      type: "caption",
+      liveDomCc: true,
+      pipeline,
+      captionTimer: null,
+      lastCueIndex: -1,
+      lastDomText: "",
+      lastDomAt: Date.now(),
+      cues: [],
+      kymaKey: null,
+      stream: null,
+      pc: null,
+      dc: null,
+    };
+    history = [];
+    currentTargetText = "";
+    currentSourceText = "";
+    applyTierToolbar();
+    applySourceVisibility();
+    renderCaptionTranscript(session.cues);
+    setStatusText(captionsEnabled ? "YouTube CC live" : "Waiting for CC");
+    setOverlayState("connecting");
+    setTargetText("Waiting for YouTube captions...");
+    emitState({ running: true, paused: false, status: "Captioning (YouTube CC)" });
+
+    let translating = false;
+    const startedAt = Date.now();
+    const tick = async () => {
+      if (session?.type !== "caption" || !session.liveDomCc || session.token !== token) return;
+      const text = readYTCaptions();
+      if (!text) {
+        if (!session.cues.length && Date.now() - startedAt > 9000) {
+          renderCaptionFallbackChoice(
+            video,
+            token,
+            pipeline,
+            captionsEnabled
+              ? `${reason} YouTube CC turned on, but no rendered caption text appeared.`
+              : `${reason} The YouTube player says captions are unavailable.`,
+            diagnostics,
+          );
+        }
+        return;
+      }
+      session.lastDomAt = Date.now();
+      if (text === session.lastDomText || translating) return;
+      session.lastDomText = text;
+      translating = true;
+      const start = video.currentTime || 0;
+      const cue = { start, end: start + 3, text, translated: text };
+      try {
+        cue.translated = await translateLiveCaptionLine(text);
+      } catch {
+        cue.translated = text;
+      } finally {
+        translating = false;
+      }
+      if (session?.type !== "caption" || !session.liveDomCc || session.token !== token) return;
+      cue.end = Math.max(video.currentTime || cue.end, cue.start + 1.5);
+      session.cues.push(cue);
+      pipeline.cues = session.cues;
+      currentSourceText = cue.text;
+      currentTargetText = cue.translated;
+      setTargetCue(cue);
+      if (elements.source && settings.showSource) elements.source.textContent = currentSourceText.slice(-260);
+      appendCaptionRow(cue, session.cues.length - 1);
+      updateCaptionTranscriptCount(session.cues.length);
+      updateCaptionTranscriptHighlight(session.cues.length - 1);
+      if (settings.captionTtsProvider && settings.captionTtsProvider !== "off") {
+        pipeline.speakCue(cue, {
+          provider: settings.captionTtsProvider,
+          targetLanguage: settings.targetLanguage || "vi",
+          googleCloudKey: settings.googleCloudKey,
+          rate: settings.ttsRate || 1,
+          volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
+        }).catch(() => {});
+      }
+      setStatusText("YouTube CC live");
+      setOverlayState("live");
+    };
+    session.captionTimer = setInterval(() => { void tick(); }, 350);
+    void tick();
+
+    onYTPause = () => {
+      setStatusText("Paused");
+      setOverlayState("paused");
+      emitState({ paused: true, status: "Paused" });
+    };
+    onYTPlay = () => {
+      setStatusText("YouTube CC live");
+      setOverlayState("live");
+      emitState({ paused: false, status: "Captioning (YouTube CC)" });
+    };
+    video.addEventListener("pause", onYTPause);
+    video.addEventListener("play", onYTPlay);
+    return { ok: true };
+  }
+
   // ───── Caption tier (free/BYOK text translation) ──────────────────────────
   // Clean rewrite of the Lumen v1 caption path: use YouTube timedtext tracks
   // first, translate only when native target captions are unavailable, and
@@ -1565,14 +1865,13 @@
       return { ok: false, error: "Cancelled before captions loaded." };
     }
     if (!result?.ok) {
-      renderCaptionFallbackChoice(
+      return startCaptionDomFallback(
         video,
         token,
         pipeline,
         result?.error || "Could not load captions.",
         result?.diagnostics,
       );
-      return { ok: true, errorCode: "missing-caption-track" };
     }
 
     session = {
@@ -1604,14 +1903,14 @@
       if (!current.cue) {
         currentTargetText = "";
         currentSourceText = "";
-        setTargetText("");
+        setTargetCue(null);
         if (elements.source) elements.source.textContent = "";
         updateCaptionTranscriptHighlight(-1);
         return;
       }
       currentSourceText = current.cue.text;
       currentTargetText = current.cue.translated || current.cue.text;
-      setTargetText(currentTargetText);
+      setTargetCue(current.cue);
       if (elements.source && settings.showSource) {
         elements.source.textContent = currentSourceText.slice(-260);
       }
@@ -1622,6 +1921,7 @@
           targetLanguage: settings.targetLanguage || "vi",
           googleCloudKey: settings.googleCloudKey,
           rate: settings.ttsRate || 1,
+          volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
         }).catch(() => {});
       }
     };
@@ -1703,9 +2003,10 @@
       pipeline.cues = session.cues;
       currentSourceText = cue.text;
       currentTargetText = cue.translated;
-      setTargetText(currentTargetText);
+      setTargetCue(cue);
       if (elements.source && settings.showSource) elements.source.textContent = currentSourceText.slice(-260);
-      renderCaptionTranscript(session.cues);
+      appendCaptionRow(cue, session.cues.length - 1);
+      updateCaptionTranscriptCount(session.cues.length);
       updateCaptionTranscriptHighlight(session.cues.length - 1);
       if (settings.captionTtsProvider && settings.captionTtsProvider !== "off") {
         pipeline.speakCue(cue, {
@@ -1713,6 +2014,7 @@
           targetLanguage: settings.targetLanguage || "vi",
           googleCloudKey: settings.googleCloudKey,
           rate: settings.ttsRate || 1,
+          volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
         }).catch(() => {});
       }
     };

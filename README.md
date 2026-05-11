@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.0--beta.1-ff7a45?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.0.0--beta.12-ff7a45?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/Chrome-MV3-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome MV3">
   <img src="https://img.shields.io/badge/license-MIT-2ea043?style=for-the-badge" alt="License">
 </p>
@@ -22,7 +22,7 @@ Lumeo gives you three ways to consume any YouTube video in your own language. Pi
 
 | Tier | What it does | Latency | Cost | When to use |
 |---|---|---|---|---|
-| **Caption** | Translates YouTube's existing subtitles into 100+ languages, shows bilingual lines + clickable side panel, optional TTS, and can fall back to Soniox STT when no captions exist | None for captions; live for STT fallback | Free (Google Translate) or your own Gemini / OpenRouter / Groq / OpenAI / Google Cloud / LibreTranslate / Soniox key | Reading captions first; STT fallback when a video has no caption track |
+| **Caption** | Translates YouTube's existing subtitles into 100+ languages, shows bilingual in-video overlay (like native CC), compact settings toolbar, optional TTS, and can fall back to Soniox STT when no captions exist | None for captions; live for STT fallback | Free (Google Translate) or your own Gemini / OpenRouter / Groq / OpenAI / Google Cloud / LibreTranslate / Soniox key | Reading captions first; STT fallback when a video has no caption track |
 | **Standard** | Captures the audio, runs Whisper → Gemini → MiniMax through Kyma, plays a multilingual dub over the original | ~5 seconds | ~$0.25 / 10 min on your Kyma balance | The video has no usable captions, or you prefer listening |
 | **Realtime** | Captures the audio, opens WebRTC P2P with OpenAI Realtime via a Kyma ephemeral token, dubs with sub-second lag and optional speaker voice cloning | <1 second | ~$0.46 / 10 min on your Kyma balance | Live streams, podcasts, anywhere lag matters |
 
@@ -40,8 +40,8 @@ This repository is the merge of two predecessor projects, both authored by the s
 The merge is in progress on `main`:
 
 - ✅ **Phase 1** — Echoly baseline rebranded as Lumeo (interim "Lumen Subtitle Studio" naming dropped — see CHANGELOG entry [2.0.0-beta.2]), manifest merged, scaffold for `pipelines/`, `services/`, `lib/`, `ui/` ready, store-assets refreshed.
-- 🚧 **Phase 2** — Reverse and rewrite Lumen v1 caption pipeline (currently obfuscated in `v1-legacy`) into clean modules under `pipelines/caption.js` and `services/`.
-- 🚧 **Phase 3** — Extend overlay + popup to expose all three tiers, add subtitle style editor and clickable side panel.
+- ✅ **Phase 2** — Reverse and rewrite Lumen v1 caption pipeline into clean modules under `pipelines/caption.js` and `services/`. All 7 translation providers working (Google Free, Gemini, OpenRouter, Groq, OpenAI, Google Cloud, LibreTranslate).
+- ✅ **Phase 3** — Compact settings toolbar (no side panel) + native-like in-video bilingual subtitle overlay. Audio mute, subtitle toggles, font sizing. All three tiers exposed in popup.
 - 🚧 **Phase 4** — SRT/ZIP export across all tiers, auto-tier picker, per-video cache.
 - 🚧 **Phase 5** — Final store assets, screenshots, packaging, Web Store submission.
 
@@ -53,28 +53,29 @@ See [`ROADMAP.md`](./ROADMAP.md) for the working task plan, [`DESIGN_BRIEF.md`](
 
 ```text
 YouTube tab
-├─ content.js                  in-page orchestrator + overlay panel
-├─ content.css                 overlay styling (.ec- namespace)
-└─ services/sniffer.js         timedtext + caption-track interceptor (Caption tier)
+├─ content.js                  in-page orchestrator + compact settings toolbar
+├─ content.css                 overlay + in-video subtitle styling
+├─ services/sniffer.js         timedtext + caption-track interceptor (Caption tier)
+└─ .lumeo-video-sub            in-video bilingual subtitle overlay (injected into #movie_player)
 
 Extension runtime
 ├─ background.js               state machine — single source of truth
 ├─ popup.html / .css / .js     passive renderer over background state
 └─ services/audio-processor.js PCM AudioWorklet (Soniox STT fallback)
 
-(Phase 2+) modular pipelines
+Modular pipelines
 ├─ pipelines/caption.js        free/BYOK YouTube caption translation
 ├─ pipelines/standard.js       Whisper → Gemini → MiniMax via Kyma
 └─ pipelines/realtime.js       WebRTC P2P to OpenAI Realtime via Kyma
 
-(Phase 2+) shared services
+Shared services
 ├─ services/translate.js       Google free / Gemini / OpenRouter / Groq / OpenAI / Google Cloud / LibreTranslate
 ├─ services/tts-browser.js     speechSynthesis + Google Cloud TTS
 ├─ services/stt-soniox.js      Soniox WebSocket STT
 ├─ services/srt-export.js      SRT + ZIP packer
 └─ services/kyma-client.js     Kyma error parser, heartbeat, end
 
-(Phase 2+) shared lib
+Shared lib
 ├─ lib/token-guard.js          page-level async token guard
 └─ lib/audio-utils.js          captureStream retry, downmix, WAV encode
 ```
@@ -112,9 +113,9 @@ When testing in developer mode, reload both the extension card and the YouTube t
 1. Open any YouTube video.
 2. Click the Lumeo toolbar icon.
 3. Pick a tier:
-   - **Caption** — pick a target language, choose a translate provider (free Google by default), press Start. Bilingual subtitles + side panel will populate.
-   - **Standard** or **Realtime** — paste a Kyma key from [kymaapi.com](https://kymaapi.com), pick a target language and voice, press Start. The dub plays over the video and the panel shows live translation.
-4. Drag the panel by its toolbar; resize from any edge or corner.
+   - **Caption** — pick a target language, choose a translate provider (free Google by default), press Start. Bilingual subtitles appear directly on the video.
+   - **Standard** or **Realtime** — paste a Kyma key from [kymaapi.com](https://kymaapi.com), pick a target language and voice, press Start. The dub plays over the video.
+4. Use the compact settings toolbar to toggle audio mute, subtitle visibility, and font size. Drag or resize the toolbar by its edges.
 
 You can change voice or language mid-session — Realtime hot-swaps in <1s, Standard picks up the change on the next 5s chunk, Caption re-translates the remaining lines on the fly.
 

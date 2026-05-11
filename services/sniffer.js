@@ -41,23 +41,102 @@
   };
 
   const originalFetch = window.fetch;
+  const postCaptionBody = (url, text, status = 200, source = 'fetch') => {
+    if (!isTimedtextUrl(url)) return;
+    postSnifferMessage('caption-body', {
+      url,
+      text: String(text || ''),
+      status,
+      source,
+    });
+  };
+
   if (typeof originalFetch === 'function') {
     window.fetch = function patchedFetch(...args) {
       const requestUrl = extractUrl(args[0]);
       if (isTimedtextUrl(requestUrl)) {
         postSnifferMessage('subtitle-url', { url: requestUrl });
       }
-      return originalFetch.apply(this, args);
+      const promise = originalFetch.apply(this, args);
+      if (isTimedtextUrl(requestUrl)) {
+        promise
+          .then((response) => {
+            try {
+              response.clone().text()
+                .then((text) => postCaptionBody(requestUrl, text, response.status, 'fetch'))
+                .catch(() => {});
+            } catch {
+              // Some opaque/body-used responses cannot be cloned; XHR hook may still catch them.
+            }
+          })
+          .catch(() => {});
+      }
+      return promise;
     };
   }
 
   const originalXhrOpen = XMLHttpRequest.prototype.open;
+  const originalXhrSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function patchedXhrOpen(method, url, ...rest) {
+    this.__lumeoTimedTextUrl = typeof url === 'string' || url instanceof URL ? String(url) : '';
     if (isTimedtextUrl(url)) {
       postSnifferMessage('subtitle-url', { url });
     }
     return originalXhrOpen.call(this, method, url, ...rest);
   };
+  XMLHttpRequest.prototype.send = function patchedXhrSend(...args) {
+    const url = this.__lumeoTimedTextUrl || '';
+    if (isTimedtextUrl(url)) {
+      this.addEventListener('load', () => {
+        try {
+          postCaptionBody(url, this.responseText || '', this.status, 'xhr');
+        } catch {
+          // Ignore unreadable response bodies.
+        }
+      });
+    }
+    return originalXhrSend.apply(this, args);
+  };
+
+  const fetchCaptionInPage = async (id, url) => {
+    try {
+      if (!isTimedtextUrl(url)) {
+        postSnifferMessage('caption-fetch-response', {
+          id,
+          ok: false,
+          status: 0,
+          error: 'Rejected non-timedtext URL',
+        });
+        return;
+      }
+      const response = await originalFetch.call(window, url, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      const text = await response.text();
+      postSnifferMessage('caption-fetch-response', {
+        id,
+        ok: response.ok,
+        status: response.status,
+        text,
+      });
+    } catch (error) {
+      postSnifferMessage('caption-fetch-response', {
+        id,
+        ok: false,
+        status: 0,
+        error: error?.message || String(error),
+      });
+    }
+  };
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== window || event.origin !== TARGET_ORIGIN) return;
+    const data = event.data;
+    if (!data || data.source !== SOURCE || data.type !== 'caption-fetch-request') return;
+    if (!data.id || typeof data.url !== 'string') return;
+    void fetchCaptionInPage(String(data.id), data.url);
+  });
 
   let lastSummaryKey = '';
 

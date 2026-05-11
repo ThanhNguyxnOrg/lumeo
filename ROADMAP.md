@@ -184,7 +184,7 @@ Target file layout:
 - Renamed GitHub repo to `ThanhNguyxnOrg/lumeo`.
 - Removed local archive/extract trash after import.
 
-### Phase 2 — Caption Tier
+### Phase 2 — Caption Tier (done)
 
 Goal: bring back the best Lumen v1 features, but rewrite them cleanly instead of keeping the obfuscated bundle.
 
@@ -206,13 +206,17 @@ Goal: bring back the best Lumen v1 features, but rewrite them cleanly instead of
   - `services/srt-export.js`
 - Integrate Caption tier with the existing background/content state machine.
 
-### Phase 3 — Unified UI
+### Phase 3 — Unified UI (done)
 
-- Add tier picker with three options:
+- Compact settings-only toolbar (no side panel, no transcript in panel).
+- In-video bilingual subtitle overlay (`.lumeo-video-sub`) anchored to `#movie_player`.
+- Control toggles: Mute original audio, show/hide translated subtitles, show/hide original subtitles.
+- Font size slider with `localStorage` persistence.
+- Tier picker with three options in popup:
   - Caption Free
   - Standard Dub
   - Realtime Dub
-- Add provider/key sections:
+- Provider/key sections in popup:
   - Kyma
   - OpenAI
   - Google Cloud
@@ -221,11 +225,7 @@ Goal: bring back the best Lumen v1 features, but rewrite them cleanly instead of
   - OpenRouter
   - Soniox
   - LibreTranslate
-- Add Caption UI:
-  - bilingual subtitle overlay
-  - clickable subtitle side panel
-  - subtitle style editor
-  - SRT / ZIP export button
+- SRT / ZIP export button.
 
 ### Phase 4 — Polish
 

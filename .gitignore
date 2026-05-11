@@ -6,6 +6,7 @@ Thumbs.db
 echoly-main.zip
 _echoly_extracted/
 _design_reference/
+ext/
 
 # Built release zips
 *.zip
@@ -21,6 +22,7 @@ yt_console_errors.log
 
 # Local caches
 .playwright-mcp/
+output/
 
 # Environment
 .env

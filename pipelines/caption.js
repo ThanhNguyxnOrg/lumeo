@@ -175,7 +175,11 @@
 
     speakCue(cue, options = {}) {
       if (!cue?.translated) return Promise.resolve(false);
-      return window.LumeoTTS.speak(cue.translated, options.targetLanguage || DEFAULT_TARGET_LANGUAGE, options);
+      return window.LumeoTTS.speak(
+        cue.translated,
+        options.targetLanguage || DEFAULT_TARGET_LANGUAGE,
+        { ...options, volume: options.volume ?? 1 },
+      );
     }
 
     exportZip(title = "video") {

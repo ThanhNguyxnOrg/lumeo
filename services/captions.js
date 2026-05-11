@@ -7,6 +7,8 @@
   const SNIFFER_SOURCE = "yt-trans-sniffer";
   const TIMEDTEXT_MIN_CHARS = 40;
   const sniffedLinks = new Map();
+  const pageFetchRequests = new Map();
+  const interceptedCaptionBodies = new Map();
   let sniffedTracks = null;
   let sniffedTrackSummary = null;
   let sniffedEmptyReason = null;
@@ -50,6 +52,37 @@
       return;
     }
 
+    if (data.type === "caption-body" && typeof data.url === "string") {
+      try {
+        const parsed = new URL(data.url);
+        const videoId = parsed.searchParams.get("v") || getVideoId();
+        const text = String(data.text || "");
+        if (!videoId || text.length <= TIMEDTEXT_MIN_CHARS) return;
+        const cues = parseSubtitleText(text);
+        if (!cues.length) return;
+        const sourceLanguage = parsed.searchParams.get("lang") || parsed.searchParams.get("tlang") || "";
+        interceptedCaptionBodies.set(videoId, {
+          cues,
+          sourceLanguage,
+          url: parsed.toString(),
+          status: data.status,
+          source: data.source || "page",
+          receivedAt: Date.now(),
+        });
+      } catch {
+        // Ignore malformed intercepted messages.
+      }
+      return;
+    }
+
+    if (data.type === "caption-fetch-response" && data.id) {
+      const pending = pageFetchRequests.get(String(data.id));
+      if (!pending) return;
+      pageFetchRequests.delete(String(data.id));
+      pending.resolve(data);
+      return;
+    }
+
     if (data.type === "caption-tracks" && Array.isArray(data.tracks)) {
       sniffedTracks = data.tracks;
       if (Array.isArray(data.summary)) sniffedTrackSummary = data.summary;
@@ -72,7 +105,45 @@
   // capture caption tracks for the current watch page.
   try { injectSniffer(); } catch {}
 
+  function isTimedTextUrl(url) {
+    try {
+      return new URL(url, location.href).pathname.includes("/api/timedtext");
+    } catch {
+      return false;
+    }
+  }
+
+  async function fetchTextViaPage(url, timeoutMs = 9000) {
+    if (!isTimedTextUrl(url)) return null;
+    try { injectSniffer(); } catch {}
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        pageFetchRequests.delete(id);
+        resolve(null);
+      }, timeoutMs);
+      pageFetchRequests.set(id, {
+        resolve: (reply) => {
+          clearTimeout(timer);
+          if (reply?.ok && typeof reply.text === "string") {
+            resolve(reply.text);
+          } else {
+            resolve(null);
+          }
+        },
+      });
+      window.postMessage({
+        source: SNIFFER_SOURCE,
+        type: "caption-fetch-request",
+        id,
+        url,
+      }, window.location.origin);
+    });
+  }
+
   async function fetchText(url) {
+    const pageText = await fetchTextViaPage(url);
+    if (pageText !== null) return pageText;
     try {
       const response = await fetch(url);
       if (response.ok) return response.text();
@@ -119,6 +190,304 @@
         };
       })
       .filter((cue) => Number.isFinite(cue.start) && cue.text);
+  }
+
+  function parseSubtitleJson3(jsonText) {
+    let data;
+    try {
+      data = JSON.parse(String(jsonText || ""));
+    } catch {
+      return [];
+    }
+    const events = Array.isArray(data?.events) ? data.events : [];
+    return events
+      .map((event) => {
+        const text = (event.segs || [])
+          .map((seg) => seg?.utf8 || "")
+          .join("")
+          .replace(/\n+/g, " ");
+        const start = Number(event.tStartMs || 0) / 1000;
+        const dur = Number(event.dDurationMs || 0) / 1000;
+        return {
+          start,
+          end: start + Math.max(dur, 0.25),
+          text: cleanSubtitleText(text),
+          translated: "",
+        };
+      })
+      .filter((cue) => Number.isFinite(cue.start) && cue.text);
+  }
+
+  function parseSubtitleText(text) {
+    const raw = String(text || "").trim();
+    if (!raw) return [];
+    if (raw.startsWith("{") || raw.startsWith("[")) {
+      const cues = parseSubtitleJson3(raw);
+      if (cues.length) return cues;
+    }
+    return parseSubtitleXml(raw);
+  }
+
+  function parseTimestamp(label) {
+    const parts = String(label || "")
+      .trim()
+      .split(":")
+      .map((part) => Number.parseInt(part, 10));
+    if (!parts.length || parts.some((part) => !Number.isFinite(part))) return null;
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return null;
+  }
+
+  const TRANSCRIPT_PANEL_SELECTOR =
+    'ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-searchable-transcript"], ' +
+    'ytd-engagement-panel-section-list-renderer[target-id="PAmodern_transcript_view"], ' +
+    'ytd-engagement-panel-section-list-renderer';
+  const TRANSCRIPT_SEGMENT_SELECTOR = "ytd-transcript-segment-renderer, transcript-segment-view-model";
+  const TRANSCRIPT_DESCENDANT_SELECTOR =
+    "ytd-transcript-renderer, ytd-transcript-search-panel-renderer, ytd-transcript-segment-list-renderer, " +
+    "transcript-segment-view-model, ytd-transcript-segment-renderer, .ytwTranscriptSegmentViewModelHost";
+  const TRANSCRIPT_TEXT_SELECTORS = [
+    ".segment-text",
+    "#segment-text",
+    ".yt-core-attributed-string",
+    "yt-formatted-string",
+    ".ytAttributedStringHost",
+    ".ytwTranscriptSegmentViewModelBody",
+  ];
+  const TRANSCRIPT_TIMESTAMP_SELECTORS = [
+    ".segment-timestamp",
+    "#start-time",
+    ".ytwTranscriptSegmentViewModelTimestamp",
+    "[class*='timestamp']:not([class*='A11y']):not([class*='a11y'])",
+    "[id*='timestamp']",
+  ];
+  // The modern YT transcript panel adds an a11y label element that contains
+  // human-readable durations like "9 seconds" or "1 minute, 6 seconds".
+  // These MUST be excluded from both timestamp and text candidate pools.
+  const A11Y_TIMESTAMP_RE = /^\d+\s+(second|minute|hour|giây|phút|giờ)/i;
+
+  function normalizeText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function isElementVisible(element) {
+    if (!element?.isConnected) return false;
+    if (element.hidden || element.getAttribute("hidden") !== null) return false;
+    if (element.getAttribute("aria-hidden") === "true") return false;
+    const style = window.getComputedStyle(element);
+    return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+  }
+
+  function looksLikeTimestamp(text) {
+    return /^\d{1,2}:\d{2}(?::\d{2})?$/.test(normalizeText(text));
+  }
+
+  function collectTextCandidates(root, selectors) {
+    const out = [];
+    for (const selector of selectors) {
+      for (const element of root.querySelectorAll(selector)) {
+        const text = normalizeText(element.innerText || element.textContent);
+        if (text) out.push(text);
+      }
+    }
+    return [...new Set(out)];
+  }
+
+  function transcriptPanelCandidates() {
+    return Array.from(document.querySelectorAll(TRANSCRIPT_PANEL_SELECTOR))
+      .filter((panel) => {
+        const targetId = normalizeText(panel.getAttribute("target-id")).toLowerCase();
+        const panelId = normalizeText(panel.id).toLowerCase();
+        return (
+          targetId.includes("transcript") ||
+          targetId.includes("pamodern_transcript") ||
+          panelId.includes("transcript") ||
+          !!panel.querySelector(TRANSCRIPT_DESCENDANT_SELECTOR)
+        );
+      });
+  }
+
+  function transcriptPanel() {
+    return transcriptPanelCandidates().find((panel) =>
+      isElementVisible(panel) &&
+      (panel.offsetHeight > 0 || panel.querySelector(TRANSCRIPT_DESCENDANT_SELECTOR))
+    ) || transcriptPanelCandidates()[0] || document;
+  }
+
+  function transcriptSegments() {
+    return Array.from(transcriptPanel().querySelectorAll(TRANSCRIPT_SEGMENT_SELECTOR));
+  }
+
+  function isA11yTimestamp(text) {
+    return A11Y_TIMESTAMP_RE.test(text);
+  }
+
+  function extractTranscriptCuesFromDom() {
+    const rows = transcriptSegments();
+    const cues = [];
+    for (const row of rows) {
+      // Collect timestamp candidates, filtering out a11y labels which contain
+      // human-readable durations like "9 seconds" instead of "0:09".
+      const tsPool = collectTextCandidates(row, TRANSCRIPT_TIMESTAMP_SELECTORS)
+        .filter((t) => !isA11yTimestamp(t));
+      const timeText =
+        tsPool.find(looksLikeTimestamp) ||
+        collectTextCandidates(row, ["span", "div", "yt-formatted-string", ".yt-core-attributed-string", ".ytAttributedStringHost"])
+          .filter((t) => !isA11yTimestamp(t))
+          .find(looksLikeTimestamp) ||
+        "";
+      // Text candidates: exclude timestamps AND a11y timestamp labels.
+      const textFilter = (t) => !looksLikeTimestamp(t) && !isA11yTimestamp(t);
+      const directPool = collectTextCandidates(row, TRANSCRIPT_TEXT_SELECTORS).filter(textFilter);
+      const fallbackPool = collectTextCandidates(row, [
+        "span",
+        "div",
+        "yt-formatted-string",
+        ".yt-core-attributed-string",
+        ".ytAttributedStringHost",
+      ]).filter(textFilter);
+      // Pick the longest in-band candidate: actual lyrics are always longer
+      // than any remaining timestamp artifacts or short labels.
+      function pickLineBody(pool) {
+        if (!pool.length) return "";
+        const inBand = pool.filter((t) => t.length >= 2 && t.length <= 320);
+        const ranked = (inBand.length ? inBand : pool).slice();
+        ranked.sort((a, b) => b.length - a.length);
+        return ranked[0] || "";
+      }
+      const text = cleanSubtitleText(pickLineBody(directPool) || pickLineBody(fallbackPool) || "");
+      const start = parseTimestamp(timeText);
+      if (start === null || !text) continue;
+      cues.push({
+        start,
+        end: start + 4,
+        text,
+        translated: "",
+      });
+    }
+    for (let i = 0; i < cues.length; i += 1) {
+      const nextStart = cues[i + 1]?.start;
+      if (Number.isFinite(nextStart) && nextStart > cues[i].start) {
+        cues[i].end = nextStart;
+      }
+    }
+    return cues;
+  }
+
+  function clickableText(el) {
+    return [
+      el.getAttribute?.("aria-label"),
+      el.getAttribute?.("title"),
+      el.innerText,
+      el.textContent,
+    ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+  }
+
+  function findClickable(patterns) {
+    const candidates = Array.from(document.querySelectorAll(
+      "button, yt-button-shape button, tp-yt-paper-item, ytd-menu-service-item-renderer, a",
+    ));
+    return candidates.find((candidate) => {
+      const text = clickableText(candidate);
+      return text && patterns.some((pattern) => pattern.test(text));
+    }) || null;
+  }
+
+  async function clickIfFound(patterns, delay = 700) {
+    const el = findClickable(patterns);
+    if (!el) return false;
+    try {
+      el.click();
+      await sleep(delay);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function openTranscriptPanel() {
+    if (extractTranscriptCuesFromDom().length) return true;
+
+    await clickIfFound([
+      /^more$/i,
+      /show more/i,
+      /read more/i,
+      /thêm/i,
+      /xem thêm/i,
+    ], 500);
+
+    const scopedTranscriptButton = Array.from(document.querySelectorAll(
+      "ytd-video-description-transcript-section-renderer button, ytd-structured-description-content-renderer button",
+    )).find(isElementVisible);
+    if (scopedTranscriptButton) {
+      scopedTranscriptButton.click();
+      await sleep(1200);
+      if (extractTranscriptCuesFromDom().length) return true;
+    }
+
+    if (await clickIfFound([
+      /show transcript/i,
+      /^transcript$/i,
+      /open transcript/i,
+      /transcription/i,
+      /스크립트|대본|내용\s*대본/i,
+      /bản chép/i,
+      /phụ đề.*văn bản/i,
+    ], 1200)) {
+      return !!extractTranscriptCuesFromDom().length;
+    }
+
+    const moreButtons = Array.from(document.querySelectorAll("button")).filter((button) =>
+      /more actions|more options|actions|thêm/i.test(clickableText(button)) ||
+      button.querySelector("svg path[d*='12']"),
+    );
+    for (const button of moreButtons.slice(0, 4)) {
+      try {
+        button.click();
+        await sleep(500);
+        if (await clickIfFound([
+          /show transcript/i,
+          /^transcript$/i,
+          /open transcript/i,
+          /transcription/i,
+          /스크립트|대본|내용\s*대본/i,
+          /bản chép/i,
+        ], 1200)) {
+          return !!extractTranscriptCuesFromDom().length;
+        }
+      } catch {
+        // Try the next menu button.
+      }
+    }
+
+    return !!extractTranscriptCuesFromDom().length;
+  }
+
+  async function fetchViaTranscriptPanel(diagnostics = {}) {
+    diagnostics.steps ||= [];
+    diagnostics.steps.push("transcript-panel");
+    const opened = await openTranscriptPanel();
+    if (!opened) {
+      diagnostics.transcriptPanel = "not-opened";
+      return null;
+    }
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const cues = extractTranscriptCuesFromDom();
+      if (cues.length) {
+        diagnostics.transcriptPanel = `dom-${cues.length}`;
+        return {
+          cues,
+          sourceLanguage: "transcript",
+          track: null,
+          tracks: [],
+          transcriptPanel: true,
+        };
+      }
+      await sleep(500);
+    }
+    diagnostics.transcriptPanel = "empty";
+    return null;
   }
 
   function parseCaptionTracksFromHtml(html) {
@@ -255,7 +624,7 @@
     const url = new URL(String(track.baseUrl).replace(/\\u0026/g, "&"));
     if (options.targetLanguage) url.searchParams.set("lang", options.targetLanguage);
     if (options.translateTo) url.searchParams.set("tlang", options.translateTo);
-    if (!url.searchParams.has("fmt")) url.searchParams.set("fmt", "srv3");
+    if (!url.searchParams.has("fmt")) url.searchParams.set("fmt", "json3");
     return url.toString();
   }
 
@@ -277,6 +646,17 @@
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
       if (sniffedLinks.has(videoId)) return sniffedLinks.get(videoId);
+      await sleep(150);
+    }
+    return null;
+  }
+
+  async function waitForInterceptedCaptions(videoId, timeoutMs = 3500) {
+    if (!videoId) return null;
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const hit = interceptedCaptionBodies.get(videoId);
+      if (hit?.cues?.length) return hit;
       await sleep(150);
     }
     return null;
@@ -306,6 +686,17 @@
       // Force YT player to load timedtext URLs by toggling the CC button.
       diagnostics.steps.push("cc-trigger");
       void triggerCCButton();
+      const intercepted = await waitForInterceptedCaptions(videoId, 2500);
+      if (intercepted?.cues?.length) {
+        diagnostics.steps.push(`intercepted-${intercepted.source || "page"}`);
+        return {
+          cues: intercepted.cues,
+          sourceLanguage: intercepted.sourceLanguage,
+          track: null,
+          tracks: [],
+          intercepted: true,
+        };
+      }
       tracks = await waitForTracks(2500);
       if (tracks?.length) diagnostics.steps.push("scripts-after-cc");
     }
@@ -347,16 +738,38 @@
 
     const sourceLanguage = track.languageCode || "";
     const url = buildTimedTextUrl(track);
+    const interceptedBeforeFetch = await waitForInterceptedCaptions(videoId, 500);
+    if (interceptedBeforeFetch?.cues?.length) {
+      diagnostics.steps.push(`intercepted-${interceptedBeforeFetch.source || "page"}`);
+      return {
+        cues: interceptedBeforeFetch.cues,
+        sourceLanguage: interceptedBeforeFetch.sourceLanguage || sourceLanguage,
+        track,
+        tracks,
+        intercepted: true,
+      };
+    }
     const xml = await fetchText(url);
     if (!xml) {
       diagnostics.reason = "timedtext-fetch-failed";
       return null;
     }
     if (xml.length <= TIMEDTEXT_MIN_CHARS) {
+      const intercepted = await waitForInterceptedCaptions(videoId, 2500);
+      if (intercepted?.cues?.length) {
+        diagnostics.steps.push(`intercepted-${intercepted.source || "page"}`);
+        return {
+          cues: intercepted.cues,
+          sourceLanguage: intercepted.sourceLanguage || sourceLanguage,
+          track,
+          tracks,
+          intercepted: true,
+        };
+      }
       diagnostics.reason = "timedtext-empty-body";
       return null;
     }
-    const cues = parseSubtitleXml(xml);
+    const cues = parseSubtitleText(xml);
     if (!cues.length) {
       diagnostics.reason = "timedtext-unparsable";
       return null;
@@ -382,10 +795,10 @@
     try {
       const parsed = new URL(url);
       parsed.searchParams.delete("tlang");
-      if (!parsed.searchParams.has("fmt")) parsed.searchParams.set("fmt", "srv3");
+      if (!parsed.searchParams.has("fmt")) parsed.searchParams.set("fmt", "json3");
       const sourceLanguage = parsed.searchParams.get("lang") || "";
       const xml = await fetchText(parsed.toString());
-      const cues = xml && xml.length > TIMEDTEXT_MIN_CHARS ? parseSubtitleXml(xml) : [];
+      const cues = xml && xml.length > TIMEDTEXT_MIN_CHARS ? parseSubtitleText(xml) : [];
       if (!cues.length) return null;
       return { cues, sourceLanguage, url: parsed.toString() };
     } catch {
@@ -404,7 +817,7 @@
     );
     if (!nativeTrack || nativeTrack === sourceTrack) return null;
     const xml = await fetchText(buildTimedTextUrl(nativeTrack));
-    const cues = xml && xml.length > TIMEDTEXT_MIN_CHARS ? parseSubtitleXml(xml) : [];
+    const cues = xml && xml.length > TIMEDTEXT_MIN_CHARS ? parseSubtitleText(xml) : [];
     return cues.length ? cues : null;
   }
 
@@ -436,7 +849,8 @@
 
     const source =
       await fetchViaPageData(targetLanguage, { diagnostics }) ||
-      await fetchViaSniff(videoId);
+      await fetchViaSniff(videoId) ||
+      await fetchViaTranscriptPanel(diagnostics);
     if (!source?.cues?.length) {
       diagnostics.snifferTracks = sniffedTrackSummary;
       return null;
@@ -469,6 +883,7 @@
       sniffedTracks: sniffedTrackSummary,
       sniffedEmpty: sniffedEmptyReason,
       sniffedUrlCount: sniffedLinks.size,
+      interceptedCaptionCount: interceptedCaptionBodies.size,
     };
   }
 
@@ -478,8 +893,11 @@
     getVideoId,
     cleanSubtitleText,
     parseSubtitleXml,
+    parseSubtitleJson3,
+    parseSubtitleText,
     readCaptionTracksFromInnertube,
     fetchSubtitles,
+    fetchViaTranscriptPanel,
     mergeBilingualCues,
     getDiagnosticsSummary,
   };

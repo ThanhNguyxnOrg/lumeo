@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.0-beta.12] - 2026-05-11 — Compact toolbar + in-video overlay
+
+### Changed
+
+- **Panel redesigned to settings-only toolbar.** Removed branding/title, transcript history, and all in-panel subtitle text. The `.ec-side` and `.ec-history` sections are completely removed from the DOM. The panel now contains only: language/voice selectors, Export/Hide/Stop buttons, and control toggles (Audio, Subtitles, Size).
+- **In-video subtitle overlay (`.lumeo-video-sub`)** is now the sole subtitle display. Rendered inside `#movie_player` with bilingual support (translated + original), line-clamping, and `aria-live="polite"` for accessibility.
+- **Control toggles added:** Mute original audio, show/hide translated subtitles, show/hide original subtitles, font size slider. All persisted in `localStorage`.
+- DOM selectors in `services/captions.js` updated for YouTube's May 2026 redesign (new caption container classes, timestamp format changes).
+- Caption rendering switched from full-DOM rebuilds to incremental append-only model to reduce UI lag.
+
+### Fixed
+
+- Subtitle text overflow on long sentences (added `max-height` + `-webkit-line-clamp`).
+- Panel no longer renders lyrics/transcript — all subtitle rendering goes exclusively to the in-video overlay.
+
+---
+
 ## [2.0.0-beta.3] - 2026-05-09 — Caption tier merge + design reference port
 
 This release is the first functional merge of the best parts of Lumen v1 and Echoly v0.2.1 under the Lumeo brand.
