@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Lumeo — Captions & AI Dub for YouTube",
   "short_name": "Lumeo",
-  "version": "2.0.0",
-  "version_name": "2.0.0-beta.12",
+  "version": "1.0.0",
+  "version_name": "1.0.0",
   "description": "Bilingual captions and live AI dubbing for YouTube. Three tiers, one click: free caption translation, Standard dub (~5s), Realtime dub (<1s).",
   "homepage_url": "https://github.com/ThanhNguyxnOrg/lumeo",
   "minimum_chrome_version": "116",
@@ -56,14 +56,14 @@
     },
     {
       "matches": ["https://*.youtube.com/*", "https://youtube.com/*"],
-      "js": ["services/providers.js", "services/translate.js", "services/srt-export.js", "services/tts-browser.js", "services/stt-soniox.js", "services/captions.js", "services/kyma-client.js", "pipelines/caption.js", "content.js"],
+      "js": ["lib/browser-api.js", "lib/token-guard.js", "lib/audio-utils.js", "ui/overlay.js", "ui/subtitle-overlay.js", "ui/voice-picker.js", "ui/caption-fallback-choice.js", "services/providers.js", "services/translate.js", "services/srt-export.js", "services/tts-browser.js", "services/tts-openai.js", "services/stt-soniox.js", "services/stt-groq.js", "services/captions.js", "services/kyma-client.js", "pipelines/caption.js", "pipelines/caption-orchestrator.js", "pipelines/realtime.js", "pipelines/standard.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["services/sniffer.js", "services/audio-processor.js", "services/providers.js", "services/translate.js", "services/srt-export.js", "services/tts-browser.js", "services/stt-soniox.js", "services/captions.js", "services/kyma-client.js", "pipelines/caption.js"],
+      "resources": ["services/sniffer.js", "services/audio-processor.js", "lib/browser-api.js", "lib/token-guard.js", "lib/audio-utils.js", "ui/overlay.js", "ui/subtitle-overlay.js", "ui/voice-picker.js", "ui/caption-fallback-choice.js", "services/providers.js", "services/translate.js", "services/srt-export.js", "services/tts-browser.js", "services/tts-openai.js", "services/stt-soniox.js", "services/stt-groq.js", "services/captions.js", "services/kyma-client.js", "pipelines/caption.js", "pipelines/caption-orchestrator.js", "pipelines/realtime.js", "pipelines/standard.js"],
       "matches": ["https://*.youtube.com/*", "https://youtube.com/*"]
     }
   ]

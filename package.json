@@ -1,0 +1,19 @@
+{
+  "name": "lumeo",
+  "private": true,
+  "version": "2.0.0",
+  "description": "Lumeo — Captions & AI Dub for YouTube. Test harness for the vanilla-JS extension.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "check": "node --check content.js && node --check background.js && node --check popup.js && node --check lib/token-guard.js && node --check lib/audio-utils.js && node --check services/stt-groq.js && node --check services/tts-openai.js",
+    "check:all": "node scripts/check-all.mjs"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.9",
+    "jsdom": "^25.0.1",
+    "vitest": "^2.1.9"
+  }
+}

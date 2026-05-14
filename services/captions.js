@@ -887,6 +887,59 @@
     };
   }
 
+  /** Prefer the in-player caption window so live DOM reads stay subtitle-sized. */
+  function getYtpCaptionWindow() {
+    return (
+      document.querySelector(".ytp-caption-window-bottom") ||
+      document.querySelector(".ytp-caption-window-top") ||
+      document.querySelector(".ytp-caption-window-rollup") ||
+      document.querySelector(".html5-video-player .ytp-caption-window-container")
+    );
+  }
+
+  function normalizeCaptionSegmentText(segment) {
+    return String(segment.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  /**
+   * Text currently shown on the YouTube CC overlay — one or two lines like normal TV subtitles,
+   * not every visible segment concatenated.
+   */
+  function readYTCaptions() {
+    const win = getYtpCaptionWindow();
+    const segs = win
+      ? win.querySelectorAll(".ytp-caption-segment")
+      : document.querySelectorAll(".ytp-caption-segment");
+    if (!segs.length) return "";
+
+    if (win) {
+      const rowLines = [];
+      for (const child of win.children) {
+        if (!(child instanceof HTMLElement)) continue;
+        const parts = child.querySelectorAll(".ytp-caption-segment");
+        if (!parts.length) continue;
+        const line = Array.from(parts)
+          .map(normalizeCaptionSegmentText)
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        if (line) rowLines.push(line);
+      }
+      if (rowLines.length) {
+        return rowLines.slice(-2).join("\n");
+      }
+    }
+
+    const flat = Array.from(segs).map(normalizeCaptionSegmentText).filter(Boolean);
+    if (!flat.length) return "";
+    const avgLen = flat.reduce((n, t) => n + t.length, 0) / flat.length;
+    // Karaoke / word-by-word: many short segments → one spoken line.
+    if (flat.length >= 6 && avgLen < 22) {
+      return flat.join(" ");
+    }
+    return flat.slice(-2).join("\n");
+  }
+
   window.LumeoCaptions = {
     __loaded: true,
     injectSniffer,
@@ -900,5 +953,6 @@
     fetchViaTranscriptPanel,
     mergeBilingualCues,
     getDiagnosticsSummary,
+    readYTCaptions,
   };
 })();

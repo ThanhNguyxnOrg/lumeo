@@ -75,12 +75,12 @@
       id: "groq",
       label: "Groq",
       slot: "translator",
-      group: "Translation / STT",
+      group: "Translation",
       keyFields: ["groqApiKey"],
       modes: ["caption"],
       status: "available",
       helpUrl: "https://console.groq.com/keys",
-      description: "Fast inference; useful for translation and future STT options.",
+      description: "Fast BYOK caption translation through Groq chat models.",
     },
     openai: {
       id: "openai",
@@ -115,6 +115,17 @@
       helpUrl: "https://console.cloud.google.com/apis/credentials",
       description: "Speaks translated captions with Google Cloud TTS.",
     },
+    openaiTts: {
+      id: "openai-tts",
+      label: "OpenAI TTS",
+      slot: "tts",
+      group: "Caption TTS",
+      keyFields: ["openaiKey"],
+      modes: ["caption"],
+      status: "available",
+      helpUrl: "https://platform.openai.com/api-keys",
+      description: "Speaks translated captions with OpenAI TTS.",
+    },
     libretranslate: {
       id: "libretranslate",
       label: "LibreTranslate",
@@ -137,7 +148,7 @@
       status: "available",
       helpUrl: "https://soniox.com/console",
       fallbackFor: ["missing-caption-track"],
-      description: "Turns audio into transcript when YouTube has no captions.",
+      description: "Streams tab audio to Soniox realtime STT when YouTube has no readable captions. Use only when you want provider-side audio transcription.",
     },
     kyma: {
       id: "kyma",
@@ -148,7 +159,7 @@
       modes: ["standard"],
       status: "available",
       helpUrl: "https://kymaapi.com",
-      description: "Available now. Runs Whisper, Gemini translation, and MiniMax TTS through Kyma.",
+      description: "Kyma Standard route: Whisper v3 Turbo STT, Gemini 2.5 Flash translation, then MiniMax Speech Turbo TTS. Uses the same Kyma key as Realtime, but a different backend pipeline.",
     },
     kymaRealtime: {
       id: "kyma-realtime",
@@ -159,8 +170,10 @@
       modes: ["realtime"],
       status: "available",
       helpUrl: "https://kymaapi.com",
-      description: "Available now. Mints OpenAI Realtime sessions through Kyma.",
+      description: "Kyma Realtime route: mints an ephemeral OpenAI Realtime WebRTC session for sub-second dubbing. Uses the same Kyma key as Standard, but streams live audio instead of chunking.",
     },
+    // Reserved keyFields support stable popup rendering and storage migrations.
+    // Runtime key validation ignores providers with status "coming-soon".
     openaiDirectDub: {
       id: "openai-direct-dub",
       label: "OpenAI Whisper + TTS",
@@ -223,6 +236,7 @@
       group: "Dubbing",
       keyFields: ["replicateKey"],
       modes: ["standard"],
+      // Reserved only: no runtime direct Replicate path exists yet.
       status: "coming-soon",
       helpUrl: "https://replicate.com/account/api-tokens",
       description: "Planned experimental dubbing route via hosted open models.",
@@ -245,9 +259,9 @@
       group: "STT fallback",
       keyFields: ["groqApiKey"],
       modes: ["caption"],
-      status: "coming-soon",
+      status: "available",
       helpUrl: "https://console.groq.com/keys",
-      description: "Planned low-latency Whisper fallback when YouTube has no captions.",
+      description: "Uploads tab-audio chunks to Groq Whisper when YouTube has no readable captions. Usually cheaper than realtime STT.",
     },
     webSpeech: {
       id: "web-speech",
@@ -305,7 +319,7 @@
       required: true,
       storageKey: "dubProvider",
       defaultProvider: "kyma",
-      copy: "Chunked audio dubbing: STT, translation, then TTS.",
+      copy: "Chunked audio dubbing. Kyma uses one key for this Standard route and the separate Realtime route.",
     },
     realtimeBridge: {
       id: "realtimeBridge",
@@ -313,7 +327,7 @@
       required: true,
       storageKey: "realtimeProvider",
       defaultProvider: "kyma-realtime",
-      copy: "Low-latency audio bridge for live translated speech.",
+      copy: "Low-latency live bridge. Kyma uses one key for this Realtime route and the separate Standard route.",
     },
   });
 
@@ -352,7 +366,7 @@
   });
 
   const keyFields = Object.freeze({
-    kymaKey: { label: "Kyma API key", placeholder: "ky-...", secret: true },
+    kymaKey: { label: "Kyma API key (Standard + Realtime)", placeholder: "ky-...", secret: true },
     geminiKey: { label: "Gemini API key", placeholder: "AIza...", secret: true },
     openRouterKey: { label: "OpenRouter key", placeholder: "sk-or-...", secret: true },
     groqApiKey: { label: "Groq key", placeholder: "gsk_...", secret: true },
@@ -366,6 +380,48 @@
     minimaxKey: { label: "MiniMax API key", placeholder: "MiniMax key", secret: true },
     replicateKey: { label: "Replicate token", placeholder: "r8_...", secret: true },
   });
+
+  const capabilityBySlot = Object.freeze({
+    translator: "translate",
+    stt: "stt",
+    tts: "tts",
+    dubPipeline: "standardDub",
+    realtimeBridge: "realtimeDub",
+  });
+
+  const localOnlyProviders = new Set(["none", "off", "browser", "web-speech"]);
+
+  function providerCapabilities(provider) {
+    if (!provider) {
+      return {
+        translate: false,
+        stt: false,
+        tts: false,
+        standardDub: false,
+        realtimeDub: false,
+        requiresKey: false,
+        free: false,
+        localOnly: false,
+        comingSoon: false,
+      };
+    }
+    const capability = capabilityBySlot[provider.slot];
+    return {
+      translate: capability === "translate",
+      stt: capability === "stt",
+      tts: capability === "tts",
+      standardDub: capability === "standardDub",
+      realtimeDub: capability === "realtimeDub",
+      requiresKey: !provider.noKey && !provider.free && (provider.keyFields || []).length > 0,
+      free: !!provider.free || !!provider.noKey,
+      localOnly: localOnlyProviders.has(provider.id),
+      comingSoon: provider.status === "coming-soon",
+    };
+  }
+
+  function withCapabilities(provider) {
+    return provider ? { ...provider, capabilities: providerCapabilities(provider) } : null;
+  }
 
   function providerById(id) {
     return Object.values(providers).find((provider) => provider.id === id) || null;
@@ -384,9 +440,19 @@
     return (provider.keyFields || []).every((key) => String(values[key] || "").trim());
   }
 
-  function providersForSlot(modeId, slotId) {
+  function missingKeyMessage(providerId) {
+    const provider = providerById(providerId);
+    const label = provider?.label || "this provider";
+    const slot = slotDefinitions[provider?.slot];
+    const destination = slot?.label || "provider settings";
+    return `Add your ${label} key in ${destination}, then Start again.`;
+  }
+
+  function providersForSlot(modeId, slotId, options = {}) {
     return Object.values(providers).filter((provider) =>
-      provider.slot === slotId && (provider.modes || []).includes(modeId)
+      provider.slot === slotId &&
+      (provider.modes || []).includes(modeId) &&
+      (options.includeRoadmap || provider.status !== "coming-soon")
     );
   }
 
@@ -417,9 +483,13 @@
     modes,
     slotDefinitions,
     keyFields,
+    capabilityBySlot,
+    providerCapabilities,
+    withCapabilities,
     providerById,
     keyFieldsForProvider,
     hasRequiredKeys,
+    missingKeyMessage,
     providersForSlot,
     slotsForMode,
     selectedProviderForSlot,

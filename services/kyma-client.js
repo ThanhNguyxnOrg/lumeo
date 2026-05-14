@@ -17,19 +17,19 @@
         };
       }
       if (err.code === "too_many_sessions") {
-        return { user: "Three sessions already running. Stop one or wait." };
+        return { user: "Kyma session limit reached. Stop another Lumeo session, then retry." };
       }
       if (err.code === "upstream_error") {
-        return { user: "Provider unreachable. Try again shortly." };
+        return { user: "Kyma provider is temporarily unavailable. Retry in a minute." };
       }
       if (err.code === "rate_limited") {
-        return { user: "Provider rate limit hit. Wait 30s." };
+        return { user: "Kyma rate limit reached. Wait 30 seconds, then retry." };
       }
-      if (err.message) return { user: `Kyma ${status}: ${err.message}` };
+      if (err.message) return { user: `Kyma ${status}: ${err.message}. Check your Kyma key/session, then retry.` };
     } catch {
       // Fall through to raw text.
     }
-    return { user: `Kyma ${status}: ${(errText || "").slice(0, 160)}` };
+    return { user: `Kyma ${status}: ${(errText || "").slice(0, 160)}. Check your Kyma key/session, then retry.` };
   }
 
   async function post(path, kymaKey, options = {}) {

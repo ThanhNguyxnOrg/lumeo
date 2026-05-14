@@ -18,10 +18,19 @@ ext/
 
 # Logs
 *.log
+
+# Test / tooling artefacts
+node_modules/
+coverage/
+.playwright-mcp/
+output/playwright/profile-*/
+output/playwright/*.png
+
 yt_console_errors.log
 
 # Local caches
 .playwright-mcp/
+.sisyphus/
 output/
 
 # Environment

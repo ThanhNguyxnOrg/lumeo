@@ -13,7 +13,7 @@
   <header class="topline remote-bar">
     <div class="brand">
       <span class="mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true" focusable="false">
           <path d="M7 9v6M11 6v12M15 8v8M19 11v2"/>
         </svg>
       </span>
@@ -50,50 +50,50 @@
   <section class="section-block">
     <div class="section-label">Mode</div>
     <div class="mode-shell">
-      <label class="mode-row mode-caption" title="Translate existing YouTube captions for free">
+      <label class="mode-row mode-caption" title="Translate YouTube captions; use Groq or Soniox STT only when captions are unavailable">
         <input type="radio" name="modeProxy" value="caption" checked />
         <span class="mode-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
             <path d="M4 6h16v12H4z"/><path d="M7 10h4M7 14h7"/>
           </svg>
         </span>
         <span class="mode-copy">
           <strong>Caption Free</strong>
-          <small>100+ languages · optional STT fallback</small>
+          <small>Captions · TTS · Groq/Soniox fallback</small>
         </span>
         <span class="mode-meter">free</span>
       </label>
       <label class="mode-row">
         <input type="radio" name="modeProxy" value="standard" />
         <span class="mode-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
             <path d="M12 3v18"/><path d="M8 7v10M16 7v10M4 10v4M20 10v4"/>
           </svg>
         </span>
         <span class="mode-copy">
           <strong>Standard Dub</strong>
-          <small>5s chunks, lower cost</small>
+          <small>Whisper → Gemini → MiniMax via Kyma</small>
         </span>
         <span class="mode-meter">~5s</span>
       </label>
       <label class="mode-row">
         <input type="radio" name="modeProxy" value="realtime" />
         <span class="mode-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
             <circle cx="12" cy="12" r="3"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14M19.07 4.93a10 10 0 0 1 0 14.14"/>
           </svg>
         </span>
         <span class="mode-copy">
           <strong>Realtime Dub</strong>
-          <small>Voice clone or OpenAI voice</small>
+          <small>OpenAI Realtime voices via Kyma</small>
         </span>
         <span class="mode-meter">&lt;1s</span>
       </label>
     </div>
     <select id="tier" class="visually-hidden" aria-label="Tier">
-      <option value="caption">Caption Free · 100+ languages</option>
-      <option value="realtime">Realtime · clones speaker · &lt;1s</option>
-      <option value="standard">Standard · ~5s lag · cheaper</option>
+      <option value="caption">Caption · Translate/TTS/STT fallback</option>
+      <option value="realtime">Realtime · OpenAI voices · &lt;1s</option>
+      <option value="standard">Standard · Kyma dub · ~5s</option>
     </select>
   </section>
 
@@ -115,11 +115,11 @@
     <div class="slot-card">
       <span class="slot-kicker">Provider marketplace</span>
       <strong>Loading providers...</strong>
-      <small>Mode controls which providers are shown here.</small>
+      <small>Each mode shows only the routes it can actually run.</small>
     </div>
   </section>
 
-  <section class="section-block mix">
+  <section class="section-block mix" hidden>
     <div class="section-label">Mix</div>
     <div class="mix-row">
       <label for="originalVolume">ORIGINAL</label>
@@ -133,10 +133,22 @@
     </div>
   </section>
 
-  <label class="toggle-row">
+  <label class="toggle-row" hidden>
     <span>Show source captions</span>
     <input id="showSource" type="checkbox" />
   </label>
+
+  <section class="section-block cache-tools">
+    <div class="section-label">Caption cache</div>
+    <p class="slot-copy">Clear translated subtitle cache if a video was translated with the wrong language/provider or cached stale captions.</p>
+    <div class="cache-actions" aria-label="Caption cache actions">
+      <button class="ghost-action" id="exportCaptionBundle" type="button">Export bundle</button>
+      <label class="ghost-action file-action" for="importCaptionBundle">Import bundle</label>
+      <input id="importCaptionBundle" class="visually-hidden" type="file" accept="application/json,.json" />
+      <button class="ghost-action" id="clearCaptionCache" type="button">Clear cache</button>
+    </div>
+    <p class="cache-status" id="captionBundleStatus" role="status" aria-live="polite">Bundles restore translated cues and resume progress later.</p>
+  </section>
 
   <details class="advanced key-vault-all" id="keyVaultAll">
     <summary>
@@ -152,11 +164,15 @@
     <span></span><i style="--w: 18%"></i><i style="--w: 9%"></i><i style="--w: 24%"></i><i style="--w: 12%"></i><i style="--w: 19%"></i><span></span>
   </div>
 
-  <button class="action" id="toggle">Start</button>
+  <button class="action" id="toggle" type="button">Start</button>
 
 </main>
 
 <script src="services/providers.js"></script>
+<script src="services/tier-recommendation.js"></script>
+<script src="services/srt-export.js"></script>
+<script src="services/translation-bundle.js"></script>
+<script src="lib/browser-api.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>

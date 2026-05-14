@@ -11,6 +11,10 @@ const setupStack = $("setupStack");
 const keyVaultAllBody = $("keyVaultAllBody");
 const keyVaultBadge = $("keyVaultBadge");
 const toggleBtn = $("toggle");
+const clearCaptionCacheBtn = $("clearCaptionCache");
+const exportCaptionBundleBtn = $("exportCaptionBundle");
+const importCaptionBundleInput = $("importCaptionBundle");
+const captionBundleStatus = $("captionBundleStatus");
 const statusEl = $("status");
 const tabContext = $("tabContext");
 const tabTitle = $("tabTitle");
@@ -25,6 +29,7 @@ const tierMeta = $("tierMeta");
 const buildBadge = $("buildBadge");
 const modeRadios = Array.from(document.querySelectorAll('input[name="modeProxy"]'));
 const providerRegistry = globalThis.LumeoProviders;
+const browserApi = globalThis.LumeoBrowserApi;
 
 const DUB_LANGUAGES = [
   ["en", "English"], ["vi", "Vietnamese"], ["ja", "Japanese"],
@@ -131,13 +136,7 @@ let state = {
 };
 
 function send(message) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(message, (reply) => {
-      const e = chrome.runtime.lastError;
-      if (e) reject(new Error(e.message));
-      else resolve(reply);
-    });
-  });
+  return browserApi.sendRuntimeMessage(message);
 }
 
 function isBenign(msg) {
@@ -179,10 +178,22 @@ function selectedProviderForSlot(slot) {
 
 function providerStatus(provider, slot) {
   if (!provider) return { label: "missing", tone: "missing" };
-  if (provider.status === "coming-soon") return { label: "soon", tone: "soon" };
-  if (provider.noKey || provider.free || !provider.keyFields?.length) return { label: "free", tone: "free" };
+  const capabilities = providerRegistry.providerCapabilities?.(provider) || {};
+  if (capabilities.comingSoon) return { label: "roadmap", tone: "soon" };
+  if (!capabilities.requiresKey) return { label: capabilities.localOnly ? "local" : "free", tone: "free" };
   if (providerRegistry.hasRequiredKeys(provider.id, allKeyValues())) return { label: "ready", tone: "ready" };
   return { label: slot?.required ? "needs key" : "optional key", tone: "missing" };
+}
+
+function providerMicrocopy(provider) {
+  const capabilities = providerRegistry.providerCapabilities?.(provider) || {};
+  if (capabilities.comingSoon) return "Integration planned; hidden from runtime start until the provider path is complete.";
+  if (capabilities.localOnly) return "Runs locally in Chrome; no provider key or Lumeo server required.";
+  if (capabilities.standardDub || capabilities.realtimeDub) return "Audio leaves the browser for dubbing. Cost depends on provider balance and video length.";
+  if (capabilities.stt) return "Audio is uploaded only when YouTube has no readable captions and this fallback is selected.";
+  if (capabilities.tts) return "Translated text is sent for speech synthesis when Caption TTS is enabled.";
+  if (capabilities.translate && capabilities.requiresKey) return "Caption text is sent to your selected translation provider using your own key.";
+  return "No provider key required for this path.";
 }
 
 function populateLanguages(tier = state.tier, preferred = state.targetLanguage) {
@@ -227,7 +238,7 @@ function renderProviderSelect(slot, providers, activeProvider) {
     const opt = document.createElement("option");
     opt.value = provider.id;
     opt.disabled = provider.status === "coming-soon";
-    opt.textContent = provider.status === "coming-soon" ? `${provider.label} · soon` : provider.label;
+    opt.textContent = provider.status === "coming-soon" ? `${provider.label} · roadmap` : provider.label;
     select.appendChild(opt);
   }
   select.value = activeProvider?.id || providers[0]?.id || "";
@@ -301,6 +312,10 @@ function renderSetupStack() {
     providerCopy.className = "provider-copy";
     providerCopy.textContent = provider.description || "";
     card.appendChild(providerCopy);
+    const providerMeta = document.createElement("p");
+    providerMeta.className = "provider-copy provider-meta";
+    providerMeta.textContent = providerMicrocopy(provider);
+    card.appendChild(providerMeta);
     renderKeyFields(card, provider);
 
     const footer = document.createElement("div");
@@ -317,7 +332,7 @@ function renderSetupStack() {
     if (provider.status === "coming-soon") {
       const soon = document.createElement("span");
       soon.className = "soon-note";
-      soon.textContent = "Roadmap only";
+      soon.textContent = "Roadmap only — not selectable yet";
       footer.appendChild(soon);
     }
     if (footer.childNodes.length) card.appendChild(footer);
@@ -334,13 +349,16 @@ function renderKeyVaultSummary() {
   keyVaultBadge.classList.toggle("ok", saved.length > 0);
 
   const note = document.createElement("p");
-  note.innerHTML = "<strong>All keys are stored in Chrome local storage.</strong> Edit the active provider key directly in the cards above.";
+  const strong = document.createElement("strong");
+  strong.textContent = "Keys stay in Chrome local storage. ";
+  note.append(strong, "Kyma uses one key for both Standard and Realtime, but each mode calls a different provider route.");
   keyVaultAllBody.appendChild(note);
 
   const groups = new Map();
   for (const provider of Object.values(providerRegistry.providers)) {
     if (!provider.keyFields?.length) continue;
-    const group = groups.get(provider.group) || [];
+      if (provider.status === "coming-soon") continue;
+      const group = groups.get(provider.group) || [];
     group.push(provider);
     groups.set(provider.group, group);
   }
@@ -383,7 +401,9 @@ function renderKeyVaultSummary() {
 
 function syncModeProxy(tier) {
   for (const radio of modeRadios) radio.checked = radio.value === tier;
-  if (tierMeta) tierMeta.textContent = providerRegistry?.modes[tier]?.badge || "Caption · Free";
+  const badge = providerRegistry?.modes[tier]?.badge || "Caption · Free";
+  const recommendation = globalThis.LumeoTierRecommendation?.recommendationFor(activeTabInfo || {}, { ...state, tier });
+  if (tierMeta) tierMeta.textContent = recommendation ? `${badge} · ${recommendation}` : badge;
   renderSetupStack();
 }
 
@@ -506,7 +526,7 @@ function getVideoIdFromUrl(url) {
 
 async function loadActiveTabContext() {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await browserApi.queryTabs({ active: true, currentWindow: true });
     activeTabInfo = tab || null;
     const videoId = getVideoIdFromUrl(tab?.url);
     const isYouTubeWatch = !!videoId;
@@ -519,6 +539,7 @@ async function loadActiveTabContext() {
       ? `youtube.com/watch · ${videoId}`
       : "Lumeo needs an active YouTube watch tab";
     tabBadge.textContent = isYouTubeWatch ? "ATTACHED" : "NO VIDEO";
+    syncModeProxy(state.tier || tierSelect.value || "caption");
   } catch (err) {
     tabTitle.textContent = "Could not read active tab";
     tabMeta.textContent = err.message || String(err);
@@ -532,7 +553,7 @@ function onVolumeChange() {
   voiceOut.textContent = voiceVolumeInput.value;
   clearTimeout(volumeDebounce);
   volumeDebounce = setTimeout(() => {
-    chrome.runtime.sendMessage({
+    browserApi.sendRuntimeMessage({
       type: "UPDATE_VOLUME",
       originalVolume: Number(originalVolumeInput.value),
       voiceVolume: Number(voiceVolumeInput.value),
@@ -546,6 +567,86 @@ function validationMissing(settings) {
     const provider = providerRegistry.providerById(providerId);
     return provider?.status === "coming-soon" || !providerRegistry.hasRequiredKeys(providerId, settings);
   });
+}
+
+async function clearCaptionCache() {
+  if (!clearCaptionCacheBtn) return;
+  clearCaptionCacheBtn.disabled = true;
+  try {
+    const reply = await send({ action: "captionCacheClear" });
+    if (!reply?.ok) throw new Error(reply?.error || "Could not clear caption cache.");
+    statusEl.textContent = "Caption cache cleared.";
+    if (captionBundleStatus) captionBundleStatus.textContent = "Caption cache emptied.";
+  } catch (err) {
+    statusEl.textContent = err.message || String(err);
+  } finally {
+    clearCaptionCacheBtn.disabled = false;
+  }
+}
+
+function activeVideoId() {
+  return getVideoIdFromUrl(activeTabInfo?.url);
+}
+
+function downloadJson(value, filename) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+async function exportCaptionBundle() {
+  if (!exportCaptionBundleBtn) return;
+  exportCaptionBundleBtn.disabled = true;
+  try {
+    const videoId = activeVideoId();
+    if (!videoId) throw new Error("Open a YouTube video before exporting.");
+    const reply = await send({ action: "captionCacheGet" });
+    if (!reply?.ok) throw new Error(reply?.error || "Could not read caption cache.");
+    const entries = Object.values(reply.cache?.entries || {});
+    const targetLanguage = langSelect.value || state.targetLanguage;
+    const entry = entries.find((item) => item?.meta?.videoId === videoId && item?.meta?.targetLanguage === targetLanguage)
+      || entries.find((item) => item?.meta?.videoId === videoId);
+    const bundle = window.LumeoTranslationBundle.createBundle(entry, {
+      videoId,
+      targetLanguage,
+      provider: state.translateProvider || "google-free",
+      title: tabTitle.textContent || activeTabInfo?.title || "YouTube video",
+    });
+    downloadJson(bundle, window.LumeoTranslationBundle.filenameForBundle(bundle));
+    statusEl.textContent = "Translation bundle exported.";
+    if (captionBundleStatus) captionBundleStatus.textContent = `${bundle.cues.length} cues exported for ${bundle.targetLanguage}.`;
+  } catch (err) {
+    statusEl.textContent = err.message || String(err);
+    if (captionBundleStatus) captionBundleStatus.textContent = err.message || String(err);
+  } finally {
+    exportCaptionBundleBtn.disabled = false;
+  }
+}
+
+async function importCaptionBundle(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const parsed = window.LumeoTranslationBundle.parseBundle(await file.text());
+    const reply = await send({ action: "captionCacheGet" });
+    if (!reply?.ok) throw new Error(reply?.error || "Could not read caption cache.");
+    const cache = reply.cache || { entries: {} };
+    cache.entries ||= {};
+    cache.entries[parsed.key] = parsed.entry;
+    const saved = await send({ action: "captionCacheSet", cache });
+    if (!saved?.ok) throw new Error(saved?.error || "Could not import caption cache.");
+    statusEl.textContent = "Translation bundle imported.";
+    if (captionBundleStatus) captionBundleStatus.textContent = `${parsed.bundle.cues.length} cues ready for ${parsed.bundle.targetLanguage}.`;
+  } catch (err) {
+    statusEl.textContent = err.message || String(err);
+    if (captionBundleStatus) captionBundleStatus.textContent = err.message || String(err);
+  } finally {
+    event.target.value = "";
+  }
 }
 
 async function onToggle() {
@@ -565,7 +666,7 @@ async function onToggle() {
       renderSetupStack();
       statusEl.textContent = provider?.status === "coming-soon"
         ? `${provider.label} is coming soon. Choose an available provider.`
-        : `Add required key: ${provider?.label || "provider"}.`;
+        : providerRegistry.missingKeyMessage?.(provider?.id) || `Add your ${provider?.label || "provider"} key, then Start again.`;
       setStateClass("error");
       toggleBtn.disabled = false;
       return;
@@ -629,6 +730,9 @@ showSourceCheckbox.addEventListener("change", pushSettings);
 originalVolumeInput.addEventListener("input", onVolumeChange);
 voiceVolumeInput.addEventListener("input", onVolumeChange);
 toggleBtn.addEventListener("click", onToggle);
+clearCaptionCacheBtn?.addEventListener("click", clearCaptionCache);
+exportCaptionBundleBtn?.addEventListener("click", exportCaptionBundle);
+importCaptionBundleInput?.addEventListener("change", importCaptionBundle);
 
 setupStack?.addEventListener("change", (event) => {
   const select = event.target.closest("select[data-slot]");
@@ -659,7 +763,7 @@ setupStack?.addEventListener("keydown", (event) => {
   renderSetupStack();
 });
 
-chrome.runtime.onMessage.addListener((message) => {
+browserApi.addRuntimeMessageListener((message) => {
   if (message?.type === "BACKGROUND_STATE_UPDATE" && message.state) applyState(message.state);
   if (message?.type === "OPEN_POPUP_TO_SLOT" && message.slot) {
     highlightSlotId = message.slot;
@@ -668,7 +772,7 @@ chrome.runtime.onMessage.addListener((message) => {
 });
 
 try {
-  const manifest = chrome.runtime.getManifest();
+  const manifest = browserApi.getManifest();
   buildBadge.textContent = manifest.version_name || `v${manifest.version}`;
 } catch {
   buildBadge.textContent = "dev";

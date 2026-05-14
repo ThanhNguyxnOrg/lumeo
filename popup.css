@@ -15,6 +15,8 @@
   --ok: #9dbe2a;
   --warn: #f5b642;
   --danger: #ef4444;
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  --target-min: 44px;
   --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
   --sans: Inter, "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --display: "Inter Tight", Inter, "SF Pro Display", -apple-system, system-ui, sans-serif;
@@ -42,7 +44,7 @@ button, select, input {
   font: inherit;
 }
 
-button { cursor: pointer; }
+button { min-height: var(--target-min); min-width: var(--target-min); cursor: pointer; }
 button:disabled { cursor: default; opacity: 0.45; }
 
 .shell {
@@ -157,7 +159,6 @@ body[data-state="error"] .status-led { background: var(--danger); }
   text-transform: uppercase;
 }
 #status {
-  display: inline-block;
   max-width: 100%;
   overflow: hidden;
   white-space: normal;
@@ -262,6 +263,11 @@ body[data-state="error"] .status-led { background: var(--danger); }
 .mode-row:first-child { border-top: 0; }
 .mode-row:hover { background: var(--panel-2); }
 .mode-row input { position: absolute; opacity: 0; pointer-events: none; }
+.mode-row:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  box-shadow: var(--focus-ring);
+}
 .mode-row:has(input:checked) {
   background: var(--panel-2);
   box-shadow: inset 3px 0 0 var(--accent);
@@ -327,7 +333,7 @@ body[data-state="error"] .status-led { background: var(--danger); }
 select, input[type="password"], input[type="text"] {
   width: 100%;
   min-width: 0;
-  height: 36px;
+  min-height: var(--target-min);
   color: var(--ivory);
   background-color: var(--panel);
   border: 1px solid var(--line);
@@ -345,9 +351,10 @@ select {
   background-position: right 10px center;
 }
 select:hover, input:hover { border-color: #333841; }
-select:focus, input:focus, button:focus-visible, summary:focus-visible {
+select:focus-visible, input:focus-visible, button:focus-visible, summary:focus-visible, .provider-help-link:focus-visible, .summary-row a:focus-visible, .advanced-body a:focus-visible, .file-action:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+  box-shadow: var(--focus-ring);
 }
 
 .setup-stack {
@@ -404,6 +411,9 @@ select:focus, input:focus, button:focus-visible, summary:focus-visible {
   color: var(--muted);
   font-size: 10.5px;
   line-height: 1.35;
+}
+.provider-meta {
+  color: var(--muted-deep);
 }
 .slot-status,
 .soon-note {
@@ -462,7 +472,7 @@ select:focus, input:focus, button:focus-visible, summary:focus-visible {
 }
 .mix .section-label { margin-bottom: 2px; }
 .mix-row {
-  height: 38px;
+  min-height: var(--target-min);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -476,8 +486,8 @@ select:focus, input:focus, button:focus-visible, summary:focus-visible {
 }
 input[type="range"] {
   flex: 1;
-  min-width: 0;
-  height: 4px;
+  min-width: var(--target-min);
+  min-height: var(--target-min);
   accent-color: var(--accent);
   cursor: pointer;
 }
@@ -490,7 +500,7 @@ input[type="range"] {
 
 .toggle-row {
   margin: 10px 12px 0;
-  min-height: 36px;
+  min-height: var(--target-min);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -500,8 +510,8 @@ input[type="range"] {
 }
 input[type="checkbox"] {
   appearance: none;
-  width: 34px;
-  height: 18px;
+  width: var(--target-min);
+  height: 24px;
   border-radius: 999px;
   background: var(--line-soft);
   border: 1px solid var(--line);
@@ -520,7 +530,7 @@ input[type="checkbox"]::before {
   transition: transform 140ms ease, background 140ms ease;
 }
 input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
-input[type="checkbox"]:checked::before { transform: translateX(16px); background: var(--bg); }
+input[type="checkbox"]:checked::before { transform: translateX(26px); background: var(--bg); }
 
 .advanced {
   margin: 10px 12px 0;
@@ -530,7 +540,7 @@ input[type="checkbox"]:checked::before { transform: translateX(16px); background
   overflow: hidden;
 }
 .advanced summary {
-  min-height: 40px;
+  min-height: var(--target-min);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -677,6 +687,41 @@ input[type="checkbox"]:checked::before { transform: translateX(16px); background
   height: 10px;
   border-radius: 2px;
   background: linear-gradient(90deg, var(--line), color-mix(in srgb, var(--accent) 28%, var(--line)));
+}
+
+.cache-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.ghost-action {
+  width: 100%;
+  min-height: var(--target-min);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--ivory-dim);
+  background: var(--panel);
+  font: 700 10px/1 var(--mono);
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.ghost-action:hover:not(:disabled),
+.file-action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.file-action { cursor: pointer; }
+
+.cache-status {
+  min-height: 14px;
+  margin: 0;
+  color: var(--muted);
+  font: 10px/1.35 var(--mono);
 }
 
 .action {

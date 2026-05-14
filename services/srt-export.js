@@ -11,7 +11,7 @@
       .slice(0, 120) || fallback;
   }
 
-  function formatSrtTime(seconds) {
+  function formatTimestamp(seconds, separator = ",") {
     const totalMs = Math.max(0, Math.round(Number(seconds || 0) * 1000));
     const ms = totalMs % 1000;
     const totalSeconds = Math.floor(totalMs / 1000);
@@ -23,7 +23,15 @@
       String(h).padStart(2, "0"),
       String(m).padStart(2, "0"),
       String(s).padStart(2, "0"),
-    ].join(":") + "," + String(ms).padStart(3, "0");
+    ].join(":") + separator + String(ms).padStart(3, "0");
+  }
+
+  function formatSrtTime(seconds) {
+    return formatTimestamp(seconds, ",");
+  }
+
+  function formatVttTime(seconds) {
+    return formatTimestamp(seconds, ".");
   }
 
   function normalizeCue(cue) {
@@ -35,20 +43,51 @@
     };
   }
 
+  function normalizeCues(cuesInput) {
+    return (cuesInput || []).map(normalizeCue).filter((cue) => cue.text || cue.translated);
+  }
+
+  function selectCueText(cue, options = {}) {
+    if (options.translated === false) return cue.text;
+    return cue.translated || cue.text;
+  }
+
   function toSrt(cuesInput, options = {}) {
-    const useTranslated = options.translated !== false;
-    const cues = (cuesInput || []).map(normalizeCue).filter((cue) => cue.text || cue.translated);
-    return cues.map((cue, index) => {
-      const text = useTranslated
-        ? (cue.translated || cue.text)
-        : cue.text;
-      return [
-        String(index + 1),
-        `${formatSrtTime(cue.start)} --> ${formatSrtTime(cue.end)}`,
-        text,
-        "",
-      ].join("\n");
-    }).join("\n");
+    const cues = normalizeCues(cuesInput);
+    return cues.map((cue, index) => [
+      String(index + 1),
+      `${formatSrtTime(cue.start)} --> ${formatSrtTime(cue.end)}`,
+      selectCueText(cue, options),
+      "",
+    ].join("\n")).join("\n");
+  }
+
+  function toVtt(cuesInput, options = {}) {
+    const cues = normalizeCues(cuesInput);
+    const body = cues.map((cue) => [
+      `${formatVttTime(cue.start)} --> ${formatVttTime(cue.end)}`,
+      selectCueText(cue, options),
+      "",
+    ].join("\n")).join("\n");
+    return `WEBVTT\n\n${body}`;
+  }
+
+  function toPlainText(cuesInput, options = {}) {
+    const cues = normalizeCues(cuesInput);
+    return cues.map((cue) => {
+      if (options.bilingual) return [cue.translated || cue.text, cue.text].filter(Boolean).join("\n");
+      return selectCueText(cue, options);
+    }).join("\n\n");
+  }
+
+  function toJsonBundle(cuesInput, options = {}) {
+    return JSON.stringify({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      format: "lumeo-subtitles",
+      title: options.title || "video",
+      cues: normalizeCues(cuesInput),
+    }, null, 2);
   }
 
   function makeCRCTable() {
@@ -151,6 +190,10 @@
     return makeZip([
       { name: `${safeTitle}_original.srt`, content: toSrt(cues, { translated: false }) },
       { name: `${safeTitle}_translated.srt`, content: toSrt(cues, { translated: true }) },
+      { name: `${safeTitle}_original.vtt`, content: toVtt(cues, { translated: false }) },
+      { name: `${safeTitle}_translated.vtt`, content: toVtt(cues, { translated: true }) },
+      { name: `${safeTitle}_bilingual.txt`, content: toPlainText(cues, { bilingual: true }) },
+      { name: `${safeTitle}_bundle.json`, content: toJsonBundle(cues, { title: safeTitle }) },
     ]);
   }
 
@@ -166,8 +209,12 @@
   window.LumeoSrtExport = {
     __loaded: true,
     formatSrtTime,
+    formatVttTime,
     sanitizeFilename,
     toSrt,
+    toVtt,
+    toPlainText,
+    toJsonBundle,
     makeZip,
     makeSubtitleZip,
     downloadBlob,

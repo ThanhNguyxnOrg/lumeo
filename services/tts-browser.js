@@ -132,6 +132,15 @@
     if (provider === "google-cloud") {
       return speakGoogleCloud(text, lang, options);
     }
+    if (provider === "openai-tts") {
+      if (!window.LumeoOpenAITTS) throw new Error("OpenAI TTS service is not loaded.");
+      return window.LumeoOpenAITTS.speak(text, lang, {
+        apiKey: options.openaiKey,
+        voice: options.openaiVoice || "alloy",
+        speed: options.rate || 1,
+        volume: options.volume ?? 1,
+      });
+    }
     return speakBrowser(text, lang, options);
   }
 

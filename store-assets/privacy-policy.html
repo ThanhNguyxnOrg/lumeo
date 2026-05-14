@@ -26,10 +26,10 @@ footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid rgba(127,127
 <body>
 
 <h1>Lumeo — Privacy Policy</h1>
-<p class="sub">Last updated: 2026-05-09</p>
+<p class="sub">Last updated: 2026-05-12. Draft policy for store review, not legal advice.</p>
 
 <div class="tldr">
-<strong>TL;DR.</strong> Lumeo does not collect, store, or sell any personal data. API keys you enter (Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox) stay on your own device. Subtitle text or audio you choose to translate is sent directly to the provider you pick, for the sole purpose of producing the translation, then discarded. We have no servers, no analytics, no tracking.
+<strong>TL;DR.</strong> Lumeo does not sell data or run tracking. API keys you enter (Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox) stay on your own device. Subtitle text or audio you choose to translate is sent directly to the provider you pick for the purpose of producing the translation. We have no Lumeo-operated server, no analytics, no tracking.
 </div>
 
 <h2>What Lumeo is</h2>
@@ -65,7 +65,7 @@ footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid rgba(127,127
 <h2>What data is NOT collected</h2>
 <ul>
   <li>No telemetry, analytics, crash reports, or usage statistics.</li>
-  <li>No browsing history, video titles, URLs, or YouTube account information are sent anywhere.</li>
+  <li>No browsing history or YouTube account information is sent to Lumeo.</li>
   <li>No personal identifiers, IP logging, cookies, or fingerprints.</li>
   <li>No advertising, ad targeting, or third-party trackers.</li>
 </ul>
@@ -87,13 +87,13 @@ footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid rgba(127,127
 <p>Each provider processes your data per its own privacy terms. Lumeo is not a party to those terms — your account and direct relationship with each provider are.</p>
 
 <h2>Data retention</h2>
-<p>Lumeo retains nothing on its side. Provider-side retention follows each provider's policy; for transcription, translation, and TTS the data is processed in-memory and not retained. Sessions on the dub tiers automatically end after 60 minutes; closing the tab also ends the session.</p>
+<p>Lumeo has no server-side retention because it has no Lumeo-operated backend. Local settings, keys, and per-video caption cache stay in browser storage until you clear them or uninstall the extension. Provider-side retention follows each provider's policy. Sessions on the dub tiers automatically end after 60 minutes; closing the tab also ends the session.</p>
 
 <h2>Permissions</h2>
 <ul>
   <li><code>activeTab</code>, <code>scripting</code> — to inject the overlay panel into the YouTube tab when you press Start.</li>
   <li><code>storage</code> — to remember your settings and any keys you save across sessions.</li>
-  <li>Host permissions for <code>youtube.com</code>, <code>api.kymaapi.com</code>, <code>api.openai.com</code>, <code>translate.googleapis.com</code>, <code>translation.googleapis.com</code>, <code>texttospeech.googleapis.com</code>, <code>stt-rt.soniox.com</code> — to read YouTube subtitles, capture YouTube audio, and reach the AI providers listed above.</li>
+  <li>Host permissions for <code>youtube.com</code>, <code>api.kymaapi.com</code>, <code>api.openai.com</code>, <code>generativelanguage.googleapis.com</code>, <code>openrouter.ai</code>, <code>api.groq.com</code>, <code>api-inference.huggingface.co</code>, <code>huggingface.co</code>, <code>translate.googleapis.com</code>, <code>translation.googleapis.com</code>, <code>texttospeech.googleapis.com</code>, <code>stt-rt.soniox.com</code>, <code>libretranslate.com</code>, <code>localhost</code>, and <code>127.0.0.1</code> — to read YouTube subtitles, capture YouTube audio after user action, and reach the providers listed above.</li>
 </ul>
 
 <h2>Your rights and choices</h2>

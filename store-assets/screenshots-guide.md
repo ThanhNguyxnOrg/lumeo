@@ -4,7 +4,7 @@ Web Store needs **5 screenshots** at **1280×800** OR **640×400** (PNG, no alph
 
 Tool: macOS `Cmd+Shift+4` then drag a 1280×800 region. Or use CleanShot / Kap (mac) / ShareX (Windows) and pick a custom size. Output to `store-assets/screenshots/01-popup-idle.png`, `02-panel-caption.png`, etc.
 
-> **v2 note.** Phase 1 of the v2 merge keeps the Echoly screenshots only as a placeholder. Re-shoot all 5 once the Caption tier ships in Phase 2 so the listing reflects the full three-tier feature set.
+> **P5 status.** Screenshot capture is manual and currently blocked until a clean local Chrome run confirms the final UI states. Do not mark the roadmap screenshot task complete until all 5 PNGs exist and match current behavior.
 
 ## The 5 screenshots
 

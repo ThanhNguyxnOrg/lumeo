@@ -28,6 +28,9 @@ jobs:
             console.log('manifest.json OK — name:', m.name, '· version:', m.version);
           "
 
+      - name: Install dependencies
+        run: npm ci
+
       - name: Validate package structure
         run: |
           set -e
@@ -37,16 +40,28 @@ jobs:
           test -f "pack.sh" || { echo "::error::missing pack.sh"; exit 1; }
           test -f "pack.ps1" || { echo "::error::missing pack.ps1"; exit 1; }
           for f in \
+            lib/audio-utils.js \
+            lib/token-guard.js \
+            ui/overlay.js \
+            ui/subtitle-overlay.js \
+            ui/voice-picker.js \
+            ui/caption-fallback-choice.js \
+            ui/transcript.js \
             services/sniffer.js \
             services/audio-processor.js \
             services/captions.js \
             services/providers.js \
+            services/tier-recommendation.js \
             services/translate.js \
             services/tts-browser.js \
+            services/tts-openai.js \
             services/stt-soniox.js \
+            services/stt-groq.js \
             services/srt-export.js \
             services/kyma-client.js \
-            pipelines/caption.js; do
+            pipelines/caption.js \
+            pipelines/realtime.js \
+            pipelines/standard.js; do
             test -f "$f" || { echo "::error::missing $f"; exit 1; }
           done
           for f in icons/icon-16.png icons/icon-48.png icons/icon-128.png; do
@@ -54,13 +69,8 @@ jobs:
           done
           echo "package layout OK"
 
-      - name: Check JavaScript syntax (all tracked .js)
-        shell: bash
-        run: |
-          set -euo pipefail
-          fail=0
-          while IFS= read -r f; do
-            echo "→ $f"
-            node --check "$f" || fail=1
-          done < <(git ls-files '*.js')
-          exit $fail
+      - name: Check JavaScript syntax
+        run: npm run check:all
+
+      - name: Run unit tests
+        run: npm test

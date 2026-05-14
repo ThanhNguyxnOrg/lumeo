@@ -1,6 +1,6 @@
 # Lumeo — Chrome Web Store submission metadata
 
-> **Status:** v2.0 draft. Re-validate string lengths and URLs after Phase 5 (final screenshots + pricing). Drop these into the Web Store form fields exactly. Lengths checked against current limits (description 16,000; short description 132).
+> **Status:** v2.0 draft for reviewer approval. Re-validate string lengths, hosted privacy URL, screenshots, pricing, and any permission changes before submission. Lengths checked against current limits (description 16,000; short description 132).
 
 ---
 
@@ -57,7 +57,7 @@ Standard and Realtime dub
 Privacy
 • No account, no telemetry, no analytics, no Lumeo-operated server.
 • Any API key you save (Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox) stays on your device with TRUSTED_CONTEXTS access level so page scripts can't read it.
-• Audio and subtitle text are sent only to the provider you pick, used only to produce the translation, then discarded.
+• Audio and subtitle text are sent only to the provider you pick to produce the requested translation. Provider retention follows that provider's terms.
 
 Get a Kyma key (only needed for Standard + Realtime tiers): kymaapi.com — free starter credit on signup; pay-as-you-go after that.
 ```
@@ -176,9 +176,15 @@ Required certifications:
 
 ## Privacy policy URL
 
-Host `store-assets/privacy-policy.html` somewhere stable. Suggested: a static GitHub Pages site at `https://thanhnguyxnorg.github.io/lumeo/privacy.html` or a Vercel project.
+Host `docs/privacy.html` or `store-assets/privacy-policy.html` somewhere stable. Suggested: a static GitHub Pages site at `https://thanhnguyxnorg.github.io/lumeo/privacy.html` or a Vercel project.
 
 Once hosted, paste the URL into the Web Store form's "Privacy policy" field.
+
+## Audit references
+
+- `store-assets/audits/permission-audit.md`
+- `store-assets/audits/source-asset-audit.md`
+- `store-assets/packaging-checklist.md`
 
 ## Test instructions for reviewer (under "Account" tab in the form)
 

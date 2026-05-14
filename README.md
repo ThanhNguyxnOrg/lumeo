@@ -22,11 +22,11 @@ Lumeo gives you three ways to consume any YouTube video in your own language. Pi
 
 | Tier | What it does | Latency | Cost | When to use |
 |---|---|---|---|---|
-| **Caption** | Translates YouTube's existing subtitles into 100+ languages, shows bilingual in-video overlay (like native CC), compact settings toolbar, optional TTS, and can fall back to Soniox STT when no captions exist | None for captions; live for STT fallback | Free (Google Translate) or your own Gemini / OpenRouter / Groq / OpenAI / Google Cloud / LibreTranslate / Soniox key | Reading captions first; STT fallback when a video has no caption track |
-| **Standard** | Captures the audio, runs Whisper → Gemini → MiniMax through Kyma, plays a multilingual dub over the original | ~5 seconds | ~$0.25 / 10 min on your Kyma balance | The video has no usable captions, or you prefer listening |
-| **Realtime** | Captures the audio, opens WebRTC P2P with OpenAI Realtime via a Kyma ephemeral token, dubs with sub-second lag and optional speaker voice cloning | <1 second | ~$0.46 / 10 min on your Kyma balance | Live streams, podcasts, anywhere lag matters |
+| **Caption** | Translates YouTube's existing subtitles into 100+ languages, shows bilingual in-video overlay (like native CC), compact settings toolbar, optional Browser / Google Cloud / OpenAI TTS, and can fall back to Groq Whisper or Soniox STT when no readable captions exist | None for captions; live for STT fallback | Free Google Translate by default; BYOK for Gemini / OpenRouter / Groq / OpenAI / Google Cloud / LibreTranslate / Soniox | Reading captions first; STT fallback when a video has no caption track |
+| **Standard** | Captures the audio, runs Kyma Whisper v3 Turbo → Gemini 2.5 Flash → MiniMax Speech Turbo, then plays a multilingual dub over the original | ~5 seconds | ~$0.25 / 10 min on your Kyma balance | The video has no usable captions, or you prefer listening |
+| **Realtime** | Captures the audio, opens WebRTC P2P with OpenAI Realtime via a Kyma ephemeral token, and dubs with sub-second lag using selectable OpenAI Realtime voices | <1 second | ~$0.46 / 10 min on your Kyma balance | Live streams, podcasts, anywhere lag matters |
 
-13 dubbing target languages (English, Vietnamese, Japanese, Korean, Chinese, French, Spanish, German, Portuguese, Hindi, Indonesian, Italian, Russian) and 100+ caption-translation languages. No account, no telemetry, no Lumeo-operated server.
+13 dubbing target languages (English, Vietnamese, Japanese, Korean, Chinese, French, Spanish, German, Portuguese, Hindi, Indonesian, Italian, Russian) and 100+ caption-translation languages. No account, no telemetry, no Lumeo-operated server. Audio leaves the browser only when you choose STT/dubbing providers: Caption STT can upload audio to Groq or Soniox, Standard uploads chunks to Kyma, and Realtime streams through Kyma/OpenAI Realtime.
 
 ---
 
@@ -40,12 +40,12 @@ This repository is the merge of two predecessor projects, both authored by the s
 The merge is in progress on `main`:
 
 - ✅ **Phase 1** — Echoly baseline rebranded as Lumeo (interim "Lumen Subtitle Studio" naming dropped — see CHANGELOG entry [2.0.0-beta.2]), manifest merged, scaffold for `pipelines/`, `services/`, `lib/`, `ui/` ready, store-assets refreshed.
-- ✅ **Phase 2** — Reverse and rewrite Lumen v1 caption pipeline into clean modules under `pipelines/caption.js` and `services/`. All 7 translation providers working (Google Free, Gemini, OpenRouter, Groq, OpenAI, Google Cloud, LibreTranslate).
+- ✅ **Phase 2** — Reverse and rewrite Lumen v1 caption pipeline into clean modules under `pipelines/caption.js` and `services/`. All 7 caption translation providers work (Google Free, Gemini, OpenRouter, Groq, OpenAI, Google Cloud, LibreTranslate); STT/TTS/dub providers are shown by mode with unavailable routes marked soon.
 - ✅ **Phase 3** — Compact settings toolbar (no side panel) + native-like in-video bilingual subtitle overlay. Audio mute, subtitle toggles, font sizing. All three tiers exposed in popup.
 - 🚧 **Phase 4** — SRT/ZIP export across all tiers, auto-tier picker, per-video cache.
 - 🚧 **Phase 5** — Final store assets, screenshots, packaging, Web Store submission.
 
-See [`ROADMAP.md`](./ROADMAP.md) for the working task plan, [`DESIGN_BRIEF.md`](./DESIGN_BRIEF.md) for the UI/UX redesign prompt, [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) for developer-mode debugging, and [`CHANGELOG.md`](./CHANGELOG.md) for the running merge log.
+See [`TODO_ROADMAP.md`](./TODO_ROADMAP.md) for the working task plan, [`DESIGN_BRIEF.md`](./DESIGN_BRIEF.md) for the UI/UX redesign prompt, [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) for developer-mode debugging, and [`CHANGELOG.md`](./CHANGELOG.md) for the running merge log.
 
 ---
 

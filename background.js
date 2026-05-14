@@ -12,6 +12,10 @@
 // Inherits the Echoly v0.2.1 state machine (2026-05-08 baseline) and extends
 // it with Caption-tier scaffolding for the v2.0 merge.
 
+import "./lib/browser-api.js";
+
+const browserApi = globalThis.LumeoBrowserApi;
+
 const DEFAULT_SETTINGS = {
   tier: "caption",
   targetLanguage: "vi",
@@ -28,6 +32,8 @@ const DEFAULT_SETTINGS = {
   openRouterModel: "openrouter/free",
   groqApiKey: "",
   groqModel: "llama-3.3-70b-versatile",
+  // Reserved provider fields stay in settings so popup/storage migrations do
+  // not churn while the corresponding registry entries remain coming-soon.
   huggingFaceToken: "",
   hfModel: "",
   googleCloudKey: "",
@@ -65,9 +71,7 @@ const state = {
 
 // Restrict storage access so rogue page scripts on youtube.com cannot read
 // the user's Kyma key. Sticky, no retry needed.
-chrome.storage.local
-  .setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" })
-  .catch(() => {});
+browserApi.setStorageAccessLevel("TRUSTED_CONTEXTS").catch(() => {});
 
 let lastBroadcastAt = 0;
 const BROADCAST_DEBOUNCE_MS = 50;
@@ -84,14 +88,12 @@ function broadcastToPopup() {
   const now = Date.now();
   if (now - lastBroadcastAt < BROADCAST_DEBOUNCE_MS) return;
   lastBroadcastAt = now;
-  chrome.runtime
-    .sendMessage({ type: "BACKGROUND_STATE_UPDATE", state: snapshot() })
-    .catch(() => {});
+  browserApi.sendRuntimeMessage({ type: "BACKGROUND_STATE_UPDATE", state: snapshot() }).catch(() => {});
 }
 
 async function relayToContent(tabId, message) {
   if (!tabId) throw new Error("No active tab to relay to.");
-  return chrome.tabs.sendMessage(tabId, message);
+  return browserApi.sendTabMessage(tabId, message);
 }
 
 async function fetchText(url) {
@@ -118,24 +120,36 @@ function isYouTubeUrl(url) {
 }
 
 async function activeYouTubeTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await browserApi.queryTabs({ active: true, currentWindow: true });
   if (!tab) throw new Error("No active tab.");
   if (!isYouTubeUrl(tab.url)) throw new Error("Open a YouTube video first.");
   return tab;
 }
 
 const CONTENT_SCRIPT_FILES = [
+  "lib/browser-api.js",
+  "lib/token-guard.js",
+  "lib/audio-utils.js",
+  "ui/overlay.js",
+  "ui/subtitle-overlay.js",
+  "ui/voice-picker.js",
+  "ui/caption-fallback-choice.js",
+  "services/providers.js",
   "services/translate.js",
   "services/srt-export.js",
   "services/tts-browser.js",
+  "services/tts-openai.js",
   "services/stt-soniox.js",
-  "services/providers.js",
+  "services/stt-groq.js",
   "services/captions.js",
   "services/kyma-client.js",
   "pipelines/caption.js",
+  "pipelines/caption-orchestrator.js",
+  "pipelines/realtime.js",
+  "pipelines/standard.js",
   "content.js",
 ];
-const EXPECTED_CONTENT_VERSION = "2.0.0-beta.12";
+const EXPECTED_CONTENT_VERSION = "1.0.0";
 const CAPTION_CACHE_KEY = "lumeoCaptionCacheV1";
 
 async function readCaptionCache() {
@@ -157,13 +171,24 @@ async function ensureContentScript(tabId) {
     const reply = await chrome.tabs.sendMessage(tabId, { type: "CONTENT_PING" });
     if (reply?.ok &&
         reply.version === EXPECTED_CONTENT_VERSION &&
+        reply.browserApi &&
         reply.captionPipeline &&
+        reply.realtimePipeline &&
+        reply.standardPipeline &&
         reply.translateService &&
         reply.captionService &&
         reply.kymaService &&
         reply.srtService &&
         reply.ttsService &&
-        reply.sonioxService) {
+        reply.sonioxService &&
+        reply.audioUtils &&
+        reply.tokenGuard &&
+        reply.groqService &&
+        reply.openaiTts &&
+        reply.overlayModule &&
+        reply.subtitleOverlayModule &&
+        reply.captionFallbackChoice &&
+        reply.captionOrchestrator) {
       return;
     }
     shouldReset = !!reply?.ok;
@@ -177,14 +202,26 @@ async function ensureContentScript(tabId) {
         func: () => {
           delete window.__lumeoContentVersion;
           for (const key of [
+            "LumeoBrowserApi",
+            "LumeoTokenGuard",
+            "LumeoAudioUtils",
+            "LumeoOverlay",
+            "LumeoSubtitleOverlay",
+            "LumeoVoicePicker",
+            "LumeoCaptionFallbackChoice",
             "LumeoProviders",
             "LumeoTranslate",
             "LumeoSrtExport",
             "LumeoTTS",
+            "LumeoOpenAITTS",
             "LumeoSonioxSTT",
+            "LumeoGroqSTT",
             "LumeoCaptions",
             "LumeoKyma",
             "LumeoCaptionPipeline",
+            "LumeoCaptionOrchestrator",
+            "LumeoRealtimePipeline",
+            "LumeoStandardPipeline",
           ]) {
             try { delete window[key]; } catch {}
           }
@@ -396,7 +433,10 @@ function startSonioxWebSocket(apiKey, langHints) {
   sonioxWs.onopen = () => {
     sonioxWs.send(JSON.stringify({
       api_key: apiKey,
-      model: "stt-rt-preview",
+      // stt-rt-v4 is the current real-time model. Soniox auto-routes
+      // stt-rt-preview to v4 after 2026-02-28 but we pin the version
+      // explicitly so a future rename fails loudly instead of silent drift.
+      model: "stt-rt-v4",
       audio_format: "pcm_s16le",
       sample_rate: 16000,
       num_channels: 1,
@@ -482,6 +522,11 @@ function handleLegacyCaptionMessage(message, sender, sendResponse) {
       return true;
     case "captionCacheSet":
       writeCaptionCache(message.cache)
+        .then(() => sendResponse({ ok: true }))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
+    case "captionCacheClear":
+      writeCaptionCache({ entries: {}, stats: { bytes: 0, count: 0, clearedAt: Date.now() } })
         .then(() => sendResponse({ ok: true }))
         .catch((err) => sendResponse({ ok: false, error: err.message }));
       return true;
