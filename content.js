@@ -18,6 +18,24 @@
   document.querySelectorAll(".ec-root").forEach((el) => el.remove());
   window[GLOBAL_KEY] = LUMEO_VERSION;
 
+  // ───── Suppress YouTube Polymer insertBefore errors ───────────────────────
+  // YouTube's internal framework (Polymer/lit) uses insertBefore during SPA
+  // navigation. Our DOM mutations can trigger its MutationObservers, which
+  // then throw NotFoundError when reference nodes have been detached. These
+  // errors are harmless but pollute chrome://extensions. Swallow them.
+  window.addEventListener("error", (e) => {
+    if (e.error?.name === "NotFoundError" && e.error?.message?.includes("insertBefore")) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  }, true);
+  window.addEventListener("unhandledrejection", (e) => {
+    const err = e.reason;
+    if (err?.name === "NotFoundError" && err?.message?.includes("insertBefore")) {
+      e.preventDefault();
+    }
+  });
+
   // ───── Constants ──────────────────────────────────────────────────────────
   const SESSION_LIMIT_MS = 60 * 60 * 1000;
   const SESSION_WARNING_MS = 55 * 60 * 1000;
