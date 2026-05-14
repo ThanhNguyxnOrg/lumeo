@@ -41,12 +41,12 @@ jobs:
           test -f "pack.ps1" || { echo "::error::missing pack.ps1"; exit 1; }
           for f in \
             lib/audio-utils.js \
+            lib/browser-api.js \
             lib/token-guard.js \
             ui/overlay.js \
             ui/subtitle-overlay.js \
             ui/voice-picker.js \
             ui/caption-fallback-choice.js \
-            ui/transcript.js \
             services/sniffer.js \
             services/audio-processor.js \
             services/captions.js \
@@ -60,6 +60,7 @@ jobs:
             services/srt-export.js \
             services/kyma-client.js \
             pipelines/caption.js \
+            pipelines/caption-orchestrator.js \
             pipelines/realtime.js \
             pipelines/standard.js; do
             test -f "$f" || { echo "::error::missing $f"; exit 1; }

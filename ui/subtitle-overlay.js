@@ -58,7 +58,13 @@
       overlay.setAttribute("aria-live", "polite");
       overlay.addEventListener("click", handleLookupEvent);
       overlay.addEventListener("keydown", handleLookupEvent);
-      player.appendChild(overlay);
+      try {
+        player.appendChild(overlay);
+      } catch {
+        // YouTube SPA navigation may reconstruct the player mid-insertion;
+        // fall back to documentElement so the overlay still renders.
+        doc.documentElement.appendChild(overlay);
+      }
       return overlay;
     }
 

@@ -143,7 +143,12 @@
         <span class="ec-resize-corner ec-resize-corner-sw" data-ec-resize="sw"></span>
         <span class="ec-resize-corner ec-resize-corner-se" data-ec-resize="se"></span>
       `;
-      doc.documentElement.appendChild(root);
+      try {
+        doc.documentElement.appendChild(root);
+      } catch {
+        // YouTube SPA navigation can cause NotFoundError; retry on body
+        (doc.body || doc.documentElement).appendChild(root);
+      }
       elements = mapElements();
       populateLanguages();
       bindShortcuts();
