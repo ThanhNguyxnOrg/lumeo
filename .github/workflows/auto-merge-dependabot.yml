@@ -53,7 +53,7 @@ jobs:
           fi
 
           # Rule 3: GitHub Actions → always safe
-          if [[ "$PKG_ECOSYSTEM" == "github-actions" ]]; then
+          if [[ "$PKG_ECOSYSTEM" == "github_actions" || "$PKG_ECOSYSTEM" == "github-actions" ]]; then
             SAFE="true"
             echo "reason=github-actions update"
           fi
@@ -74,7 +74,7 @@ jobs:
       - name: Label major production updates for review
         if: steps.strategy.outputs.safe != 'true'
         run: |
-          gh pr edit "$PR_URL" --add-label "major-update,needs-review"
+          gh pr edit "$PR_URL" --add-label "major-update,needs-review" || echo "Labeling failed"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
