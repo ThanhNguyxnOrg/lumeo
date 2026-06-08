@@ -68,7 +68,7 @@ jobs:
           gh pr merge  "$PR_URL" --auto --squash
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
 
       # Flag dangerous updates for human review
       - name: Label major production updates for review
