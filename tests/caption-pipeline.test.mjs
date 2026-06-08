@@ -11,6 +11,7 @@ function cues() {
 
 async function setup({ cache = { entries: {} }, subtitles } = {}) {
   const { window } = await createSandboxWindow();
+  window.Date.now = () => Date.now();
   let storedCache = cache;
   window.chrome = createChromeMock({
     onRuntimeMessage(message) {
@@ -188,7 +189,7 @@ describe("pipelines/caption.js", () => {
     const entries = Object.fromEntries(
       Array.from({ length: 55 }, (_, index) => [
         `old-${index}`,
-        { version: 2, updatedAt: 1_778_000_000_000 - index, cues: [{ text: `old ${index}` }] },
+        { version: 2, updatedAt: Date.now() - 1000 - index, cues: [{ text: `old ${index}` }] },
       ]),
     );
     const { api, getCache } = await setup({
