@@ -1,0 +1,36 @@
+# =============================================================================
+# Auto-rebase all open Dependabot PRs when default branch updates
+# =============================================================================
+# Prevents merge conflicts from piling up — every push to main triggers
+# @dependabot rebase on all open Dependabot PRs.
+# =============================================================================
+
+name: Rebase Dependabot PRs
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rebase all open Dependabot PRs
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          prs=$(gh pr list --repo "${{ github.repository }}" \
+            --author "app/dependabot" --state open --json number --jq '.[].number')
+          if [ -z "$prs" ]; then
+            echo "No open Dependabot PRs to rebase."
+            exit 0
+          fi
+          for pr in $prs; do
+            echo "Rebasing PR #$pr..."
+            gh pr comment "$pr" --repo "${{ github.repository }}" \
+              --body "@dependabot rebase"
+          done

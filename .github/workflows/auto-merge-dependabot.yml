@@ -1,0 +1,80 @@
+name: Auto-merge Dependabot
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Auto-merge safe updates
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+      # ── Strategy ─────────────────────────────────────────────────
+      # Auto-merge when ANY of these is true:
+      #   1. Minor or patch update (any package)
+      #   2. Dev dependency (even major — doesn't ship to users)
+      #   3. GitHub Actions update (any version)
+      # Only require manual review for: major updates to PRODUCTION deps
+
+      - name: Determine merge strategy
+        id: strategy
+        run: |
+          UPDATE_TYPE="${{ steps.metadata.outputs.update-type }}"
+          DEP_TYPE="${{ steps.metadata.outputs.dependency-type }}"
+          PKG_ECOSYSTEM="${{ steps.metadata.outputs.package-ecosystem }}"
+          DIR_NAME="${{ steps.metadata.outputs.dependency-names }}"
+
+          echo "update-type=$UPDATE_TYPE"
+          echo "dep-type=$DEP_TYPE"
+          echo "ecosystem=$PKG_ECOSYSTEM"
+
+          # Default: needs review
+          SAFE="false"
+
+          # Rule 1: minor/patch → always safe
+          if [[ "$UPDATE_TYPE" != "version-update:semver-major" ]]; then
+            SAFE="true"
+            echo "reason=minor/patch update"
+          fi
+
+          # Rule 2: dev dependency → always safe (even major)
+          if [[ "$DEP_TYPE" == "indirect" || "$DEP_TYPE" == "development" ]]; then
+            SAFE="true"
+            echo "reason=dev dependency"
+          fi
+
+          # Rule 3: GitHub Actions → always safe
+          if [[ "$PKG_ECOSYSTEM" == "github-actions" ]]; then
+            SAFE="true"
+            echo "reason=github-actions update"
+          fi
+
+          echo "safe=$SAFE" >> "$GITHUB_OUTPUT"
+
+      # Auto-approve + merge safe updates
+      - name: Auto-merge safe updates
+        if: steps.strategy.outputs.safe == 'true'
+        run: |
+          gh pr review "$PR_URL" --approve
+          gh pr merge  "$PR_URL" --auto --squash
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Flag dangerous updates for human review
+      - name: Label major production updates for review
+        if: steps.strategy.outputs.safe != 'true'
+        run: |
+          gh pr edit "$PR_URL" --add-label "major-update,needs-review"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
