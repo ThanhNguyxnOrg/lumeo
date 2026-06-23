@@ -61,6 +61,14 @@ jobs:
           echo "safe=$SAFE" >> "$GITHUB_OUTPUT"
 
       # Auto-approve + merge safe updates
+      - name: Generate GitHub App Token
+        if: steps.strategy.outputs.safe == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+
       - name: Auto-merge safe updates
         if: steps.strategy.outputs.safe == 'true'
         run: |
@@ -68,7 +76,7 @@ jobs:
           gh pr merge  "$PR_URL" --auto --squash
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       # Flag dangerous updates for human review
       - name: Label major production updates for review
