@@ -19,16 +19,9 @@ jobs:
   rebase:
     runs-on: ubuntu-latest
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.BOT_APP_ID }}
-          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
-
       - name: Rebase all open Dependabot PRs
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           prs=$(gh pr list --repo "${{ github.repository }}" \
             --author "app/dependabot" --state open --json number --jq '.[].number')
