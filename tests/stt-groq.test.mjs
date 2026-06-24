@@ -17,7 +17,7 @@ describe("services/stt-groq.js", () => {
 
   it("builds a Groq transcription request and normalizes the response", async () => {
     const append = vi.fn();
-    window.FormData = vi.fn(() => ({ append }));
+    window.FormData = vi.fn(function() { return { append }; });
     window.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ text: " hello world ", language: "en", segments: [{ start: 0 }] }),
@@ -46,7 +46,7 @@ describe("services/stt-groq.js", () => {
   });
 
   it("throws concise API errors", async () => {
-    window.FormData = vi.fn(() => ({ append: vi.fn() }));
+    window.FormData = vi.fn(function() { return { append: vi.fn() }; });
     window.fetch = vi.fn(async () => ({
       ok: false,
       status: 429,

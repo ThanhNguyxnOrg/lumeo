@@ -111,7 +111,7 @@ describe("pipelines/standard.js", () => {
       kymaBase: "https://kyma.test/v1",
       audioUtils: { webmBlobToWav: vi.fn(async () => new Blob(["wav"])) },
       fetch,
-      FormData: vi.fn(() => formData),
+      FormData: vi.fn(function() { return formData; }),
       parseKymaError: vi.fn(),
       ...callbacks,
     });
