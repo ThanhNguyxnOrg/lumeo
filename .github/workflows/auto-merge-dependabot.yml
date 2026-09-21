@@ -73,7 +73,8 @@ jobs:
         if: steps.strategy.outputs.safe == 'true'
         run: |
           gh pr review "$PR_URL" --approve
-          gh pr merge  "$PR_URL" --auto --squash
+          BODY=$(printf "🤖 Verified and auto-merged by ThanhNguyxnAgent\n\nCo-authored-by: ThanhNguyxnAgent[bot] <4125740+thanhnguyxnagent[bot]@users.noreply.github.com>\nSigned-off-by: ThanhNguyxnAgent[bot] <4125740+thanhnguyxnagent[bot]@users.noreply.github.com>")
+          gh pr merge "$PR_URL" --auto --squash --body "$BODY"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
