@@ -47,7 +47,7 @@ jobs:
           fi
 
           # Rule 2: dev dependency → always safe (even major)
-          if [[ "$DEP_TYPE" == "indirect" || "$DEP_TYPE" == "development" ]]; then
+          if [[ "$DEP_TYPE" == "indirect" || "$DEP_TYPE" == "direct:development" || "$DEP_TYPE" == *"development"* ]]; then
             SAFE="true"
             echo "reason=dev dependency"
           fi
