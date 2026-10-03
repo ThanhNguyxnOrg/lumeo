@@ -13,6 +13,8 @@
 // it with Caption-tier scaffolding for the v2.0 merge.
 
 import "./lib/browser-api.js";
+import "./services/providers.js";
+import "./services/translate.js";
 
 const browserApi = globalThis.LumeoBrowserApi;
 
@@ -71,7 +73,7 @@ const state = {
 
 // Restrict storage access so rogue page scripts on youtube.com cannot read
 // the user's Kyma key. Sticky, no retry needed.
-browserApi.setStorageAccessLevel("TRUSTED_CONTEXTS").catch(() => {});
+browserApi.setStorageAccessLevel("TRUSTED_CONTEXTS").catch(() => { });
 
 let lastBroadcastAt = 0;
 const BROADCAST_DEBOUNCE_MS = 50;
@@ -82,18 +84,73 @@ function snapshot() {
   return { ...state };
 }
 
+const SENSITIVE_KEY_FIELDS = [
+  "openaiKey", "geminiKey", "openRouterKey", "groqApiKey",
+  "huggingFaceToken", "googleCloudKey", "libreTranslateKey",
+  "sonioxApiKey", "elevenLabsKey", "minimaxKey", "replicateKey",
+  "kymaKey"
+];
+
+function pruneSettingsForContent(fullSettings) {
+  const safe = { ...fullSettings };
+  const providerRegistry = globalThis.LumeoProviders;
+  const neededKeys = new Set();
+
+  if (providerRegistry) {
+    const tier = safe.tier || "caption";
+    for (const slot of providerRegistry.slotsForMode(tier)) {
+      const provider = providerRegistry.selectedProviderForSlot(slot.id, safe);
+      if (provider) {
+        for (const kf of providerRegistry.keyFieldsForProvider(provider.id)) {
+          neededKeys.add(kf);
+        }
+      }
+    }
+  } else {
+    if (safe.tier === "standard" || safe.tier === "realtime") neededKeys.add("kymaKey");
+    if (safe.translateProvider === "openai" || safe.captionTtsProvider === "openai-tts") neededKeys.add("openaiKey");
+    if (safe.translateProvider === "gemini") neededKeys.add("geminiKey");
+    if (safe.translateProvider === "groq" || safe.sttProvider === "groq-whisper") neededKeys.add("groqApiKey");
+    if (safe.translateProvider === "openrouter") neededKeys.add("openRouterKey");
+    if (safe.captionTtsProvider === "google-cloud") neededKeys.add("googleCloudKey");
+  }
+
+  for (const k of SENSITIVE_KEY_FIELDS) {
+    if (!neededKeys.has(k)) {
+      safe[k] = "";
+    }
+  }
+  return safe;
+}
+
+globalThis.LumeoBackground = {
+  pruneSettingsForContent,
+};
+
+
 function broadcastToPopup() {
   // Debounce: 1 broadcast per 50 ms. Popup re-renders are cheap but spamming
   // is wasteful while volume sliders drag.
   const now = Date.now();
   if (now - lastBroadcastAt < BROADCAST_DEBOUNCE_MS) return;
   lastBroadcastAt = now;
-  browserApi.sendRuntimeMessage({ type: "BACKGROUND_STATE_UPDATE", state: snapshot() }).catch(() => {});
+  browserApi.sendRuntimeMessage({ type: "BACKGROUND_STATE_UPDATE", state: snapshot() }).catch(() => { });
 }
 
-async function relayToContent(tabId, message) {
+async function relayToContent(tabId, message, retries = 3) {
   if (!tabId) throw new Error("No active tab to relay to.");
-  return browserApi.sendTabMessage(tabId, message);
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await browserApi.sendTabMessage(tabId, message);
+    } catch (err) {
+      const isTransient = /message port closed|could not establish connection|receiving end does not exist/i.test(err?.message || "");
+      if (isTransient && attempt < retries - 1) {
+        await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 async function fetchText(url) {
@@ -120,18 +177,32 @@ function isYouTubeUrl(url) {
 }
 
 async function activeYouTubeTab() {
-  const [tab] = await browserApi.queryTabs({ active: true, currentWindow: true });
-  if (!tab) throw new Error("No active tab.");
-  if (!isYouTubeUrl(tab.url)) throw new Error("Open a YouTube video first.");
-  return tab;
+  const [currentTab] = await browserApi.queryTabs({ active: true, currentWindow: true });
+  if (currentTab && isYouTubeUrl(currentTab.url)) return currentTab;
+
+  try {
+    const [focusedTab] = await browserApi.queryTabs({ active: true, lastFocusedWindow: true });
+    if (focusedTab && isYouTubeUrl(focusedTab.url)) return focusedTab;
+  } catch {}
+
+  try {
+    const ytTabs = await browserApi.queryTabs({ url: ["*://*.youtube.com/*", "*://youtube.com/*"] });
+    const activeYt = ytTabs.find((t) => t.active) || ytTabs[0];
+    if (activeYt) return activeYt;
+  } catch {}
+
+  if (!currentTab) throw new Error("No active tab.");
+  throw new Error("Open a YouTube video first.");
 }
 
 const CONTENT_SCRIPT_FILES = [
   "lib/browser-api.js",
+  "lib/platform-adapters.js",
   "lib/token-guard.js",
   "lib/audio-utils.js",
   "ui/overlay.js",
   "ui/subtitle-overlay.js",
+  "ui/transcript.js",
   "ui/voice-picker.js",
   "ui/caption-fallback-choice.js",
   "services/providers.js",
@@ -147,9 +218,10 @@ const CONTENT_SCRIPT_FILES = [
   "pipelines/caption-orchestrator.js",
   "pipelines/realtime.js",
   "pipelines/standard.js",
+  "services/session-manager.js",
   "content.js",
 ];
-const EXPECTED_CONTENT_VERSION = "1.0.0";
+const EXPECTED_CONTENT_VERSION = chrome.runtime.getManifest()?.version || "2.0.0";
 const CAPTION_CACHE_KEY = "lumeoCaptionCacheV1";
 
 async function readCaptionCache() {
@@ -170,25 +242,27 @@ async function ensureContentScript(tabId) {
   try {
     const reply = await chrome.tabs.sendMessage(tabId, { type: "CONTENT_PING" });
     if (reply?.ok &&
-        reply.version === EXPECTED_CONTENT_VERSION &&
-        reply.browserApi &&
-        reply.captionPipeline &&
-        reply.realtimePipeline &&
-        reply.standardPipeline &&
-        reply.translateService &&
-        reply.captionService &&
-        reply.kymaService &&
-        reply.srtService &&
-        reply.ttsService &&
-        reply.sonioxService &&
-        reply.audioUtils &&
-        reply.tokenGuard &&
-        reply.groqService &&
-        reply.openaiTts &&
-        reply.overlayModule &&
-        reply.subtitleOverlayModule &&
-        reply.captionFallbackChoice &&
-        reply.captionOrchestrator) {
+      reply.version === EXPECTED_CONTENT_VERSION &&
+      reply.browserApi &&
+      reply.platformAdapters &&
+      reply.captionPipeline &&
+      reply.realtimePipeline &&
+      reply.standardPipeline &&
+      reply.translateService &&
+      reply.captionService &&
+      reply.kymaService &&
+      reply.srtService &&
+      reply.ttsService &&
+      reply.sonioxService &&
+      reply.audioUtils &&
+      reply.tokenGuard &&
+      reply.groqService &&
+      reply.openaiTts &&
+      reply.overlayModule &&
+      reply.subtitleOverlayModule &&
+      reply.captionFallbackChoice &&
+      reply.captionOrchestrator &&
+      reply.sessionManager) {
       return;
     }
     shouldReset = !!reply?.ok;
@@ -223,7 +297,7 @@ async function ensureContentScript(tabId) {
             "LumeoRealtimePipeline",
             "LumeoStandardPipeline",
           ]) {
-            try { delete window[key]; } catch {}
+            try { delete window[key]; } catch { }
           }
           document.querySelectorAll(".ec-root").forEach((el) => el.remove());
         },
@@ -289,7 +363,7 @@ async function handleStart(settings) {
     await ensureContentScript(tab.id);
     const reply = await relayToContent(tab.id, {
       type: "CONTENT_START",
-      settings: snapshot(),
+      settings: pruneSettingsForContent(snapshot()),
     });
     if (!reply?.ok) {
       state.connecting = false;
@@ -363,7 +437,7 @@ async function handleUpdateSettings(settings) {
     try {
       const reply = await relayToContent(state.tabId, {
         type: "CONTENT_UPDATE_SETTINGS",
-        settings: snapshot(),
+        settings: pruneSettingsForContent(snapshot()),
       });
       if (reply?.state) Object.assign(state, reply.state);
     } catch (err) {
@@ -380,7 +454,7 @@ async function handleUpdateVolume(originalVolume, voiceVolume) {
   // Persist debounced — slider drag fires many times.
   chrome.storage.local
     .set({ originalVolume: state.originalVolume, voiceVolume: state.voiceVolume })
-    .catch(() => {});
+    .catch(() => { });
   if (state.tabId) {
     try {
       await relayToContent(state.tabId, {
@@ -413,7 +487,7 @@ function handleContentEvent(message) {
   if (message.type === "OPEN_POPUP_TO_SLOT") {
     chrome.runtime
       .sendMessage({ type: "OPEN_POPUP_TO_SLOT", slot: message.slot || message.provider || "" })
-      .catch(() => {});
+      .catch(() => { });
   }
   if (message.type === "CONTENT_ENDED") {
     state.running = false;
@@ -481,12 +555,12 @@ function closeSonioxWebSocket() {
   } catch {
     // Best-effort flush before closing.
   }
-  try { sonioxWs.close(); } catch {}
+  try { sonioxWs.close(); } catch { }
   sonioxWs = null;
 }
 
 function forwardToSonioxTab(msg) {
-  if (sonioxTabId) chrome.tabs.sendMessage(sonioxTabId, msg).catch(() => {});
+  if (sonioxTabId) chrome.tabs.sendMessage(sonioxTabId, msg).catch(() => { });
 }
 
 function handleLegacyCaptionMessage(message, sender, sendResponse) {
@@ -535,13 +609,107 @@ function handleLegacyCaptionMessage(message, sender, sendResponse) {
   }
 }
 
+const aiExplanationCache = new Map();
+const MAX_AI_CACHE_SIZE = 250;
+
+async function handleExplainWordContext(message) {
+  await loadSettings();
+
+  const word = String(message?.word || "").trim();
+  const sentence = String(message?.sentence || "").trim();
+  const targetLanguage = message?.targetLanguage || state.targetLanguage || "en";
+
+  if (!word) {
+    return { ok: false, error: "No word provided." };
+  }
+
+  let provider = message?.provider;
+  if (!provider) {
+    if (["gemini", "groq", "openai", "openrouter"].includes(state.translateProvider)) {
+      provider = state.translateProvider;
+    } else if (state.geminiKey) {
+      provider = "gemini";
+    } else if (state.groqApiKey) {
+      provider = "groq";
+    } else if (state.openaiKey) {
+      provider = "openai";
+    } else if (state.openRouterKey) {
+      provider = "openrouter";
+    } else {
+      provider = "google-free";
+    }
+  }
+
+  const cacheKey = `${provider}::${targetLanguage}::${word.toLowerCase()}::${sentence}`;
+  if (aiExplanationCache.has(cacheKey)) {
+    return { ok: true, data: aiExplanationCache.get(cacheKey) };
+  }
+
+  const options = {
+    provider,
+    geminiKey: state.geminiKey,
+    geminiModel: state.geminiModel,
+    groqApiKey: state.groqApiKey,
+    groqModel: state.groqModel,
+    openaiKey: state.openaiKey,
+    openaiModel: state.openaiModel,
+    openRouterKey: state.openRouterKey,
+    openRouterModel: state.openRouterModel,
+  };
+
+  try {
+    const translateApi = globalThis.LumeoTranslate;
+    if (!translateApi?.explainWordInContext) {
+      throw new Error("Translation service is unavailable.");
+    }
+    const result = await translateApi.explainWordInContext(word, sentence, targetLanguage, options);
+    result.provider = provider;
+
+    if (aiExplanationCache.size >= MAX_AI_CACHE_SIZE) {
+      aiExplanationCache.delete(aiExplanationCache.keys().next().value);
+    }
+    aiExplanationCache.set(cacheKey, result);
+
+    return { ok: true, data: result };
+  } catch (err) {
+    if (provider !== "google-free") {
+      try {
+        const fallbackResult = await globalThis.LumeoTranslate?.explainWordInContext(word, sentence, targetLanguage, { provider: "google-free" });
+        if (fallbackResult) {
+          fallbackResult.provider = "google-free (fallback)";
+          return { ok: true, data: fallbackResult, warning: err?.message };
+        }
+      } catch { }
+    }
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
 // Popup → background → content router.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const legacyHandled = handleLegacyCaptionMessage(message, sender, sendResponse);
   if (legacyHandled !== null) return legacyHandled;
 
-  // Content-originated messages (have sender.tab).
-  if (sender.tab) {
+  if (message?.type === "EXPLAIN_WORD_CONTEXT") {
+    handleExplainWordContext(message)
+      .then((res) => sendResponse(res))
+      .catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
+    return true;
+  }
+
+  if (message?.type === "OPEN_OPTIONS_PAGE") {
+    if (typeof chrome !== "undefined" && chrome.runtime?.openOptionsPage) {
+      chrome.runtime.openOptionsPage();
+    } else if (typeof chrome !== "undefined" && chrome.tabs?.create) {
+      chrome.tabs.create({ url: chrome.runtime.getURL("options.html") });
+    }
+    sendResponse?.({ ok: true });
+    return false;
+  }
+
+  // Content-originated messages (have sender.tab from non-extension origin).
+  const isExtensionOrigin = !!(sender.url && sender.url.startsWith(chrome.runtime.getURL("")));
+  if (sender.tab && !isExtensionOrigin) {
     handleContentEvent(message);
     sendResponse?.({ ok: true });
     return false;
@@ -580,7 +748,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "OPEN_POPUP_TO_SLOT":
           chrome.runtime
             .sendMessage({ type: "OPEN_POPUP_TO_SLOT", slot: message.slot || message.provider || "" })
-            .catch(() => {});
+            .catch(() => { });
           sendResponse({ ok: true });
           break;
         default:
@@ -605,10 +773,23 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (tabId !== state.tabId) return;
-  if (!changeInfo.url) return;
-  // YT is a SPA; URL change happens for /watch?v= switches too.
   // Stop on any URL change so the new video starts clean.
   void handleStop();
 });
 
+chrome.action?.onClicked?.addListener(async (tab) => {
+  if (tab?.id && tab.url && (tab.url.includes("youtube.com/watch") || tab.url.includes("youtube.com/shorts"))) {
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_OVERLAY" });
+      return;
+    } catch {}
+  }
+  if (chrome.runtime.openOptionsPage) {
+    chrome.runtime.openOptionsPage();
+  } else if (chrome.tabs?.create) {
+    chrome.tabs.create({ url: chrome.runtime.getURL("options.html") });
+  }
+});
+
 void loadSettings();
+

@@ -34,4 +34,9 @@ describe("background content script injection", () => {
       expect(background).toContain(`reply.${key}`);
     }
   });
+
+  it("declares Alt+L keyboard shortcut command for toggling in player", () => {
+    const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
+    expect(manifest.commands?._execute_action?.suggested_key?.default).toBe("Alt+L");
+  });
 });
