@@ -341,7 +341,7 @@ async function persistSettings(partial) {
 
 async function handleStart(settings, explicitTab = null) {
   if (state.running || state.connecting) {
-    return { ok: false, error: "Session already running." };
+    return { ok: true, alreadyRunning: true, state: snapshot() };
   }
   await persistSettings(settings || {});
   let tab = explicitTab;

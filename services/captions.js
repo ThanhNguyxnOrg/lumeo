@@ -226,14 +226,49 @@
       .filter((cue) => Number.isFinite(cue.start) && cue.text);
   }
 
+  function mergeFragmentedCues(cues) {
+    if (!Array.isArray(cues) || cues.length === 0) return [];
+    const merged = [];
+    let current = null;
+
+    for (const cue of cues) {
+      if (!current) {
+        current = { ...cue, end: Math.max(cue.end, cue.start + 1.0) };
+        continue;
+      }
+
+      const silenceGap = cue.start - current.end;
+      const endsWithPunctuation = /[.!?…]["']?$/.test(current.text.trim());
+      const isTooLong = (current.text.length + cue.text.length) > 120;
+      const isLongDuration = (cue.end - current.start) > 7.0;
+
+      if (!endsWithPunctuation && silenceGap < 0.6 && !isTooLong && !isLongDuration) {
+        current.text = `${current.text} ${cue.text}`.replace(/\s+/g, " ").trim();
+        current.end = Math.max(current.end, Math.max(cue.end, cue.start + 1.0));
+      } else {
+        merged.push(current);
+        current = { ...cue, end: Math.max(cue.end, cue.start + 1.0) };
+      }
+    }
+
+    if (current) {
+      merged.push(current);
+    }
+
+    return merged;
+  }
+
   function parseSubtitleText(text) {
     const raw = String(text || "").trim();
     if (!raw) return [];
+    let cues = [];
     if (raw.startsWith("{") || raw.startsWith("[")) {
-      const cues = parseSubtitleJson3(raw);
-      if (cues.length) return cues;
+      cues = parseSubtitleJson3(raw);
     }
-    return parseSubtitleXml(raw);
+    if (!cues.length) {
+      cues = parseSubtitleXml(raw);
+    }
+    return mergeFragmentedCues(cues);
   }
 
   function parseTimestamp(label) {
@@ -999,6 +1034,7 @@
     parseSubtitleXml,
     parseSubtitleJson3,
     parseSubtitleText,
+    mergeFragmentedCues,
     readCaptionTracksFromInnertube,
     fetchSubtitles,
     fetchViaTranscriptPanel,

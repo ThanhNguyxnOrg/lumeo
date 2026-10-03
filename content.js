@@ -26,14 +26,70 @@
   const RTL_LANGS = new Set(["ar", "fa", "he", "ur"]);
 
   const LANGUAGES = [
-    ["vi", "Vietnamese"], ["en", "English"], ["ja", "Japanese"],
-    ["ko", "Korean"], ["zh", "Chinese"], ["fr", "French"],
-    ["es", "Spanish"], ["de", "German"], ["pt", "Portuguese"],
-    ["hi", "Hindi"], ["id", "Indonesian"], ["it", "Italian"],
-    ["ru", "Russian"],
+    // Popular & Recommended
+    ["vi", "Vietnamese (Tiếng Việt)"],
+    ["en", "English"],
+    ["ja", "Japanese (日本語)"],
+    ["ko", "Korean (한국어)"],
+    ["zh", "Chinese (中文)"],
+    ["es", "Spanish (Español)"],
+    ["fr", "French (Français)"],
+    ["de", "German (Deutsch)"],
+    // Alphabetical Index
+    ["ar", "Arabic (العربية)"],
+    ["bn", "Bengali (বাংলা)"],
+    ["cs", "Czech (Čeština)"],
+    ["da", "Danish (Dansk)"],
+    ["nl", "Dutch (Nederlands)"],
+    ["el", "Greek (Ελληνικά)"],
+    ["he", "Hebrew (עברית)"],
+    ["hi", "Hindi (हिन्दी)"],
+    ["hu", "Hungarian (Magyar)"],
+    ["id", "Indonesian (Bahasa Indonesia)"],
+    ["it", "Italian (Italiano)"],
+    ["ms", "Malay (Bahasa Melayu)"],
+    ["no", "Norwegian (Norsk)"],
+    ["fa", "Persian (فارسی)"],
+    ["pl", "Polish (Polski)"],
+    ["pt", "Portuguese (Português)"],
+    ["ro", "Romanian (Română)"],
+    ["ru", "Russian (Русский)"],
+    ["sv", "Swedish (Svenska)"],
+    ["th", "Thai (ไทย)"],
+    ["tr", "Turkish (Türkçe)"],
+    ["uk", "Ukrainian (Українська)"],
+    ["ur", "Urdu (اردو)"],
   ];
   const LANG_NAME = Object.fromEntries(LANGUAGES);
   const browserApi = window.LumeoBrowserApi;
+
+  const SMART_VOICE_PREFERENCES = {
+    vi: ["Microsoft HoaiMy Online (Natural) - Vietnamese (Vietnam)", "Google tiếng Việt", "Microsoft NamMinh Online (Natural)"],
+    en: ["Microsoft Jenny Online (Natural) - English (United States)", "Google US English", "Microsoft Guy Online (Natural)", "Samantha"],
+    ja: ["Microsoft Nanami Online (Natural) - Japanese (Japan)", "Google 日本語", "Microsoft Keita Online (Natural)", "Kyoko"],
+    ko: ["Microsoft SunHi Online (Natural) - Korean (Korea)", "Google 한국의", "Microsoft InJoon Online (Natural)", "Yuna"],
+    zh: ["Microsoft Xiaoxiao Online (Natural) - Chinese (Mainland)", "Google 普通话 (中国大陆)", "Microsoft Yunxi Online (Natural)"],
+    es: ["Microsoft Elvira Online (Natural) - Spanish (Spain)", "Google español", "Microsoft Alvaro Online (Natural)"],
+    fr: ["Microsoft Denise Online (Natural) - French (France)", "Google français", "Microsoft Henri Online (Natural)"],
+    de: ["Microsoft Katja Online (Natural) - German (Germany)", "Google Deutsch", "Microsoft Conrad Online (Natural)"],
+    ru: ["Microsoft Svetlana Online (Natural) - Russian (Russia)", "Google русский", "Microsoft Dmitri Online (Natural)"],
+    pt: ["Microsoft Francisca Online (Natural) - Portuguese (Brazil)", "Google português do Brasil"],
+    it: ["Microsoft Elsa Online (Natural) - Italian (Italy)", "Google italiano"],
+  };
+
+  function autoPairVoiceForLanguage(langCode) {
+    if (typeof window === "undefined" || !window.speechSynthesis) return null;
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices || voices.length === 0) return null;
+    const prefs = SMART_VOICE_PREFERENCES[langCode] || [];
+    for (const prefName of prefs) {
+      const match = voices.find((v) => v.name.includes(prefName) || prefName.includes(v.name));
+      if (match) return match.name;
+    }
+    const langMatch = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith(langCode.toLowerCase()));
+    if (langMatch) return langMatch.name;
+    return null;
+  }
 
   function getYouTubeVideoId() {
     if (window.LumeoPlatformAdapters) {
@@ -83,26 +139,52 @@
     languages: LANGUAGES,
     collapsedOnStart: false,
     onButtonClick: () => {
-      buildOverlay();
+      ensureOverlayBuilt();
       const open = overlayController.isOpen?.();
       overlayController.toggleSideCollapsed(open);
     },
     onStartSession: async () => {
-      overlayController?.setSessionState?.({ isTranslating: true });
-      const stored = await browserApi.sendRuntimeMessage({ type: "GET_STATE" }).catch(() => null);
-      const currentSettings = stored?.state || settings || { tier: "caption", targetLanguage: "vi", translateProvider: "google-free" };
-      settings = currentSettings;
-      LumeoSessionManager.setSettings(currentSettings);
-      if (!LumeoSessionManager.getSession()) {
-        await LumeoSessionManager.startSession(currentSettings).catch(() => {});
-      }
-      browserApi.sendRuntimeMessage({ type: "START", settings: currentSettings }).catch(() => {});
+      await handleStartSession();
     },
     onStopSession: () => {
-      overlayController?.setSessionState?.({ isTranslating: false });
-      LumeoSessionManager.stopSession("user-stop");
-      notifyBackground({ type: "CONTENT_STATE", running: false, status: "Stopped" });
-      emitEnded("Stopped");
+      handleStopSession();
+    },
+    onLanguageChange: (newLang) => {
+      handleLanguageChange(newLang);
+    },
+    onVoiceChange: (newVoice) => {
+      handleVoiceChange(newVoice);
+    },
+    onLayoutChange: (preset) => {
+      applyLayoutPreset(preset);
+      saveCaptionStyle();
+      applyCaptionStyle();
+    },
+    onFontSizeChange: (size) => {
+      captionStyle.fontSize = size;
+      saveCaptionStyle();
+      applyCaptionStyle();
+    },
+    onOpacityChange: (opacity) => {
+      captionStyle.subBackgroundOpacity = opacity;
+      saveCaptionStyle();
+      applyCaptionStyle();
+    },
+    onShadowStyleChange: (shadow) => {
+      captionStyle.subShadowStyle = shadow;
+      saveCaptionStyle();
+      applyCaptionStyle();
+    },
+    onSubtitleOrderChange: (order) => {
+      captionStyle.subtitleOrder = order;
+      saveCaptionStyle();
+      applyCaptionStyle();
+    },
+    onResetPosition: () => {
+      subtitleOverlay?.applyStyle(captionStyle);
+    },
+    onToggleTranscript: () => {
+      transcriptController?.toggle();
     },
   });
   overlayController?.ensureYouTubeControlButton?.();
@@ -216,48 +298,97 @@
     if (video) video.muted = !!captionStyle.muteOriginal;
   }
 
-  function buildOverlay() {
-    if (root) return;
-    if (!overlayController) throw new Error("LumeoOverlay module not loaded");
+  async function handleStartSession() {
+    overlayController?.setSessionState?.({ isTranslating: true });
+    const stored = await browserApi.sendRuntimeMessage({ type: "GET_STATE" }).catch(() => null);
+    const currentSettings = stored?.state || settings || { tier: "caption", targetLanguage: "vi", translateProvider: "google-free" };
+    settings = currentSettings;
+    LumeoSessionManager.setSettings(currentSettings);
+    if (!LumeoSessionManager.getSession()) {
+      await LumeoSessionManager.startSession(currentSettings).catch(() => {});
+    }
+    browserApi.sendRuntimeMessage({ type: "START", settings: currentSettings }).catch(() => {});
+  }
+
+  function handleStopSession() {
+    overlayController?.setSessionState?.({ isTranslating: false });
+    LumeoSessionManager.stopSession("user-stop");
+    notifyBackground({ type: "CONTENT_STATE", running: false, status: "Stopped" });
+    emitEnded("Stopped");
+  }
+
+  function handleLanguageChange(newLang) {
+    if (!newLang) return;
+    settings = { ...(settings || {}), targetLanguage: newLang };
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        chrome.storage.local.set({ targetLanguage: newLang });
+      }
+    } catch {}
+    notifyBackground({ type: "UPDATE_SETTINGS", settings: { targetLanguage: newLang } });
+    LumeoSessionManager.setSettings(settings);
+
+    // Smart auto-pair neural voice for chosen target language
+    const pairedVoice = autoPairVoiceForLanguage(newLang);
+    if (pairedVoice) {
+      handleVoiceChange(pairedVoice);
+    }
+
+    // In-place reactive handover without stopping active video playback (Decision 14)
+    if (settings.tier === "caption" && lastDisplayedCue && lastDisplayedCue.text) {
+      const activeSession = LumeoSessionManager.getSession();
+      if (activeSession && typeof activeSession.translateText === "function") {
+        activeSession.translateText(lastDisplayedCue.text, newLang).then((translated) => {
+          if (translated) {
+            setTargetCue({ ...lastDisplayedCue, translated });
+          }
+        }).catch(() => {});
+      }
+    } else if (settings.tier === "standard") {
+      setStatusText("Switching to " + (LANG_NAME[newLang] || newLang));
+      setOverlayState("live");
+    } else {
+      LumeoSessionManager.requestHandover({ targetLanguage: newLang });
+    }
+  }
+
+  function handleVoiceChange(newVoice) {
+    if (!newVoice) return;
+    if (settings?.tier === "caption") {
+      settings.captionTtsProvider = newVoice;
+      notifyBackground({ type: "UPDATE_SETTINGS", settings: { captionTtsProvider: newVoice } });
+    } else if (settings?.tier === "standard") {
+      settings.standardVoice = newVoice;
+      notifyBackground({ type: "UPDATE_SETTINGS", settings: { standardVoice: newVoice } });
+    } else {
+      LumeoSessionManager.requestHandover({ realtimeVoice: newVoice });
+    }
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        chrome.storage.local.set({ voice: newVoice, standardVoice: newVoice });
+      }
+    } catch {}
+  }
+
+  function ensureOverlayBuilt() {
+    if (root) return root;
+    if (!overlayController) return null;
     root = overlayController.build();
     elements = overlayController.getElements();
 
-    populateVoicePicker(settings?.tier || "realtime");
-    elements.langSelect.value = settings?.targetLanguage || "vi";
+    populateVoicePicker(settings?.tier || "caption");
+    if (elements.langSelect) elements.langSelect.value = settings?.targetLanguage || "vi";
 
-    elements.langSelect.addEventListener("change", () => {
-      const newLang = elements.langSelect.value;
-      if (settings?.tier === "caption") {
-        settings.targetLanguage = newLang;
-        notifyBackground({ type: "UPDATE_SETTINGS", settings: { targetLanguage: newLang } });
-        showToast("Stop and restart translation to apply the new target language", 5000);
-      } else if (settings?.tier === "standard") {
-        settings.targetLanguage = newLang;
-        notifyBackground({ type: "UPDATE_SETTINGS", settings: { targetLanguage: newLang } });
-        setStatusText("Switching to " + (LANG_NAME[newLang] || newLang));
-        setOverlayState("live");
-      } else {
-        LumeoSessionManager.requestHandover({ targetLanguage: newLang });
-      }
+    elements.langSelect?.addEventListener("change", () => {
+      handleLanguageChange(elements.langSelect.value);
     });
 
-    elements.voiceSelect.addEventListener("change", () => {
-      const newVoice = elements.voiceSelect.value;
-      if (settings?.tier === "caption") {
-        settings.captionTtsProvider = newVoice;
-        notifyBackground({ type: "UPDATE_SETTINGS", settings: { captionTtsProvider: newVoice } });
-      } else if (settings?.tier === "standard") {
-        settings.standardVoice = newVoice;
-        notifyBackground({ type: "UPDATE_SETTINGS", settings: { standardVoice: newVoice } });
-      } else {
-        LumeoSessionManager.requestHandover({ realtimeVoice: newVoice });
-      }
+    elements.voiceSelect?.addEventListener("change", () => {
+      handleVoiceChange(elements.voiceSelect.value);
     });
 
-    elements.stopBtn.addEventListener("click", () => {
-      LumeoSessionManager.stopSession("user-stop");
-      notifyBackground({ type: "CONTENT_STATE", running: false, status: "Stopped" });
-      emitEnded("Stopped");
+    elements.stopBtn?.addEventListener("click", () => {
+      handleStopSession();
     });
 
     elements.pipBtn?.addEventListener("click", async () => {
@@ -360,7 +491,10 @@
     }
     overlayController.syncCaptionControls(captionStyle);
     applyCaptionStyle();
+    return root;
   }
+
+  const buildOverlay = ensureOverlayBuilt;
 
   function applyTierToolbar() {
     if (elements.exportBtn) elements.exportBtn.hidden = !LumeoSessionManager.getSession();
@@ -396,6 +530,61 @@
     }
   }
 
+  let wasPlayingBeforeHover = false;
+  function bindAutoPauseOnHover() {
+    const subEl = subtitleOverlay?.getElement?.();
+    if (!subEl || subEl.dataset.lumeoHoverPause) return;
+    subEl.dataset.lumeoHoverPause = "true";
+    subEl.addEventListener("mouseenter", () => {
+      if (!settings?.autoPauseOnHover) return;
+      const video = LumeoSessionManager.getVideoEl() || document.querySelector("video.html5-main-video") || document.querySelector("video");
+      if (video && !video.paused) {
+        wasPlayingBeforeHover = true;
+        video.pause();
+      }
+    });
+    subEl.addEventListener("mouseleave", () => {
+      if (!settings?.autoPauseOnHover) return;
+      if (wasPlayingBeforeHover) {
+        wasPlayingBeforeHover = false;
+        const video = LumeoSessionManager.getVideoEl() || document.querySelector("video.html5-main-video") || document.querySelector("video");
+        if (video && video.paused) {
+          video.play().catch(() => {});
+        }
+      }
+    });
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if (!settings?.navHotkeys) return;
+    const target = e.target;
+    if (target) {
+      const tag = target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) {
+        return;
+      }
+    }
+    const video = LumeoSessionManager.getVideoEl() || document.querySelector("video.html5-main-video") || document.querySelector("video");
+    if (!video) return;
+
+    if (e.code === "KeyA" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      const targetTime = lastDisplayedCue?.start != null ? Math.max(0, lastDisplayedCue.start - 0.1) : Math.max(0, video.currentTime - 5);
+      video.currentTime = targetTime;
+      showToast("⏪ Prev Cue", 1500);
+    } else if (e.code === "KeyS" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      const targetTime = lastDisplayedCue?.start != null ? lastDisplayedCue.start : Math.max(0, video.currentTime - 2);
+      video.currentTime = targetTime;
+      showToast("🔄 Replay Cue", 1500);
+    } else if (e.code === "KeyD" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      const targetTime = lastDisplayedCue?.end != null ? lastDisplayedCue.end + 0.1 : video.currentTime + 5;
+      video.currentTime = targetTime;
+      showToast("⏩ Next Cue", 1500);
+    }
+  });
+
   function setTargetCue(cue) {
     lastDisplayedCue = cue || null;
     if (elements.target) {
@@ -422,6 +611,7 @@
       targetLanguage: settings?.targetLanguage,
       rtlLangs: RTL_LANGS,
     });
+    bindAutoPauseOnHover();
   }
 
   function showToast(text, opts, durationMs) {
@@ -572,6 +762,10 @@
             });
             break;
           case "CONTENT_START":
+            if (LumeoSessionManager.getSession()) {
+              sendResponse({ ok: true, alreadyRunning: true });
+              break;
+            }
             settings = { ...(msg.settings || {}) };
             LumeoSessionManager.setSettings(settings);
             overlayController?.setSessionState?.({ isTranslating: true });
@@ -596,7 +790,7 @@
             sendResponse({ ok: true });
             break;
           case "TOGGLE_OVERLAY":
-            buildOverlay();
+            ensureOverlayBuilt();
             overlayController?.toggleSideCollapsed();
             sendResponse({ ok: true });
             break;
@@ -609,6 +803,13 @@
     })();
     return true;
   });
+
+  // Eagerly mount overlay structure so controls/listeners are active on page load
+  setTimeout(() => {
+    try {
+      ensureOverlayBuilt();
+    } catch {}
+  }, 0);
 
   window.addEventListener("pagehide", () => {
     overlayController?.destroy?.();

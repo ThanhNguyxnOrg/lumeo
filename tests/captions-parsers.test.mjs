@@ -64,4 +64,27 @@ describe("services/captions.js — pure parser surface", () => {
     expect(api.parseSubtitleText(xml)).toHaveLength(1);
     expect(api.parseSubtitleText("")).toEqual([]);
   });
+
+  it("enforces 1.0s minimum display duration floor on short cues", () => {
+    const shortCues = [{ start: 2.0, end: 2.3, text: "Wait." }];
+    const processed = api.mergeFragmentedCues(shortCues);
+    expect(processed).toHaveLength(1);
+    expect(processed[0].start).toBe(2.0);
+    expect(processed[0].end).toBe(3.0); // 1.0s floor
+  });
+
+  it("merges fragmented caption tokens into full sentence boundaries", () => {
+    const tokens = [
+      { start: 0.0, end: 0.4, text: "Hello" },
+      { start: 0.5, end: 0.9, text: "everyone" },
+      { start: 1.0, end: 1.4, text: "today." },
+      { start: 2.5, end: 3.0, text: "Next sentence." },
+    ];
+    const merged = api.mergeFragmentedCues(tokens);
+    expect(merged).toHaveLength(2);
+    expect(merged[0].text).toBe("Hello everyone today.");
+    expect(merged[0].start).toBe(0.0);
+    expect(merged[0].end).toBeGreaterThanOrEqual(2.0);
+    expect(merged[1].text).toBe("Next sentence.");
+  });
 });
