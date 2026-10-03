@@ -3,6 +3,14 @@ import { createSandboxWindow, loadService } from "./helpers/load-service.mjs";
 
 async function setup() {
   const { window } = await createSandboxWindow();
+  if (!window.PointerEvent) {
+    window.PointerEvent = class extends window.MouseEvent {
+      constructor(type, params = {}) {
+        super(type, params);
+        this.pointerId = params.pointerId || 1;
+      }
+    };
+  }
   const player = window.document.createElement("div");
   player.id = "movie_player";
   window.document.body.appendChild(player);
@@ -26,6 +34,17 @@ describe("ui/subtitle-overlay.js", () => {
     expect(overlay.className).toBe("lumeo-video-sub");
     expect(overlay.getAttribute("aria-live")).toBe("polite");
     expect(player.contains(overlay)).toBe(true);
+  });
+
+  it("suppresses native YouTube captions when active and restores on remove", () => {
+    expect(player.classList.contains("lumeo-active-player")).toBe(false);
+    controller.build();
+    expect(player.classList.contains("lumeo-active-player")).toBe(true);
+    expect(player.getAttribute("data-lumeo-active")).toBe("true");
+
+    controller.remove();
+    expect(player.classList.contains("lumeo-active-player")).toBe(false);
+    expect(player.getAttribute("data-lumeo-active")).toBe("false");
   });
 
   it("renders translated and source text for bilingual cues", () => {
@@ -59,6 +78,16 @@ describe("ui/subtitle-overlay.js", () => {
     expect(overlay.classList.contains("lumeo-layout-compact")).toBe(true);
   });
 
+  it("supports subtitle ordering: translation-top vs source-top", () => {
+    controller.updateCue(
+      { text: "hello", translated: "xin chào" },
+      { captionStyle: { layoutPreset: "stacked", subtitleOrder: "source-top" }, targetLanguage: "vi", rtlLangs: new Set() },
+    );
+    const overlay = controller.getElement();
+    const children = Array.from(overlay.children).map(c => c.className);
+    expect(children.indexOf("lumeo-video-sub-source")).toBeLessThan(children.indexOf("lumeo-video-sub-translated"));
+  });
+
   it("applies style flags and RTL direction", () => {
     controller.updateCue(
       { text: "hello", translated: "مرحبا" },
@@ -75,6 +104,47 @@ describe("ui/subtitle-overlay.js", () => {
     expect(overlay.classList.contains("lumeo-hide-translated")).toBe(true);
     expect(overlay.classList.contains("lumeo-hide-source")).toBe(true);
     expect(overlay.dir).toBe("rtl");
+  });
+
+  it("allows dragging subtitle with normalized percentage coordinates", () => {
+    controller.updateCue(
+      { text: "hello", translated: "xin chào" },
+      { captionStyle: { showSource: true }, targetLanguage: "vi", rtlLangs: new Set() },
+    );
+    const overlay = controller.getElement();
+    player.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 600, right: 1000, bottom: 600 });
+    overlay.getBoundingClientRect = () => ({ left: 400, top: 500, width: 200, height: 50, right: 600, bottom: 550 });
+
+    overlay.dispatchEvent(new window.PointerEvent("pointerdown", { clientX: 450, clientY: 520, button: 0, bubbles: true }));
+    window.dispatchEvent(new window.PointerEvent("pointermove", { clientX: 550, clientY: 420, bubbles: true }));
+    window.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true }));
+
+    expect(overlay.style.left).toBe("50%");
+    expect(overlay.style.top).toBe("66.66666666666666%");
+    expect(overlay.style.transform).toBe("none");
+    expect(JSON.parse(window.localStorage.getItem("lumeoSubPosition"))).toEqual({
+      leftPercent: 50,
+      topPercent: 66.66666666666666,
+    });
+  });
+
+  it("does not trigger word lookup when pointer movement exceeds drag threshold", () => {
+    controller.updateCue(
+      { text: "Source", translated: "Running fast" },
+      { captionStyle: { showSource: true }, targetLanguage: "en", rtlLangs: new Set() },
+    );
+    const overlay = controller.getElement();
+    player.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 600, right: 1000, bottom: 600 });
+    overlay.getBoundingClientRect = () => ({ left: 400, top: 500, width: 200, height: 50, right: 600, bottom: 550 });
+
+    const word = overlay.querySelector(".lumeo-lookup-word");
+    word.dispatchEvent(new window.PointerEvent("pointerdown", { clientX: 450, clientY: 520, button: 0, bubbles: true }));
+    window.dispatchEvent(new window.PointerEvent("pointermove", { clientX: 470, clientY: 530, bubbles: true }));
+    word.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    window.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true }));
+
+    const popover = overlay.querySelector(".lumeo-lookup-popover");
+    expect(popover).toBeNull();
   });
 
   it("tokenizes caption words without losing punctuation", () => {
@@ -128,6 +198,18 @@ describe("ui/subtitle-overlay.js", () => {
     popover.querySelector(".lumeo-lookup-copy").click();
     await Promise.resolve();
     expect(writeText).toHaveBeenCalledWith("Running");
+
+    // Close button dismisses popover
+    const closeBtn = popover.querySelector(".lumeo-lookup-close");
+    expect(closeBtn).not.toBeNull();
+    closeBtn.click();
+    expect(popover.hidden).toBe(true);
+
+    // Reopen and test Escape key dismisses popover
+    word.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(popover.hidden).toBe(false);
+    window.document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(popover.hidden).toBe(true);
   });
 
   it("reports PiP unsupported when Document Picture-in-Picture is unavailable", async () => {
@@ -194,6 +276,26 @@ describe("ui/subtitle-overlay.js", () => {
     expect(secondClose).toHaveBeenCalledOnce();
     expect(controller.getElement()).toBeNull();
     expect(player.querySelector(".lumeo-video-sub")).toBeNull();
+  });
+
+  it("clamps PiP window height for vertical videos such as YouTube Shorts", async () => {
+    const video = window.document.createElement("video");
+    video.className = "html5-main-video";
+    Object.defineProperty(video, "videoWidth", { value: 1080, configurable: true });
+    Object.defineProperty(video, "videoHeight", { value: 1920, configurable: true });
+    player.appendChild(video);
+
+    const requestWindow = vi.fn(async () => {
+      const pip = await createSandboxWindow();
+      return pip.window;
+    });
+    Object.defineProperty(window, "documentPictureInPicture", {
+      configurable: true,
+      value: { requestWindow },
+    });
+
+    await controller.openPictureInPicture();
+    expect(requestWindow).toHaveBeenCalledWith({ width: 270, height: 480 });
   });
 
   it("hides on empty cue and removes cleanly", () => {
