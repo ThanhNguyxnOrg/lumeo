@@ -83,10 +83,10 @@
         btn.type = "button";
         btn.setAttribute("aria-label", "Lumeo Captions & AI Dubbing");
         btn.innerHTML = `
-          <svg viewBox="0 0 36 36" width="100%" height="100%">
-            <rect x="8" y="10.5" width="20" height="15" rx="3" stroke="currentColor" stroke-width="2" fill="none" />
-            <path d="M12 15h6M12 19h12M20 15h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-            <circle class="ytp-lumeo-dot" cx="24.5" cy="11.5" r="2.2" />
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
+            <rect x="3" y="5" width="18" height="14" rx="3" stroke="currentColor" stroke-width="1.8" fill="none" />
+            <path d="M6 9h5M6 13h12M13 9h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            <circle class="ytp-lumeo-dot" cx="18" cy="6" r="2" fill="#94a3b8" />
           </svg>
         `;
         btn.addEventListener("click", (e) => {

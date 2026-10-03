@@ -73,33 +73,16 @@
 
 /* ─── YouTube Native Player Control Button ─── */
 .ytp-button.ytp-lumeo-button {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  vertical-align: middle !important;
-  width: 48px !important;
-  height: 100% !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  position: relative !important;
-  background: transparent !important;
-  border: none !important;
-  outline: none !important;
-  cursor: pointer !important;
-  opacity: 0.9;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  box-sizing: border-box !important;
-}
-.ytp-button.ytp-lumeo-button:hover {
-  opacity: 1;
+  position: relative;
+  text-align: center;
 }
 .ytp-button.ytp-lumeo-button svg {
-  display: block !important;
-  width: 36px !important;
-  height: 36px !important;
-  margin: auto !important;
+  display: inline;
+  width: 24px;
+  height: 24px;
+  box-sizing: content-box;
   fill: none;
-  color: #ffffff !important;
+  color: #ffffff;
   transition: transform 0.15s ease;
 }
 .ytp-button.ytp-lumeo-button:hover svg {
