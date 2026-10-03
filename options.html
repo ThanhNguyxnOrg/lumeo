@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lumeo Settings — AI Captions & Dubbing</title>
+  <link rel="icon" type="image/png" href="icons/icon-32.png" />
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="icons/icon-48.png" class="brand-logo-img" alt="Lumeo Logo" />
+        <div>
+          <h1 class="brand-name">Lumeo</h1>
+          <span class="brand-sub">Settings & API Keys</span>
+        </div>
+      </div>
+
+      <nav class="nav-tabs" role="tablist">
+        <button class="nav-tab is-active" data-tab="providers" role="tab" aria-selected="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <span>API Keys & Providers</span>
+        </button>
+        <button class="nav-tab" data-tab="subtitles" role="tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 6h16v12H4z"/>
+            <path d="M7 10h4M7 14h7"/>
+          </svg>
+          <span>Subtitle Style</span>
+        </button>
+        <button class="nav-tab" data-tab="audio" role="tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          </svg>
+          <span>Audio & Voice</span>
+        </button>
+        <button class="nav-tab" data-tab="cache" role="tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="21 8 21 21 3 21 3 8"/>
+            <rect x="1" y="3" width="22" height="5"/>
+            <line x1="10" y1="12" x2="14" y2="12"/>
+          </svg>
+          <span>Data & Storage</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span class="version-tag">Lumeo v2.0.0</span>
+        <a href="https://github.com/ThanhNguyxnOrg/lumeo" target="_blank" rel="noopener" class="github-link">GitHub</a>
+      </div>
+    </aside>
+
+    <!-- Main Content Panels -->
+    <main class="content-area">
+      <header class="content-header">
+        <h2 id="sectionTitle">API Keys & AI Providers</h2>
+        <p id="sectionDesc" class="section-desc">Manage your private AI service keys. All keys are stored securely and locally on your browser.</p>
+      </header>
+
+      <!-- Panel: API Keys & Providers -->
+      <section class="panel-section is-active" id="panel-providers">
+        <div class="card">
+          <div class="card-header">
+            <h3>Translation Provider</h3>
+            <span class="badge badge-free">Free Default</span>
+          </div>
+          <div class="form-group">
+            <label for="translateProvider">Primary translation engine:</label>
+            <select id="translateProvider" class="form-select">
+              <option value="google-free">Google Translate (Free, No API Key Required)</option>
+              <option value="gemini">Google Gemini (Requires API Key, Context-Aware)</option>
+              <option value="openai">OpenAI GPT-4o-mini (Requires API Key, Highly Accurate)</option>
+              <option value="groq">Groq Llama (Requires API Key, Ultra-Fast)</option>
+              <option value="openrouter">OpenRouter (Multi-model aggregator)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>Key Vault</h3>
+            <span class="badge badge-secure">Local Storage Only</span>
+          </div>
+
+          <div class="key-field">
+            <div class="key-label-row">
+              <label for="geminiKey">Google Gemini API Key</label>
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="get-key-link">Get Free Key ↗</a>
+            </div>
+            <div class="key-input-wrap">
+              <input type="password" id="geminiKey" class="form-input mono" placeholder="AIzaSy..." autocomplete="off" />
+              <button type="button" class="btn-eye" data-target="geminiKey" title="Toggle visibility">👁</button>
+              <button type="button" class="btn-test" data-test="gemini">Test</button>
+            </div>
+            <div class="key-sub-options">
+              <label for="geminiModel">Model:</label>
+              <select id="geminiModel" class="form-select select-compact">
+                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (Recommended, Fast & Lightweight)</option>
+                <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="key-field">
+            <div class="key-label-row">
+              <label for="openaiKey">OpenAI API Key</label>
+              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" class="get-key-link">Get OpenAI Key ↗</a>
+            </div>
+            <div class="key-input-wrap">
+              <input type="password" id="openaiKey" class="form-input mono" placeholder="sk-proj-..." autocomplete="off" />
+              <button type="button" class="btn-eye" data-target="openaiKey" title="Toggle visibility">👁</button>
+              <button type="button" class="btn-test" data-test="openai">Test</button>
+            </div>
+            <div class="key-sub-options">
+              <label for="openaiModel">Model:</label>
+              <select id="openaiModel" class="form-select select-compact">
+                <option value="gpt-4o-mini">gpt-4o-mini (Fast, Cost-effective)</option>
+                <option value="gpt-4o">gpt-4o (Highest reasoning quality)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="key-field">
+            <div class="key-label-row">
+              <label for="groqApiKey">Groq API Key (Whisper STT / Llama)</label>
+              <a href="https://console.groq.com/keys" target="_blank" rel="noopener" class="get-key-link">Get Groq Key ↗</a>
+            </div>
+            <div class="key-input-wrap">
+              <input type="password" id="groqApiKey" class="form-input mono" placeholder="gsk_..." autocomplete="off" />
+              <button type="button" class="btn-eye" data-target="groqApiKey" title="Toggle visibility">👁</button>
+              <button type="button" class="btn-test" data-test="groq">Test</button>
+            </div>
+          </div>
+
+          <div class="key-field">
+            <div class="key-label-row">
+              <label for="kymaKey">Kyma API Key (AI Live Dubbing)</label>
+              <a href="https://kymaapi.com" target="_blank" rel="noopener" class="get-key-link">Kyma Portal ↗</a>
+            </div>
+            <div class="key-input-wrap">
+              <input type="password" id="kymaKey" class="form-input mono" placeholder="kyma-..." autocomplete="off" />
+              <button type="button" class="btn-eye" data-target="kymaKey" title="Toggle visibility">👁</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Panel: Subtitle Styling -->
+      <section class="panel-section" id="panel-subtitles">
+        <div class="card">
+          <div class="card-header">
+            <h3>Live Cinema Subtitle Preview</h3>
+            <span class="badge badge-accent">100% WYSIWYG</span>
+          </div>
+          <div class="preview-stage" id="previewStage">
+            <div class="cinema-mock-player" id="cinemaMockPlayer">
+              <div class="cinema-mock-scenery">
+                <div class="cinema-mock-badge">16:9 Cinema Mock Player</div>
+                <div class="cinema-mock-center-icon">
+                  <svg viewBox="0 0 24 24" width="44" height="44" fill="rgba(255,255,255,0.18)">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="lumeo-video-sub" id="previewSubBox">
+                <div class="lumeo-video-sub-line lumeo-video-sub-translated" id="previewSubTranslated">Hello! This is a real-time Lumeo translation subtitle.</div>
+                <div class="lumeo-video-sub-line lumeo-video-sub-source" id="previewSubSource">Original caption text appears right below for bilingual reading.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="controls-grid">
+            <div class="form-group">
+              <label for="fontSize">Subtitle font size: <span id="fontSizeVal">22px</span></label>
+              <input type="range" id="fontSize" min="14" max="36" step="1" value="22" class="form-range" />
+            </div>
+
+            <div class="form-group">
+              <label for="bottomOffset">Bottom offset: <span id="bottomOffsetVal">14%</span></label>
+              <input type="range" id="bottomOffset" min="5" max="35" step="1" value="14" class="form-range" />
+            </div>
+
+            <div class="form-group">
+              <label for="subBackgroundOpacity">Background opacity: <span id="subBackgroundOpacityVal">75%</span></label>
+              <input type="range" id="subBackgroundOpacity" min="0" max="100" step="5" value="75" class="form-range" />
+            </div>
+
+            <div class="form-group">
+              <label for="layoutPreset">Display layout:</label>
+              <select id="layoutPreset" class="form-select">
+                <option value="stacked">Bilingual (Both original and translated)</option>
+                <option value="translated-only">Translation only</option>
+                <option value="source-only">Original captions only</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="subtitleOrder">Bilingual stacking order:</label>
+              <select id="subtitleOrder" class="form-select">
+                <option value="translation-top">Translation on top, original below</option>
+                <option value="source-top">Original on top, translation below</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="subShadowStyle">Shadow & backdrop style:</label>
+              <select id="subShadowStyle" class="form-select">
+                <option value="glow">Cinematic soft drop shadow (Recommended)</option>
+                <option value="outline">High-contrast text outline</option>
+                <option value="box">Solid box background</option>
+              </select>
+            </div>
+
+            <div class="form-group checkbox-group span-2">
+              <label class="checkbox-label">
+                <input type="checkbox" id="highContrast" />
+                <span>High contrast mode (Ultra-black backdrop, maximum legibility)</span>
+              </label>
+            </div>
+
+            <div class="form-group span-2">
+              <button type="button" class="btn btn-secondary" id="btnResetPosition" title="Reset dragged coordinates to default bottom-center">
+                ↺ Reset Dragged Subtitle Position to Center
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>Keyboard Shortcuts</h3>
+            <span class="badge badge-free">Quick Access</span>
+          </div>
+          <div class="shortcuts-grid">
+            <div class="shortcut-item">
+              <span class="shortcut-action">Toggle in-player Lumeo</span>
+              <kbd class="shortcut-key">Alt + L</kbd>
+            </div>
+            <div class="shortcut-item">
+              <span class="shortcut-action">Minimize / Expand Lumeo menu</span>
+              <kbd class="shortcut-key">Esc</kbd>
+            </div>
+            <div class="shortcut-item">
+              <span class="shortcut-action">Show shortcuts help toast</span>
+              <kbd class="shortcut-key">?</kbd>
+            </div>
+            <div class="shortcut-item">
+              <span class="shortcut-action">Show / Hide HUD</span>
+              <kbd class="shortcut-key">Ctrl + Shift + L</kbd>
+            </div>
+          </div>
+          <p class="shortcut-hint">You can customize global extension shortcuts anytime at <code class="mono-code">chrome://extensions/shortcuts</code></p>
+        </div>
+      </section>
+
+      <!-- Panel: Audio & Dubbing -->
+      <section class="panel-section" id="panel-audio">
+        <div class="card">
+          <div class="card-header">
+            <h3>Voice & Audio Balance</h3>
+          </div>
+
+          <div class="form-group">
+            <label for="captionTtsProvider">Text-to-Speech (TTS) Provider:</label>
+            <select id="captionTtsProvider" class="form-select">
+              <option value="off">Off (Subtitles only)</option>
+              <option value="browser">Browser TTS (Built-in system voice, Free)</option>
+              <option value="openai">OpenAI TTS (Natural AI voice, requires OpenAI key)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="voiceVolume">Dubbed voice volume: <span id="voiceVolumeVal">100%</span></label>
+            <input type="range" id="voiceVolume" min="0" max="100" step="1" value="100" class="form-range" />
+          </div>
+
+          <div class="form-group">
+            <label for="originalVolume">Original video volume: <span id="originalVolumeVal">18%</span></label>
+            <input type="range" id="originalVolume" min="0" max="100" step="1" value="18" class="form-range" />
+          </div>
+
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="muteOriginal" />
+              <span>Silence original video audio completely when dubbing is active</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- Panel: Cache & Data -->
+      <section class="panel-section" id="panel-cache">
+        <div class="card">
+          <div class="card-header">
+            <h3>Subtitle Cache & Export</h3>
+          </div>
+          <p class="card-desc">Lumeo caches translated sentences locally to save token quota and avoid redundant API calls when scrubbing video.</p>
+
+          <div class="actions-row">
+            <button type="button" class="btn btn-secondary" id="btnClearCache">Clear Subtitle Cache</button>
+            <button type="button" class="btn btn-secondary" id="btnExportSrt">Export Subtitles (SRT)</button>
+          </div>
+          <p class="status-msg" id="cacheStatusMsg"></p>
+        </div>
+
+        <div class="card card-danger">
+          <div class="card-header">
+            <h3>Reset to Defaults</h3>
+          </div>
+          <p class="card-desc">Clear all stored API keys, custom subtitle styles, and restore extension defaults.</p>
+          <button type="button" class="btn btn-danger" id="btnResetAll">Restore All Defaults</button>
+        </div>
+      </section>
+
+      <!-- Save Toast Feedback -->
+      <div class="save-toast" id="saveToast">Changes saved ✓</div>
+    </main>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

@@ -20,6 +20,9 @@
     bottomOffset: 14,
     highContrast: false,
     layoutPreset: "stacked",
+    subtitleOrder: "translation-top",
+    subShadowStyle: "glow",
+    subBackgroundOpacity: 75,
   };
 
   let currentSettings = { ...DEFAULT_SETTINGS };
@@ -54,6 +57,11 @@
   const bottomOffsetVal = document.getElementById("bottomOffsetVal");
   const layoutPresetInput = document.getElementById("layoutPreset");
   const highContrastInput = document.getElementById("highContrast");
+  const subtitleOrderInput = document.getElementById("subtitleOrder");
+  const subShadowStyleInput = document.getElementById("subShadowStyle");
+  const subBackgroundOpacityInput = document.getElementById("subBackgroundOpacity");
+  const subBackgroundOpacityVal = document.getElementById("subBackgroundOpacityVal");
+  const btnResetPosition = document.getElementById("btnResetPosition");
 
   // Preview elements
   const previewSubBox = document.getElementById("previewSubBox");
@@ -149,6 +157,13 @@
     bottomOffsetVal.textContent = `${bottomOffsetInput.value}%`;
     layoutPresetInput.value = currentSettings.layoutPreset || "stacked";
     highContrastInput.checked = !!currentSettings.highContrast;
+
+    if (subtitleOrderInput) subtitleOrderInput.value = currentSettings.subtitleOrder || "translation-top";
+    if (subShadowStyleInput) subShadowStyleInput.value = currentSettings.subShadowStyle || "glow";
+    if (subBackgroundOpacityInput) {
+      subBackgroundOpacityInput.value = currentSettings.subBackgroundOpacity ?? 75;
+      if (subBackgroundOpacityVal) subBackgroundOpacityVal.textContent = `${subBackgroundOpacityInput.value}%`;
+    }
   }
 
   // 3. Save Settings to Storage
@@ -185,6 +200,13 @@
     currentSettings.layoutPreset = layoutPresetInput.value;
     currentSettings.highContrast = highContrastInput.checked;
 
+    if (subtitleOrderInput) currentSettings.subtitleOrder = subtitleOrderInput.value;
+    if (subShadowStyleInput) currentSettings.subShadowStyle = subShadowStyleInput.value;
+    if (subBackgroundOpacityInput) {
+      currentSettings.subBackgroundOpacity = Number(subBackgroundOpacityInput.value);
+      if (subBackgroundOpacityVal) subBackgroundOpacityVal.textContent = `${currentSettings.subBackgroundOpacity}%`;
+    }
+
     voiceVolumeVal.textContent = `${currentSettings.voiceVolume}%`;
     originalVolumeVal.textContent = `${currentSettings.originalVolume}%`;
     fontSizeVal.textContent = `${currentSettings.fontSize}px`;
@@ -199,9 +221,36 @@
   // 4. Update Subtitle Preview
   function updatePreview() {
     if (!previewSubBox) return;
+    previewSubBox.style.setProperty("--lumeo-caption-font-size", `${currentSettings.fontSize}px`);
+    previewSubBox.style.setProperty("--lumeo-caption-bottom-offset", `${currentSettings.bottomOffset}%`);
     previewSubBox.style.fontSize = `${currentSettings.fontSize}px`;
     previewSubBox.style.bottom = `${currentSettings.bottomOffset}%`;
+    previewSubBox.style.setProperty("--lumeo-sub-bg-opacity", String((currentSettings.subBackgroundOpacity ?? 75) / 100));
+
+    // Shadow style classes
+    previewSubBox.classList.remove("lumeo-shadow-glow", "lumeo-shadow-outline", "lumeo-shadow-box");
+    if (currentSettings.subShadowStyle === "outline") {
+      previewSubBox.classList.add("lumeo-shadow-outline");
+    } else if (currentSettings.subShadowStyle === "box") {
+      previewSubBox.classList.add("lumeo-shadow-box");
+    } else {
+      previewSubBox.classList.add("lumeo-shadow-glow");
+    }
+
     previewSubBox.classList.toggle("high-contrast", !!currentSettings.highContrast);
+
+    // Subtitle Order
+    if (currentSettings.subtitleOrder === "source-top") {
+      previewSubBox.classList.add("lumeo-order-source-top");
+      if (previewSubSource && previewSubTranslated && previewSubSource.nextElementSibling !== previewSubTranslated) {
+        previewSubBox.insertBefore(previewSubSource, previewSubTranslated);
+      }
+    } else {
+      previewSubBox.classList.remove("lumeo-order-source-top");
+      if (previewSubTranslated && previewSubSource && previewSubTranslated.nextElementSibling !== previewSubSource) {
+        previewSubBox.insertBefore(previewSubTranslated, previewSubSource);
+      }
+    }
 
     const preset = currentSettings.layoutPreset;
     if (preset === "translated-only") {
@@ -222,13 +271,27 @@
     openaiKeyInput, openaiModelInput, groqApiKeyInput, kymaKeyInput,
     captionTtsProviderInput, voiceVolumeInput, originalVolumeInput,
     muteOriginalInput, fontSizeInput, bottomOffsetInput,
-    layoutPresetInput, highContrastInput
+    layoutPresetInput, highContrastInput,
+    subtitleOrderInput, subShadowStyleInput, subBackgroundOpacityInput
   ];
 
   allInputs.forEach((input) => {
     if (!input) return;
     input.addEventListener("input", scheduleSave);
     input.addEventListener("change", scheduleSave);
+  });
+
+  // Reset Subtitle Position Button
+  btnResetPosition?.addEventListener("click", async () => {
+    try {
+      localStorage.removeItem("lumeoSubPosition");
+      await STORAGE.remove("lumeoSubPosition");
+    } catch {}
+    bottomOffsetInput.value = 14;
+    bottomOffsetVal.textContent = "14%";
+    currentSettings.bottomOffset = 14;
+    scheduleSave();
+    showToast();
   });
 
   // 6. Eye Toggle Buttons
