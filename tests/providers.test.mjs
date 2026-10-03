@@ -86,4 +86,20 @@ describe("services/providers.js", () => {
       comingSoon: true,
     });
   });
+
+  it("registers vendor-neutral custom-gateway and custom-voice-engine providers correctly", () => {
+    const gateway = api.providerById("custom-gateway");
+    expect(gateway).toBeTruthy();
+    expect(gateway.slot).toBe("translator");
+    expect(gateway.keyFields).toContain("customProxyApiKey");
+    expect(api.hasRequiredKeys("custom-gateway", {})).toBe(false);
+    expect(api.hasRequiredKeys("custom-gateway", { customProxyApiKey: "sk-custom-123" })).toBe(true);
+
+    const voiceEngine = api.providerById("custom-voice-engine");
+    expect(voiceEngine).toBeTruthy();
+    expect(voiceEngine.slot).toBe("tts");
+    expect(voiceEngine.keyFields).toContain("customTtsApiKey");
+    expect(api.hasRequiredKeys("custom-voice-engine", {})).toBe(false);
+    expect(api.hasRequiredKeys("custom-voice-engine", { customTtsApiKey: "secret-token" })).toBe(true);
+  });
 });

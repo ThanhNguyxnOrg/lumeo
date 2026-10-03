@@ -118,4 +118,21 @@ describe("services/translate.js", () => {
     expect(out).toEqual(["ok"]);
     expect(window.fetch).toHaveBeenCalled();
   });
+
+  it("calls Custom AI Gateway with custom base URL, model, and API key", async () => {
+    window.fetch = vi.fn(async (url, init) => {
+      expect(url).toBe("https://my-proxy.internal/v1/chat/completions");
+      expect(init.headers.Authorization).toBe("Bearer custom-key-456");
+      const body = JSON.parse(init.body);
+      expect(body.model).toBe("custom-model-x");
+      return fakeResponse({ choices: [{ message: { content: "[0] xin chào" } }] });
+    });
+    const out = await api.translateBatch(["hello"], "vi", {
+      provider: "custom-gateway",
+      customProxyApiKey: "custom-key-456",
+      customProxyBaseUrl: "https://my-proxy.internal/v1",
+      customProxyModelId: "custom-model-x",
+    });
+    expect(out).toEqual(["xin chào"]);
+  });
 });

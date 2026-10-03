@@ -79,6 +79,55 @@
               <option value="openai">OpenAI GPT-4o-mini (Requires API Key, Highly Accurate)</option>
               <option value="groq">Groq Llama (Requires API Key, Ultra-Fast)</option>
               <option value="openrouter">OpenRouter (Multi-model aggregator)</option>
+              <option value="custom-gateway">Custom AI Gateway (OpenRouter / Compatible)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>Default Target Language</h3>
+            <span class="badge badge-free">30+ Languages</span>
+          </div>
+          <div class="form-group">
+            <label for="targetLanguage">Default language for translation and dubbing:</label>
+            <select id="targetLanguage" class="form-select">
+              <optgroup label="Popular & Recommended">
+                <option value="vi">Vietnamese (Tiếng Việt)</option>
+                <option value="en">English</option>
+                <option value="ja">Japanese (日本語)</option>
+                <option value="ko">Korean (한국어)</option>
+                <option value="zh-CN">Chinese Simplified (简体中文)</option>
+                <option value="zh-TW">Chinese Traditional (繁體中文)</option>
+                <option value="es">Spanish (Español)</option>
+                <option value="fr">French (Français)</option>
+                <option value="de">German (Deutsch)</option>
+                <option value="pt">Portuguese (Português)</option>
+                <option value="ru">Russian (Русский)</option>
+              </optgroup>
+              <optgroup label="All Supported Languages">
+                <option value="ar">Arabic (العربية)</option>
+                <option value="bn">Bengali (বাংলা)</option>
+                <option value="cs">Czech (Čeština)</option>
+                <option value="da">Danish (Dansk)</option>
+                <option value="nl">Dutch (Nederlands)</option>
+                <option value="fi">Finnish (Suomi)</option>
+                <option value="el">Greek (Ελληνικά)</option>
+                <option value="he">Hebrew (עברית)</option>
+                <option value="hi">Hindi (हिन्दी)</option>
+                <option value="hu">Hungarian (Magyar)</option>
+                <option value="id">Indonesian (Bahasa Indonesia)</option>
+                <option value="it">Italian (Italiano)</option>
+                <option value="ms">Malay (Bahasa Melayu)</option>
+                <option value="no">Norwegian (Norsk)</option>
+                <option value="pl">Polish (Polski)</option>
+                <option value="ro">Romanian (Română)</option>
+                <option value="sv">Swedish (Svenska)</option>
+                <option value="th">Thai (ไทย)</option>
+                <option value="tr">Turkish (Türkçe)</option>
+                <option value="uk">Ukrainian (Українська)</option>
+                <option value="ur">Urdu (اردو)</option>
+              </optgroup>
             </select>
           </div>
         </div>
@@ -87,6 +136,28 @@
           <div class="card-header">
             <h3>Key Vault</h3>
             <span class="badge badge-secure">Local Storage Only</span>
+          </div>
+
+          <div class="key-field">
+            <div class="key-label-row">
+              <label for="customProxyApiKey">Custom AI Gateway (OpenRouter / Compatible)</label>
+              <span class="badge badge-neutral">Vendor-Neutral</span>
+            </div>
+            <div class="custom-gateway-grid">
+              <div class="key-sub-options">
+                <label for="customProxyBaseUrl">Base URL (Leave blank for default OpenRouter):</label>
+                <input type="text" id="customProxyBaseUrl" class="form-input mono" placeholder="https://openrouter.ai/api/v1" />
+              </div>
+              <div class="key-sub-options">
+                <label for="customProxyModelId">Model ID:</label>
+                <input type="text" id="customProxyModelId" class="form-input mono" placeholder="openrouter/free, anthropic/claude-3.5-sonnet..." />
+              </div>
+            </div>
+            <div class="key-input-wrap">
+              <input type="password" id="customProxyApiKey" class="form-input mono" placeholder="API Key / Token..." autocomplete="off" />
+              <button type="button" class="btn-eye" data-target="customProxyApiKey" title="Toggle visibility">👁</button>
+              <button type="button" class="btn-test" data-test="custom-gateway">Test</button>
+            </div>
           </div>
 
           <div class="key-field">
@@ -238,13 +309,47 @@
 
         <div class="card">
           <div class="card-header">
+            <h3>Playback & Automation</h3>
+            <span class="badge badge-accent">Opt-in</span>
+          </div>
+          <p class="card-desc">Streamline your viewing workflow. All automation features are disabled by default.</p>
+          <div class="controls-grid">
+            <div class="form-group checkbox-group span-2">
+              <label class="checkbox-label">
+                <input type="checkbox" id="autoStart" />
+                <span>Automatically start translation when YouTube video loads</span>
+              </label>
+            </div>
+            <div class="form-group checkbox-group span-2">
+              <label class="checkbox-label">
+                <input type="checkbox" id="smartSkipNative" />
+                <span>Smart skip translation if original audio matches your target language</span>
+              </label>
+            </div>
+            <div class="form-group checkbox-group span-2">
+              <label class="checkbox-label">
+                <input type="checkbox" id="autoPauseOnHover" />
+                <span>Pause video when hovering over subtitle overlay to read comfortably</span>
+              </label>
+            </div>
+            <div class="form-group checkbox-group span-2">
+              <label class="checkbox-label">
+                <input type="checkbox" id="navHotkeys" />
+                <span>Enable cue navigation hotkeys (A: Prev Cue, S: Replay Cue, D: Next Cue)</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
             <h3>Keyboard Shortcuts</h3>
             <span class="badge badge-free">Quick Access</span>
           </div>
           <div class="shortcuts-grid">
             <div class="shortcut-item">
               <span class="shortcut-action">Toggle in-player Lumeo</span>
-              <kbd class="shortcut-key">Alt + L</kbd>
+              <kbd class="shortcut-key" id="shortcutToggle">Alt + L</kbd>
             </div>
             <div class="shortcut-item">
               <span class="shortcut-action">Minimize / Expand Lumeo menu</span>
@@ -259,7 +364,10 @@
               <kbd class="shortcut-key">Ctrl + Shift + L</kbd>
             </div>
           </div>
-          <p class="shortcut-hint">You can customize global extension shortcuts anytime at <code class="mono-code">chrome://extensions/shortcuts</code></p>
+          <div style="margin-top: 14px; display: flex; align-items: center; justify-content: space-between;">
+            <p class="shortcut-hint" style="margin: 0;">Customize global extension shortcuts anytime:</p>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnConfigureShortcuts">Configure in Chrome ↗</button>
+          </div>
         </div>
       </section>
 
@@ -271,12 +379,46 @@
           </div>
 
           <div class="form-group">
-            <label for="captionTtsProvider">Text-to-Speech (TTS) Provider:</label>
+            <label for="captionTtsProvider">Voice Provider / Spoken Speech:</label>
             <select id="captionTtsProvider" class="form-select">
               <option value="off">Off (Subtitles only)</option>
-              <option value="browser">Browser TTS (Built-in system voice, Free)</option>
-              <option value="openai">OpenAI TTS (Natural AI voice, requires OpenAI key)</option>
+              <option value="browser">Browser Natural Speech (Free Default)</option>
+              <option value="openai">OpenAI TTS (Standard Cloud TTS)</option>
+              <option value="custom-voice-engine">Custom Neural Voice Engine (Vendor-Neutral)</option>
             </select>
+          </div>
+
+          <!-- Standard Voice Selection (Hidden when Custom Neural Voice Engine is selected) -->
+          <div class="form-group" id="browserVoiceWrap">
+            <label for="browserVoice">Default AI Voice:</label>
+            <select id="browserVoice" class="form-select">
+              <option value="">Auto-pair best natural voice for language</option>
+            </select>
+          </div>
+
+          <!-- Custom Neural Voice Engine (Vendor-Neutral, Voice selection driven by Voice ID) -->
+          <div class="custom-tts-box" id="customVoiceEngineWrap" style="display: none;">
+            <div class="custom-tts-header">
+              <h4>Custom Neural Voice Engine Settings</h4>
+              <span class="badge badge-neutral">Vendor-Neutral</span>
+            </div>
+            <p class="custom-tts-desc">Vendor-neutral engine (supports ElevenLabs or compatible neural speech endpoints). Standard voice dropdown is removed when active, as speech is 100% driven by your configured Voice ID.</p>
+            <div class="form-group">
+              <label for="customTtsBaseUrl">Base URL (Leave blank for default ElevenLabs or custom endpoint):</label>
+              <input type="text" id="customTtsBaseUrl" class="form-input mono" placeholder="https://api.elevenlabs.io/v1" />
+            </div>
+            <div class="form-group">
+              <label for="customTtsVoiceId">Voice ID:</label>
+              <input type="text" id="customTtsVoiceId" class="form-input mono" placeholder="Enter Voice ID string (e.g. 21m00Tcm4TlvDq8ikWAM or custom ID)" />
+            </div>
+            <div class="form-group">
+              <label for="customTtsApiKey">API Key / Authorization Token:</label>
+              <div class="key-input-wrap">
+                <input type="password" id="customTtsApiKey" class="form-input mono" placeholder="Secret Key / xi-api-key..." autocomplete="off" />
+                <button type="button" class="btn-eye" data-target="customTtsApiKey" title="Toggle visibility">👁</button>
+                <button type="button" class="btn-test" id="btnTestCustomTts" data-test="custom-tts">🔊 Test Voice</button>
+              </div>
+            </div>
           </div>
 
           <div class="form-group">

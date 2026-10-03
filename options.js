@@ -2,17 +2,34 @@
 (() => {
   "use strict";
 
-  const STORAGE = chrome.storage.local;
+  const STORAGE = typeof chrome !== "undefined" && chrome.storage?.local ? chrome.storage.local : {
+    get: async (defaults) => ({ ...defaults }),
+    set: async () => {},
+    remove: async () => {},
+    clear: async () => {},
+  };
 
   const DEFAULT_SETTINGS = {
     translateProvider: "google-free",
+    targetLanguage: "vi",
     geminiKey: "",
     geminiModel: "gemini-2.5-flash-lite",
     openaiKey: "",
     openaiModel: "gpt-4o-mini",
     groqApiKey: "",
     kymaKey: "",
+    customProxyBaseUrl: "",
+    customProxyApiKey: "",
+    customProxyModelId: "",
     captionTtsProvider: "off",
+    standardVoice: "",
+    customTtsBaseUrl: "",
+    customTtsApiKey: "",
+    customTtsVoiceId: "",
+    autoStart: false,
+    smartSkipNative: false,
+    autoPauseOnHover: false,
+    navHotkeys: false,
     voiceVolume: 100,
     originalVolume: 18,
     muteOriginal: false,
@@ -35,22 +52,34 @@
   const sectionDesc = document.getElementById("sectionDesc");
   const saveToast = document.getElementById("saveToast");
 
-  // Inputs
+  // Providers & Keys Inputs
   const translateProviderInput = document.getElementById("translateProvider");
+  const targetLanguageInput = document.getElementById("targetLanguage");
   const geminiKeyInput = document.getElementById("geminiKey");
   const geminiModelInput = document.getElementById("geminiModel");
   const openaiKeyInput = document.getElementById("openaiKey");
   const openaiModelInput = document.getElementById("openaiModel");
   const groqApiKeyInput = document.getElementById("groqApiKey");
   const kymaKeyInput = document.getElementById("kymaKey");
+  const customProxyBaseUrlInput = document.getElementById("customProxyBaseUrl");
+  const customProxyApiKeyInput = document.getElementById("customProxyApiKey");
+  const customProxyModelIdInput = document.getElementById("customProxyModelId");
 
+  // Audio & Voice Inputs
   const captionTtsProviderInput = document.getElementById("captionTtsProvider");
+  const browserVoiceWrap = document.getElementById("browserVoiceWrap");
+  const browserVoiceInput = document.getElementById("browserVoice");
+  const customVoiceEngineWrap = document.getElementById("customVoiceEngineWrap");
+  const customTtsBaseUrlInput = document.getElementById("customTtsBaseUrl");
+  const customTtsVoiceIdInput = document.getElementById("customTtsVoiceId");
+  const customTtsApiKeyInput = document.getElementById("customTtsApiKey");
   const voiceVolumeInput = document.getElementById("voiceVolume");
   const voiceVolumeVal = document.getElementById("voiceVolumeVal");
   const originalVolumeInput = document.getElementById("originalVolume");
   const originalVolumeVal = document.getElementById("originalVolumeVal");
   const muteOriginalInput = document.getElementById("muteOriginal");
 
+  // Subtitle Appearance Inputs
   const fontSizeInput = document.getElementById("fontSize");
   const fontSizeVal = document.getElementById("fontSizeVal");
   const bottomOffsetInput = document.getElementById("bottomOffset");
@@ -63,16 +92,23 @@
   const subBackgroundOpacityVal = document.getElementById("subBackgroundOpacityVal");
   const btnResetPosition = document.getElementById("btnResetPosition");
 
+  // Automation Inputs
+  const autoStartInput = document.getElementById("autoStart");
+  const smartSkipNativeInput = document.getElementById("smartSkipNative");
+  const autoPauseOnHoverInput = document.getElementById("autoPauseOnHover");
+  const navHotkeysInput = document.getElementById("navHotkeys");
+
   // Preview elements
   const previewSubBox = document.getElementById("previewSubBox");
   const previewSubTranslated = document.getElementById("previewSubTranslated");
   const previewSubSource = document.getElementById("previewSubSource");
 
-  // Cache elements
+  // Cache & Action elements
   const btnClearCache = document.getElementById("btnClearCache");
   const btnExportSrt = document.getElementById("btnExportSrt");
   const cacheStatusMsg = document.getElementById("cacheStatusMsg");
   const btnResetAll = document.getElementById("btnResetAll");
+  const btnConfigureShortcuts = document.getElementById("btnConfigureShortcuts");
 
   const TAB_METADATA = {
     providers: {
@@ -81,7 +117,7 @@
     },
     subtitles: {
       title: "Subtitle Style & Appearance",
-      desc: "Adjust font size, position, and contrast of on-video subtitles in real time.",
+      desc: "Adjust font size, position, contrast, and playback automation of subtitles in real time.",
     },
     audio: {
       title: "Voice & Audio Balance",
@@ -116,7 +152,41 @@
     });
   });
 
-  // 2. Load Settings from Storage
+  // 2. TTS Voice Sections Toggling
+  function updateTtsSectionsVisibility() {
+    const provider = captionTtsProviderInput?.value;
+    if (provider === "custom-voice-engine") {
+      if (browserVoiceWrap) browserVoiceWrap.style.display = "none";
+      if (customVoiceEngineWrap) customVoiceEngineWrap.style.display = "block";
+    } else if (provider === "browser") {
+      if (browserVoiceWrap) browserVoiceWrap.style.display = "block";
+      if (customVoiceEngineWrap) customVoiceEngineWrap.style.display = "none";
+    } else {
+      if (browserVoiceWrap) browserVoiceWrap.style.display = "none";
+      if (customVoiceEngineWrap) customVoiceEngineWrap.style.display = "none";
+    }
+  }
+
+  // 3. Populate Browser Voices
+  function populateBrowserVoices() {
+    if (typeof window === "undefined" || !("speechSynthesis" in window) || !browserVoiceInput) return;
+    const voices = window.speechSynthesis.getVoices() || [];
+    const prev = browserVoiceInput.value || currentSettings.standardVoice || "";
+    browserVoiceInput.innerHTML = '<option value="">Auto-pair best natural voice for language</option>';
+    voices.forEach((v) => {
+      const opt = document.createElement("option");
+      opt.value = v.voiceURI || v.name;
+      opt.textContent = `${v.name} (${v.lang})`;
+      browserVoiceInput.appendChild(opt);
+    });
+    if (prev) browserVoiceInput.value = prev;
+  }
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    window.speechSynthesis.onvoiceschanged = populateBrowserVoices;
+    populateBrowserVoices();
+  }
+
+  // 4. Load Settings from Storage
   async function loadSettings() {
     try {
       const stored = await STORAGE.get(null);
@@ -130,46 +200,71 @@
 
       populateInputs();
       updatePreview();
+      updateTtsSectionsVisibility();
+      populateBrowserVoices();
     } catch (err) {
       console.error("Failed to load settings:", err);
     }
   }
 
   function populateInputs() {
-    translateProviderInput.value = currentSettings.translateProvider || "google-free";
-    geminiKeyInput.value = currentSettings.geminiKey || "";
-    geminiModelInput.value = currentSettings.geminiModel || "gemini-2.5-flash-lite";
-    openaiKeyInput.value = currentSettings.openaiKey || "";
-    openaiModelInput.value = currentSettings.openaiModel || "gpt-4o-mini";
-    groqApiKeyInput.value = currentSettings.groqApiKey || "";
-    kymaKeyInput.value = currentSettings.kymaKey || "";
+    if (translateProviderInput) translateProviderInput.value = currentSettings.translateProvider || "google-free";
+    if (targetLanguageInput) targetLanguageInput.value = currentSettings.targetLanguage || "vi";
+    if (geminiKeyInput) geminiKeyInput.value = currentSettings.geminiKey || "";
+    if (geminiModelInput) geminiModelInput.value = currentSettings.geminiModel || "gemini-2.5-flash-lite";
+    if (openaiKeyInput) openaiKeyInput.value = currentSettings.openaiKey || "";
+    if (openaiModelInput) openaiModelInput.value = currentSettings.openaiModel || "gpt-4o-mini";
+    if (groqApiKeyInput) groqApiKeyInput.value = currentSettings.groqApiKey || "";
+    if (kymaKeyInput) kymaKeyInput.value = currentSettings.kymaKey || "";
+    if (customProxyBaseUrlInput) customProxyBaseUrlInput.value = currentSettings.customProxyBaseUrl || "";
+    if (customProxyApiKeyInput) customProxyApiKeyInput.value = currentSettings.customProxyApiKey || "";
+    if (customProxyModelIdInput) customProxyModelIdInput.value = currentSettings.customProxyModelId || "";
 
-    captionTtsProviderInput.value = currentSettings.captionTtsProvider || "off";
-    voiceVolumeInput.value = currentSettings.voiceVolume ?? 100;
-    voiceVolumeVal.textContent = `${voiceVolumeInput.value}%`;
-    originalVolumeInput.value = currentSettings.originalVolume ?? 18;
-    originalVolumeVal.textContent = `${originalVolumeInput.value}%`;
-    muteOriginalInput.checked = !!currentSettings.muteOriginal;
+    if (captionTtsProviderInput) captionTtsProviderInput.value = currentSettings.captionTtsProvider || "off";
+    if (browserVoiceInput && currentSettings.standardVoice) browserVoiceInput.value = currentSettings.standardVoice;
+    if (customTtsBaseUrlInput) customTtsBaseUrlInput.value = currentSettings.customTtsBaseUrl || "";
+    if (customTtsVoiceIdInput) customTtsVoiceIdInput.value = currentSettings.customTtsVoiceId || "";
+    if (customTtsApiKeyInput) customTtsApiKeyInput.value = currentSettings.customTtsApiKey || "";
 
-    fontSizeInput.value = currentSettings.fontSize ?? 22;
-    fontSizeVal.textContent = `${fontSizeInput.value}px`;
-    bottomOffsetInput.value = currentSettings.bottomOffset ?? 14;
-    bottomOffsetVal.textContent = `${bottomOffsetInput.value}%`;
-    layoutPresetInput.value = currentSettings.layoutPreset || "stacked";
-    highContrastInput.checked = !!currentSettings.highContrast;
+    if (autoStartInput) autoStartInput.checked = !!currentSettings.autoStart;
+    if (smartSkipNativeInput) smartSkipNativeInput.checked = !!currentSettings.smartSkipNative;
+    if (autoPauseOnHoverInput) autoPauseOnHoverInput.checked = !!currentSettings.autoPauseOnHover;
+    if (navHotkeysInput) navHotkeysInput.checked = !!currentSettings.navHotkeys;
+
+    if (voiceVolumeInput) {
+      voiceVolumeInput.value = currentSettings.voiceVolume ?? 100;
+      if (voiceVolumeVal) voiceVolumeVal.textContent = `${voiceVolumeInput.value}%`;
+    }
+    if (originalVolumeInput) {
+      originalVolumeInput.value = currentSettings.originalVolume ?? 18;
+      if (originalVolumeVal) originalVolumeVal.textContent = `${originalVolumeInput.value}%`;
+    }
+    if (muteOriginalInput) muteOriginalInput.checked = !!currentSettings.muteOriginal;
+
+    if (fontSizeInput) {
+      fontSizeInput.value = currentSettings.fontSize ?? 22;
+      if (fontSizeVal) fontSizeVal.textContent = `${fontSizeInput.value}px`;
+    }
+    if (bottomOffsetInput) {
+      bottomOffsetInput.value = currentSettings.bottomOffset ?? 14;
+      if (bottomOffsetVal) bottomOffsetVal.textContent = `${bottomOffsetInput.value}%`;
+    }
+    if (layoutPresetInput) layoutPresetInput.value = currentSettings.layoutPreset || "stacked";
+    if (highContrastInput) highContrastInput.checked = !!currentSettings.highContrast;
 
     if (subtitleOrderInput) subtitleOrderInput.value = currentSettings.subtitleOrder || "translation-top";
-    if (subShadowStyleInput) subShadowStyleInput.value = currentSettings.subShadowStyle || "glow";
+    if (subShadowStyleInput) subShadowStyleInput.value = currentSettings.subShadowStyle || "drop-shadow";
     if (subBackgroundOpacityInput) {
       subBackgroundOpacityInput.value = currentSettings.subBackgroundOpacity ?? 75;
       if (subBackgroundOpacityVal) subBackgroundOpacityVal.textContent = `${subBackgroundOpacityInput.value}%`;
     }
   }
 
-  // 3. Save Settings to Storage
+  // 5. Save Settings to Storage
   function scheduleSave() {
     readInputs();
     updatePreview();
+    updateTtsSectionsVisibility();
     clearTimeout(saveDebounceTimer);
     saveDebounceTimer = setTimeout(async () => {
       try {
@@ -182,23 +277,49 @@
   }
 
   function readInputs() {
-    currentSettings.translateProvider = translateProviderInput.value;
-    currentSettings.geminiKey = geminiKeyInput.value.trim();
-    currentSettings.geminiModel = geminiModelInput.value;
-    currentSettings.openaiKey = openaiKeyInput.value.trim();
-    currentSettings.openaiModel = openaiModelInput.value;
-    currentSettings.groqApiKey = groqApiKeyInput.value.trim();
-    currentSettings.kymaKey = kymaKeyInput.value.trim();
+    if (translateProviderInput) currentSettings.translateProvider = translateProviderInput.value;
+    if (targetLanguageInput) currentSettings.targetLanguage = targetLanguageInput.value;
+    if (geminiKeyInput) currentSettings.geminiKey = geminiKeyInput.value.trim();
+    if (geminiModelInput) currentSettings.geminiModel = geminiModelInput.value;
+    if (openaiKeyInput) currentSettings.openaiKey = openaiKeyInput.value.trim();
+    if (openaiModelInput) currentSettings.openaiModel = openaiModelInput.value;
+    if (groqApiKeyInput) currentSettings.groqApiKey = groqApiKeyInput.value.trim();
+    if (kymaKeyInput) currentSettings.kymaKey = kymaKeyInput.value.trim();
+    if (customProxyBaseUrlInput) currentSettings.customProxyBaseUrl = customProxyBaseUrlInput.value.trim();
+    if (customProxyApiKeyInput) currentSettings.customProxyApiKey = customProxyApiKeyInput.value.trim();
+    if (customProxyModelIdInput) currentSettings.customProxyModelId = customProxyModelIdInput.value.trim();
 
-    currentSettings.captionTtsProvider = captionTtsProviderInput.value;
-    currentSettings.voiceVolume = Number(voiceVolumeInput.value);
-    currentSettings.originalVolume = Number(originalVolumeInput.value);
-    currentSettings.muteOriginal = muteOriginalInput.checked;
+    if (captionTtsProviderInput) currentSettings.captionTtsProvider = captionTtsProviderInput.value;
+    if (browserVoiceInput) currentSettings.standardVoice = browserVoiceInput.value;
+    if (customTtsBaseUrlInput) currentSettings.customTtsBaseUrl = customTtsBaseUrlInput.value.trim();
+    if (customTtsVoiceIdInput) currentSettings.customTtsVoiceId = customTtsVoiceIdInput.value.trim();
+    if (customTtsApiKeyInput) currentSettings.customTtsApiKey = customTtsApiKeyInput.value.trim();
 
-    currentSettings.fontSize = Number(fontSizeInput.value);
-    currentSettings.bottomOffset = Number(bottomOffsetInput.value);
-    currentSettings.layoutPreset = layoutPresetInput.value;
-    currentSettings.highContrast = highContrastInput.checked;
+    if (autoStartInput) currentSettings.autoStart = autoStartInput.checked;
+    if (smartSkipNativeInput) currentSettings.smartSkipNative = smartSkipNativeInput.checked;
+    if (autoPauseOnHoverInput) currentSettings.autoPauseOnHover = autoPauseOnHoverInput.checked;
+    if (navHotkeysInput) currentSettings.navHotkeys = navHotkeysInput.checked;
+
+    if (voiceVolumeInput) {
+      currentSettings.voiceVolume = Number(voiceVolumeInput.value);
+      if (voiceVolumeVal) voiceVolumeVal.textContent = `${currentSettings.voiceVolume}%`;
+    }
+    if (originalVolumeInput) {
+      currentSettings.originalVolume = Number(originalVolumeInput.value);
+      if (originalVolumeVal) originalVolumeVal.textContent = `${currentSettings.originalVolume}%`;
+    }
+    if (muteOriginalInput) currentSettings.muteOriginal = muteOriginalInput.checked;
+
+    if (fontSizeInput) {
+      currentSettings.fontSize = Number(fontSizeInput.value);
+      if (fontSizeVal) fontSizeVal.textContent = `${currentSettings.fontSize}px`;
+    }
+    if (bottomOffsetInput) {
+      currentSettings.bottomOffset = Number(bottomOffsetInput.value);
+      if (bottomOffsetVal) bottomOffsetVal.textContent = `${currentSettings.bottomOffset}%`;
+    }
+    if (layoutPresetInput) currentSettings.layoutPreset = layoutPresetInput.value;
+    if (highContrastInput) currentSettings.highContrast = highContrastInput.checked;
 
     if (subtitleOrderInput) currentSettings.subtitleOrder = subtitleOrderInput.value;
     if (subShadowStyleInput) currentSettings.subShadowStyle = subShadowStyleInput.value;
@@ -206,19 +327,15 @@
       currentSettings.subBackgroundOpacity = Number(subBackgroundOpacityInput.value);
       if (subBackgroundOpacityVal) subBackgroundOpacityVal.textContent = `${currentSettings.subBackgroundOpacity}%`;
     }
-
-    voiceVolumeVal.textContent = `${currentSettings.voiceVolume}%`;
-    originalVolumeVal.textContent = `${currentSettings.originalVolume}%`;
-    fontSizeVal.textContent = `${currentSettings.fontSize}px`;
-    bottomOffsetVal.textContent = `${currentSettings.bottomOffset}%`;
   }
 
   function showToast() {
+    if (!saveToast) return;
     saveToast.classList.add("is-visible");
     setTimeout(() => saveToast.classList.remove("is-visible"), 1800);
   }
 
-  // 4. Update Subtitle Preview
+  // 6. Update Subtitle Preview
   function updatePreview() {
     if (!previewSubBox) return;
     previewSubBox.style.setProperty("--lumeo-caption-font-size", `${currentSettings.fontSize}px`);
@@ -251,25 +368,30 @@
 
     const preset = currentSettings.layoutPreset;
     if (preset === "translated-only") {
-      previewSubTranslated.style.display = "block";
-      previewSubSource.style.display = "none";
+      if (previewSubTranslated) previewSubTranslated.style.display = "block";
+      if (previewSubSource) previewSubSource.style.display = "none";
     } else if (preset === "source-only") {
-      previewSubTranslated.style.display = "none";
-      previewSubSource.style.display = "block";
+      if (previewSubTranslated) previewSubTranslated.style.display = "none";
+      if (previewSubSource) previewSubSource.style.display = "block";
     } else {
-      previewSubTranslated.style.display = "block";
-      previewSubSource.style.display = "block";
+      if (previewSubTranslated) previewSubTranslated.style.display = "block";
+      if (previewSubSource) previewSubSource.style.display = "block";
     }
   }
 
-  // 5. Input Listeners
+  // 7. Input Listeners
   const allInputs = [
-    translateProviderInput, geminiKeyInput, geminiModelInput,
-    openaiKeyInput, openaiModelInput, groqApiKeyInput, kymaKeyInput,
-    captionTtsProviderInput, voiceVolumeInput, originalVolumeInput,
-    muteOriginalInput, fontSizeInput, bottomOffsetInput,
-    layoutPresetInput, highContrastInput,
-    subtitleOrderInput, subShadowStyleInput, subBackgroundOpacityInput
+    translateProviderInput, targetLanguageInput,
+    geminiKeyInput, geminiModelInput,
+    openaiKeyInput, openaiModelInput,
+    groqApiKeyInput, kymaKeyInput,
+    customProxyBaseUrlInput, customProxyApiKeyInput, customProxyModelIdInput,
+    captionTtsProviderInput, browserVoiceInput,
+    customTtsBaseUrlInput, customTtsVoiceIdInput, customTtsApiKeyInput,
+    voiceVolumeInput, originalVolumeInput, muteOriginalInput,
+    fontSizeInput, bottomOffsetInput, layoutPresetInput, highContrastInput,
+    subtitleOrderInput, subShadowStyleInput, subBackgroundOpacityInput,
+    autoStartInput, smartSkipNativeInput, autoPauseOnHoverInput, navHotkeysInput
   ];
 
   allInputs.forEach((input) => {
@@ -284,14 +406,14 @@
       localStorage.removeItem("lumeoSubPosition");
       await STORAGE.remove("lumeoSubPosition");
     } catch {}
-    bottomOffsetInput.value = 14;
-    bottomOffsetVal.textContent = "14%";
+    if (bottomOffsetInput) bottomOffsetInput.value = 14;
+    if (bottomOffsetVal) bottomOffsetVal.textContent = "14%";
     currentSettings.bottomOffset = 14;
     scheduleSave();
     showToast();
   });
 
-  // 6. Eye Toggle Buttons
+  // 8. Eye Toggle Buttons
   document.querySelectorAll(".btn-eye").forEach((btn) => {
     btn.addEventListener("click", () => {
       const targetId = btn.dataset.target;
@@ -307,7 +429,7 @@
     });
   });
 
-  // 7. Test API Key Buttons
+  // 9. Test API Key / Voice Buttons
   document.querySelectorAll(".btn-test").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const provider = btn.dataset.test;
@@ -339,10 +461,55 @@
           });
           if (res.ok) { msg = "Groq API Key is valid!"; }
           else { msg = `Error ${res.status}`; }
+        } else if (provider === "custom-gateway") {
+          const key = customProxyApiKeyInput.value.trim();
+          if (!key) throw new Error("Please enter an API Key for Custom AI Gateway");
+          const base = (customProxyBaseUrlInput.value.trim() || "https://openrouter.ai/api/v1").replace(/\/+$/, "");
+          const url = base.endsWith("/models") ? base : `${base}/models`;
+          const res = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
+          if (res.ok) { msg = "Custom AI Gateway connected successfully!"; }
+          else { msg = `Gateway error ${res.status}: Check Base URL or API Key`; }
+        } else if (provider === "custom-tts") {
+          const key = customTtsApiKeyInput.value.trim();
+          const voiceId = customTtsVoiceIdInput.value.trim();
+          if (!voiceId) throw new Error("Please enter a Voice ID string");
+          const base = (customTtsBaseUrlInput.value.trim() || "https://api.elevenlabs.io/v1").replace(/\/+$/, "");
+          if (base.includes("elevenlabs")) {
+            if (!key) throw new Error("Please enter your ElevenLabs API Key");
+            const url = `${base}/text-to-speech/${encodeURIComponent(voiceId)}`;
+            const res = await fetch(url, {
+              method: "POST",
+              headers: { "xi-api-key": key, "Content-Type": "application/json" },
+              body: JSON.stringify({ text: "Hello! This is a test of your custom voice in Lumeo.", model_id: "eleven_multilingual_v2" }),
+            });
+            if (res.ok) {
+              const blob = await res.blob();
+              const audio = new Audio(URL.createObjectURL(blob));
+              audio.play().catch(() => {});
+              msg = "Voice synthesized and playing successfully!";
+            } else {
+              msg = `Voice Engine error ${res.status}: Check Voice ID or API Key`;
+            }
+          } else {
+            const url = base.endsWith("/audio/speech") ? base : `${base}/audio/speech`;
+            const res = await fetch(url, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ model: "tts-1", voice: voiceId, input: "Hello! This is a test of your custom voice in Lumeo." }),
+            });
+            if (res.ok) {
+              const blob = await res.blob();
+              const audio = new Audio(URL.createObjectURL(blob));
+              audio.play().catch(() => {});
+              msg = "Voice synthesized and playing successfully!";
+            } else {
+              msg = `Voice Engine responded with status ${res.status}`;
+            }
+          }
         }
         alert(msg);
       } catch (err) {
-        alert(err.message || "Key test failed.");
+        alert(err.message || "Test failed.");
       } finally {
         btn.textContent = prevText;
         btn.disabled = false;
@@ -350,7 +517,7 @@
     });
   });
 
-  // 8. Cache Tools
+  // 10. Cache & Export Tools
   btnClearCache?.addEventListener("click", async () => {
     try {
       localStorage.removeItem("lumeoCaptionCacheV1");
@@ -362,6 +529,53 @@
     }
   });
 
+  btnExportSrt?.addEventListener("click", async () => {
+    try {
+      const stored = await STORAGE.get("lumeoCaptionCacheV1");
+      const cache = stored?.lumeoCaptionCacheV1 || {};
+      const entries = cache.entries || {};
+      const keys = Object.keys(entries);
+      if (!keys.length) {
+        cacheStatusMsg.textContent = "No cached subtitles found to export.";
+        setTimeout(() => cacheStatusMsg.textContent = "", 3000);
+        return;
+      }
+      let srtContent = "";
+      let index = 1;
+      const formatTime = (sec) => {
+        const totalMs = Math.round((Number(sec) || 0) * 1000);
+        const h = Math.floor(totalMs / 3600000).toString().padStart(2, "0");
+        const m = Math.floor((totalMs % 3600000) / 60000).toString().padStart(2, "0");
+        const s = Math.floor((totalMs % 60000) / 1000).toString().padStart(2, "0");
+        const ms = (totalMs % 1000).toString().padStart(3, "0");
+        return `${h}:${m}:${s},${ms}`;
+      };
+      for (const k of keys) {
+        const entry = entries[k];
+        if (!entry) continue;
+        const text = entry.translated || entry.text || "";
+        if (!text) continue;
+        const start = entry.start != null ? entry.start : (index - 1) * 3;
+        const end = entry.end != null ? entry.end : (index * 3);
+        srtContent += `${index}\n${formatTime(start)} --> ${formatTime(end)}\n${text}\n\n`;
+        index++;
+      }
+      const blob = new Blob([srtContent], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `lumeo-subtitles-${Date.now()}.srt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      cacheStatusMsg.textContent = `Exported ${index - 1} subtitle cues!`;
+      setTimeout(() => cacheStatusMsg.textContent = "", 3000);
+    } catch (err) {
+      cacheStatusMsg.textContent = "Export error: " + (err.message || String(err));
+    }
+  });
+
   btnResetAll?.addEventListener("click", async () => {
     if (!confirm("Are you sure you want to reset all settings to defaults?")) return;
     try {
@@ -370,11 +584,48 @@
       currentSettings = { ...DEFAULT_SETTINGS };
       populateInputs();
       updatePreview();
+      updateTtsSectionsVisibility();
       alert("All settings restored to defaults!");
     } catch (err) {
       alert("Error: " + err.message);
     }
   });
+
+  // 11. Dynamic Shortcut Display & Config Button
+  if (typeof chrome !== "undefined" && chrome.commands?.getAll) {
+    chrome.commands.getAll((commands) => {
+      const toggleCmd = commands?.find((c) => c.name === "_execute_action" || c.name === "toggle-overlay");
+      if (toggleCmd?.shortcut) {
+        const el = document.getElementById("shortcutToggle");
+        if (el) el.textContent = toggleCmd.shortcut;
+      }
+    });
+  }
+
+  btnConfigureShortcuts?.addEventListener("click", () => {
+    if (typeof chrome !== "undefined" && chrome.tabs?.create) {
+      chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
+    }
+  });
+
+  // 12. 2-way live sync via chrome.storage.onChanged
+  if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName !== "local") return;
+      let hasChanges = false;
+      for (const [key, change] of Object.entries(changes)) {
+        if (currentSettings[key] !== change.newValue) {
+          currentSettings[key] = change.newValue;
+          hasChanges = true;
+        }
+      }
+      if (hasChanges) {
+        populateInputs();
+        updatePreview();
+        updateTtsSectionsVisibility();
+      }
+    });
+  }
 
   // Init
   loadSettings();

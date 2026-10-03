@@ -676,3 +676,56 @@ select option:checked {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* Custom Gateway & TTS styling */
+.badge-neutral {
+  background-color: rgba(148, 163, 184, 0.15);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #cbd5e1;
+}
+
+.custom-gateway-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 680px) {
+  .custom-gateway-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.custom-tts-box {
+  margin-top: 16px;
+  padding: 16px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+}
+
+.custom-tts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.custom-tts-header h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.custom-tts-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 12px;
+}

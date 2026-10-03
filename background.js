@@ -54,6 +54,16 @@ const DEFAULT_SETTINGS = {
   voiceVolume: 100,
   showSource: false,
   kymaKey: "",
+  customProxyBaseUrl: "",
+  customProxyApiKey: "",
+  customProxyModelId: "",
+  customTtsBaseUrl: "",
+  customTtsApiKey: "",
+  customTtsVoiceId: "",
+  autoStart: false,
+  smartSkipNative: false,
+  autoPauseOnHover: false,
+  navHotkeys: false,
 };
 
 // In-memory state. Resets when the service worker cold-starts; that's
@@ -86,6 +96,7 @@ function snapshot() {
 
 const SENSITIVE_KEY_FIELDS = [
   "openaiKey", "geminiKey", "openRouterKey", "groqApiKey",
+  "customProxyApiKey", "customTtsApiKey",
   "huggingFaceToken", "googleCloudKey", "libreTranslateKey",
   "sonioxApiKey", "elevenLabsKey", "minimaxKey", "replicateKey",
   "kymaKey"
@@ -112,6 +123,8 @@ function pruneSettingsForContent(fullSettings) {
     if (safe.translateProvider === "gemini") neededKeys.add("geminiKey");
     if (safe.translateProvider === "groq" || safe.sttProvider === "groq-whisper") neededKeys.add("groqApiKey");
     if (safe.translateProvider === "openrouter") neededKeys.add("openRouterKey");
+    if (safe.translateProvider === "custom-gateway") neededKeys.add("customProxyApiKey");
+    if (safe.captionTtsProvider === "custom-voice-engine") neededKeys.add("customTtsApiKey");
     if (safe.captionTtsProvider === "google-cloud") neededKeys.add("googleCloudKey");
   }
 

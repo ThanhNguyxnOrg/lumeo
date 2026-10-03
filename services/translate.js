@@ -12,6 +12,7 @@
     OPENAI: "openai",
     GEMINI: "gemini",
     OPENROUTER: "openrouter",
+    CUSTOM_GATEWAY: "custom-gateway",
     GROQ: "groq",
     LIBRETRANSLATE: "libretranslate",
   });
@@ -22,6 +23,7 @@
     [PROVIDERS.OPENAI]: "OpenAI",
     [PROVIDERS.GEMINI]: "Gemini",
     [PROVIDERS.OPENROUTER]: "OpenRouter",
+    [PROVIDERS.CUSTOM_GATEWAY]: "Custom AI Gateway",
     [PROVIDERS.GROQ]: "Groq",
     [PROVIDERS.LIBRETRANSLATE]: "LibreTranslate",
   });
@@ -201,25 +203,36 @@
   async function translateChatCompletions(texts, targetLanguage, options) {
     const provider = normalizeProvider(options.provider);
     const isOpenRouter = provider === PROVIDERS.OPENROUTER;
+    const isCustomGateway = provider === PROVIDERS.CUSTOM_GATEWAY;
     const isGroq = provider === PROVIDERS.GROQ;
     const key = assertKey(
-      isOpenRouter
-        ? options.openRouterKey || options.apiKey
-        : isGroq
-          ? options.groqApiKey || options.apiKey
-          : options.openaiKey || options.apiKey,
-      isOpenRouter ? "OpenRouter" : isGroq ? "Groq" : "OpenAI",
+      isCustomGateway
+        ? options.customProxyApiKey || options.apiKey
+        : isOpenRouter
+          ? options.openRouterKey || options.apiKey
+          : isGroq
+            ? options.groqApiKey || options.apiKey
+            : options.openaiKey || options.apiKey,
+      isCustomGateway ? "Custom AI Gateway" : isOpenRouter ? "OpenRouter" : isGroq ? "Groq" : "OpenAI",
     );
-    const model = isOpenRouter
-      ? options.openRouterModel || "openrouter/free"
-      : isGroq
-        ? options.groqModel || "llama-3.3-70b-versatile"
-        : options.openaiModel || "gpt-4o-mini";
-    const url = isOpenRouter
-      ? "https://openrouter.ai/api/v1/chat/completions"
-      : isGroq
-        ? "https://api.groq.com/openai/v1/chat/completions"
-        : "https://api.openai.com/v1/chat/completions";
+    const model = isCustomGateway
+      ? options.customProxyModelId || "openrouter/free"
+      : isOpenRouter
+        ? options.openRouterModel || "openrouter/free"
+        : isGroq
+          ? options.groqModel || "llama-3.3-70b-versatile"
+          : options.openaiModel || "gpt-4o-mini";
+    let url;
+    if (isCustomGateway) {
+      const base = String(options.customProxyBaseUrl || "").trim().replace(/\/+$/, "");
+      url = base ? (base.endsWith("/chat/completions") ? base : `${base}/chat/completions`) : "https://openrouter.ai/api/v1/chat/completions";
+    } else if (isOpenRouter) {
+      url = "https://openrouter.ai/api/v1/chat/completions";
+    } else if (isGroq) {
+      url = "https://api.groq.com/openai/v1/chat/completions";
+    } else {
+      url = "https://api.openai.com/v1/chat/completions";
+    }
     const { system, input } = buildIndexedPrompt(
       texts,
       options.targetLanguageName || targetLanguage,
@@ -230,7 +243,7 @@
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${key}`,
-        ...(isOpenRouter ? {
+        ...(isOpenRouter || isCustomGateway ? {
           "HTTP-Referer": "https://github.com/ThanhNguyxnOrg/lumeo",
           "X-Title": "Lumeo",
         } : {}),
@@ -287,6 +300,7 @@
           break;
         case PROVIDERS.OPENAI:
         case PROVIDERS.OPENROUTER:
+        case PROVIDERS.CUSTOM_GATEWAY:
         case PROVIDERS.GROQ:
           translated = await translateChatCompletions(group, targetLanguage, { ...options, provider });
           break;
