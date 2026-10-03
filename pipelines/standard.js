@@ -148,7 +148,7 @@
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gemini-2.5-flash",
+          model: settings.geminiModel || "gemini-2.5-flash",
           messages: [
             {
               role: "system",
@@ -216,9 +216,58 @@
     const startAt = Math.max(sessionRef.audioCtx.currentTime + 0.05, sessionRef.nextPlayAt);
     const source = sessionRef.audioCtx.createBufferSource();
     source.buffer = audioBuffer;
+
+    const targetDuration = 5.0;
+    const ttsDuration = audioBuffer.duration;
+    const speedRatio = ttsDuration / targetDuration;
+    let rate = 1.0;
+    if (speedRatio > 1.05) {
+      rate = Math.min(speedRatio, 1.35);
+    }
+    if (source.playbackRate) {
+      source.playbackRate.value = rate;
+    }
+    const duration = ttsDuration / rate;
+
     source.connect(sessionRef.outputGain);
+    sessionRef.activeSources = sessionRef.activeSources || new Set();
+    sessionRef.activeSources.add(source);
+    if (typeof source.addEventListener === "function") {
+      source.addEventListener("ended", () => {
+        sessionRef.activeSources?.delete(source);
+      });
+    } else {
+      source.onended = () => {
+        sessionRef.activeSources?.delete(source);
+      };
+    }
     try { source.start(startAt); } catch {}
-    sessionRef.nextPlayAt = startAt + audioBuffer.duration;
+    sessionRef.nextPlayAt = startAt + duration;
+
+    const video = typeof context.getVideo === "function" ? context.getVideo() : null;
+    if (video) {
+      const originalVolume = settings.originalVolume ?? 18;
+      const endAt = startAt + duration;
+      sessionRef.duckUntil = Math.max(sessionRef.duckUntil || 0, endAt);
+
+      const delayToStart = Math.max(0, (startAt - sessionRef.audioCtx.currentTime) * 1000);
+      const delayToEnd = Math.max(0, (endAt - sessionRef.audioCtx.currentTime) * 1000);
+
+      setTimeout(() => {
+        if (sessionRef === context.getActiveSession?.() && sessionRef.token === context.getPageToken?.()) {
+          video.volume = (originalVolume * 0.15) / 100;
+        }
+      }, delayToStart);
+
+      setTimeout(() => {
+        if (sessionRef === context.getActiveSession?.() && sessionRef.token === context.getPageToken?.()) {
+          if (sessionRef.audioCtx.currentTime >= (sessionRef.duckUntil || 0) - 0.05) {
+            video.volume = originalVolume / 100;
+          }
+        }
+      }, delayToEnd);
+    }
+
     context.onChunkDone?.();
   }
 

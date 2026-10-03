@@ -34,7 +34,8 @@
     const key = assertKey(options.apiKey);
     const model = options.model || DEFAULT_MODEL;
     const form = new FormData();
-    form.append("file", wavBlob, "chunk.wav");
+    const filename = String(wavBlob?.type || "").includes("webm") ? "chunk.webm" : "chunk.wav";
+    form.append("file", wavBlob, filename);
     form.append("model", model);
     form.append("response_format", "verbose_json");
     if (options.language) form.append("language", options.language);

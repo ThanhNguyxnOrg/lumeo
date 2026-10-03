@@ -28,6 +28,24 @@
 
   const googleAudioCache = new Map();
   let currentAudio = null;
+  let cachedVoices = [];
+
+  function populateVoices() {
+    try {
+      if (typeof speechSynthesis !== "undefined") {
+        const v = speechSynthesis.getVoices();
+        if (v && v.length) cachedVoices = v;
+      }
+    } catch {}
+    return cachedVoices;
+  }
+  populateVoices();
+  if (typeof speechSynthesis !== "undefined") {
+    speechSynthesis.addEventListener?.("voiceschanged", populateVoices);
+    if (speechSynthesis.onvoiceschanged !== undefined) {
+      speechSynthesis.onvoiceschanged = populateVoices;
+    }
+  }
 
   function normalizeLang(lang) {
     return LANG_CODE_MAP[lang] || lang || "en-US";
@@ -39,14 +57,16 @@
 
   function stripTtsNoise(text) {
     return String(text || "")
+      .replace(/\[[^\]]*\]|\([^)]*\)/g, "")
       .replace(/[>><<»«♪♫♬★☆#*~|\\{}[\]]/g, "")
       .replace(/\s{2,}/g, " ")
       .trim();
   }
 
   function getVoicesForLang(lang) {
+    const list = cachedVoices.length ? cachedVoices : populateVoices();
     const wanted = baseLang(lang);
-    return speechSynthesis.getVoices().filter((voice) =>
+    return list.filter((voice) =>
       baseLang(voice.lang) === wanted ||
       voice.lang.toLowerCase().startsWith(`${wanted}-`)
     );
@@ -54,7 +74,8 @@
 
   function getVoiceByName(name) {
     if (!name) return null;
-    return speechSynthesis.getVoices().find((voice) => voice.name === name) || null;
+    const list = cachedVoices.length ? cachedVoices : populateVoices();
+    return list.find((voice) => voice.name === name) || null;
   }
 
   function stop() {
@@ -69,12 +90,15 @@
     const clean = stripTtsNoise(text);
     if (!clean) return false;
     const voice = getVoiceByName(options.voiceName) || getVoicesForLang(lang)[0] || null;
-    if (!voice) throw new Error(`No browser voice found for ${lang}.`);
     stop();
     const utterance = new SpeechSynthesisUtterance(clean);
-    utterance.voice = voice;
-    utterance.lang = voice.lang || normalizeLang(lang);
-    utterance.rate = Number(options.rate || 1);
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang || normalizeLang(lang);
+    } else {
+      utterance.lang = normalizeLang(lang);
+    }
+    utterance.rate = Number(options.rate || 1.15);
     utterance.pitch = Number(options.pitch || 1);
     utterance.volume = Number(options.volume ?? 1);
     speechSynthesis.speak(utterance);

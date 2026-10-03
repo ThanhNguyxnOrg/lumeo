@@ -9,9 +9,9 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-ff7a45?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.0.0-ff7a45?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/Chrome-MV3-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome MV3">
-  <img src="https://img.shields.io/badge/tests-117%20passed-2ea043?style=for-the-badge" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-118%20passed-2ea043?style=for-the-badge" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-2ea043?style=for-the-badge" alt="License">
 </p>
 

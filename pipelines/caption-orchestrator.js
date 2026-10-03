@@ -471,7 +471,6 @@
 
       ctx.buildOverlay();
       ctx.setStatusText("Loading captions");
-      ctx.setTargetText("Loading captions...");
       ctx.setOverlayState("connecting");
       ctx.applyTierToolbar();
       ctx.applySourceVisibility();
@@ -556,6 +555,7 @@
       const tick = () => {
         const currentSession = ctx.getSession();
         if (currentSession?.type !== "caption" || currentSession.token !== token) return;
+        if (video.paused) return;
         const current = pipeline.cueAt(video.currentTime);
         if (current.index === currentSession.lastCueIndex) return;
         currentSession.lastCueIndex = current.index;
@@ -579,12 +579,27 @@
         ctx.getTranscriptController()?.updateCaptionTranscriptHighlight(current.index);
 
         if (settings.captionTtsProvider && settings.captionTtsProvider !== "off") {
-          pipeline.speakCue(current.cue, {
+          const cue = current.cue;
+          const duration = (cue.end && cue.start && cue.end > cue.start)
+            ? (cue.end - cue.start)
+            : 3.0;
+          const textToSpeak = (cue.translated || cue.text || "").trim();
+          const wordCount = textToSpeak ? textToSpeak.split(/\s+/).length : 0;
+          let calculatedRate = 1.15;
+          if (wordCount > 0 && duration > 0) {
+            const wordsPerSec = wordCount / duration;
+            if (wordsPerSec > 2.8) {
+              calculatedRate = Math.min(1.4, Math.max(1.15, 1.15 + (wordsPerSec - 2.8) * 0.08));
+            }
+          }
+          const effectiveRate = settings.ttsRate || calculatedRate;
+
+          pipeline.speakCue(cue, {
             provider: settings.captionTtsProvider,
             targetLanguage: settings.targetLanguage || "vi",
             googleCloudKey: settings.googleCloudKey,
             openaiKey: settings.openaiKey,
-            rate: settings.ttsRate || 1,
+            rate: effectiveRate,
             volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
           }).catch(() => { });
         }
@@ -594,6 +609,7 @@
       tick();
 
       ctx.setYTPauseHandler(() => {
+        window.LumeoTTS?.stop?.();
         ctx.setStatusText("Paused");
         ctx.setOverlayState("paused");
         ctx.onStateChange({ paused: true, status: "Paused" });

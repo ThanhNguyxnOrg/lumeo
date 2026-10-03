@@ -126,4 +126,65 @@ describe("pipelines/standard.js", () => {
     expect(callbacks.onChunkDone).toHaveBeenCalledOnce();
     expect(callbacks.onError).not.toHaveBeenCalled();
   });
+
+  it("applies speed-stretching and auto-ducking when duration is long and video is available", async () => {
+    const sourceNode = { connect: vi.fn(), start: vi.fn(), playbackRate: { value: 1.0 } };
+    const audioBuffer = { duration: 6.0 };
+    const audioCtx = {
+      currentTime: 3,
+      decodeAudioData: vi.fn(async () => audioBuffer),
+      createBufferSource: vi.fn(() => sourceNode),
+    };
+    const session = {
+      token: 8,
+      kymaKey: "kyma-test",
+      audioCtx,
+      outputGain: {},
+      nextPlayAt: 0,
+      abortController: new AbortController(),
+    };
+    const video = { volume: 1.0 };
+    const formData = { append: vi.fn() };
+    const fetch = vi.fn(async (url) => {
+      if (url.endsWith("/audio/transcriptions")) return { ok: true, json: async () => ({ text: "hello" }) };
+      if (url.endsWith("/chat/completions")) return { ok: true, json: async () => ({ choices: [{ message: { content: "xin chào" } }] }) };
+      if (url.endsWith("/audio/speech")) return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
+      throw new Error("unexpected url");
+    });
+    const callbacks = {
+      onSourceText: vi.fn(),
+      onTargetText: vi.fn(),
+      onChunkDone: vi.fn(),
+      onError: vi.fn(),
+    };
+
+    vi.useFakeTimers();
+
+    await api.processChunk(session, { size: 3000 }, {
+      getActiveSession: () => session,
+      getPageToken: () => 8,
+      getSettings: () => ({ targetLanguage: "vi", standardVoice: "English_magnetic_voiced_man", originalVolume: 50 }),
+      langNameByCode: { vi: "Vietnamese" },
+      kymaBase: "https://kyma.test/v1",
+      audioUtils: { webmBlobToWav: vi.fn(async () => new Blob(["wav"])) },
+      getVideo: () => video,
+      fetch,
+      FormData: vi.fn(function() { return formData; }),
+      parseKymaError: vi.fn(),
+      ...callbacks,
+    });
+
+    expect(sourceNode.playbackRate.value).toBeCloseTo(1.2, 5);
+    expect(session.nextPlayAt).toBeCloseTo(8.05, 5);
+    expect(video.volume).toBe(1.0);
+
+    vi.advanceTimersByTime(50);
+    expect(video.volume).toBeCloseTo(0.075, 5);
+
+    audioCtx.currentTime = 8.05;
+    vi.advanceTimersByTime(5000);
+    expect(video.volume).toBeCloseTo(0.5, 5);
+
+    vi.useRealTimers();
+  });
 });

@@ -18,19 +18,26 @@
   }
 
   function getVideoId(url = location.href) {
+    if (window.LumeoPlatformAdapters) {
+      return window.LumeoPlatformAdapters.getAdapter(url).getVideoId(url);
+    }
     try {
-      return new URL(url).searchParams.get("v");
+      const parsed = new URL(url);
+      return parsed.searchParams.get("v") || parsed.pathname.match(/\/shorts\/([a-zA-Z0-9_-]+)/)?.[1] || null;
     } catch {
       return null;
     }
   }
 
   function injectSniffer() {
-    document.getElementById(SNIFFER_ID)?.remove();
-    const script = document.createElement("script");
-    script.id = SNIFFER_ID;
-    script.src = chrome.runtime.getURL("services/sniffer.js");
-    (document.head || document.documentElement).appendChild(script);
+    if (window.top !== window) return;
+    if (document.getElementById(SNIFFER_ID)) return;
+    try {
+      const script = document.createElement("script");
+      script.id = SNIFFER_ID;
+      script.src = chrome.runtime.getURL("services/sniffer.js");
+      (document.head || document.documentElement).appendChild(script);
+    } catch {}
   }
 
   function onSnifferMessage(event) {
@@ -106,8 +113,11 @@
   try { injectSniffer(); } catch {}
 
   function isTimedTextUrl(url) {
+    if (typeof url !== "string") return false;
     try {
-      return new URL(url, location.href).pathname.includes("/api/timedtext");
+      const parsed = new URL(url, window.location.origin);
+      const isAllowedHost = parsed.hostname === "www.youtube.com" || parsed.hostname === "youtube.com" || parsed.hostname === window.location.hostname;
+      return isAllowedHost && parsed.pathname.includes("/api/timedtext");
     } catch {
       return false;
     }
@@ -158,15 +168,13 @@
   }
 
   function decodeHtml(value) {
-    const textarea = document.createElement("textarea");
-    let text = String(value || "");
-    let previous;
-    do {
-      previous = text;
-      textarea.innerHTML = text;
-      text = textarea.value;
-    } while (text !== previous);
-    return text;
+    if (!value) return "";
+    try {
+      const doc = new DOMParser().parseFromString(value, "text/html");
+      return doc.documentElement.textContent || "";
+    } catch {
+      return String(value);
+    }
   }
 
   function cleanSubtitleText(value) {
@@ -629,6 +637,9 @@
   }
 
   async function triggerCCButton() {
+    if (window.LumeoPlatformAdapters) {
+      return window.LumeoPlatformAdapters.getAdapter().triggerCCButton();
+    }
     const button = document.querySelector(".ytp-subtitles-button");
     if (!button) return;
     const wasOn = button.getAttribute("aria-pressed") === "true";
@@ -837,20 +848,57 @@
     });
   }
 
+  async function fetchGenericSubtitles(targetLanguage) {
+    const adapter = window.LumeoPlatformAdapters?.getAdapter();
+    const video = adapter?.getVideoElement();
+    if (!video) return null;
+    const tracks = Array.from(video.textTracks || []);
+    if (!tracks.length) return null;
+
+    const track = tracks.find(t => t.mode === "showing" || t.mode === "hidden") || tracks[0];
+    if (!track) return null;
+
+    if (!track.cues || !track.cues.length) {
+      await sleep(500);
+    }
+
+    if (track.cues && track.cues.length) {
+      const cues = Array.from(track.cues).map((c) => ({
+        start: c.startTime,
+        end: c.endTime,
+        text: c.text || "",
+        translated: "",
+      }));
+      return {
+        cues,
+        sourceLanguage: track.language || "en",
+        track,
+        tracks,
+      };
+    }
+    return null;
+  }
+
   async function fetchSubtitles(options = {}) {
     injectSniffer();
     const targetLanguage = options.targetLanguage || "vi";
-    const videoId = options.videoId || getVideoId();
+    const adapter = window.LumeoPlatformAdapters?.getAdapter();
+    const videoId = options.videoId || adapter?.getVideoId() || getVideoId();
     const diagnostics = options.diagnostics || {};
     if (!videoId) {
       diagnostics.reason = "no-video-id";
       return null;
     }
 
-    const source =
-      await fetchViaPageData(targetLanguage, { diagnostics }) ||
-      await fetchViaSniff(videoId) ||
-      await fetchViaTranscriptPanel(diagnostics);
+    let source = null;
+    if (!adapter || adapter.name === "youtube") {
+      source =
+        await fetchViaPageData(targetLanguage, { diagnostics }) ||
+        await fetchViaSniff(videoId) ||
+        await fetchViaTranscriptPanel(diagnostics);
+    } else {
+      source = await fetchGenericSubtitles(targetLanguage);
+    }
     if (!source?.cues?.length) {
       diagnostics.snifferTracks = sniffedTrackSummary;
       return null;
@@ -906,6 +954,9 @@
    * not every visible segment concatenated.
    */
   function readYTCaptions() {
+    if (window.LumeoPlatformAdapters) {
+      return window.LumeoPlatformAdapters.getAdapter().readLiveSubtitles();
+    }
     const win = getYtpCaptionWindow();
     const segs = win
       ? win.querySelectorAll(".ytp-caption-segment")

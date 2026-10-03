@@ -3,8 +3,7 @@
 
   if (window.LumeoOverlay?.__loaded) return;
 
-  const DEFAULT_LAYOUT = Object.freeze({ left: null, top: null, width: null, height: null, sideCollapsed: false });
-
+  const DEFAULT_LAYOUT = Object.freeze({ left: null, top: null, width: 320, height: null, sideCollapsed: false });
 
   function createOverlayController(options = {}) {
     const doc = options.document || document;
@@ -33,6 +32,11 @@
       try {
         const stored = storage.getItem(layoutKey) || (layoutKey !== fallbackLayoutKey ? storage.getItem(fallbackLayoutKey) : null);
         const parsed = JSON.parse(stored || "{}");
+        const hasPlayer = typeof doc !== "undefined" && Boolean(doc.querySelector("#movie_player, .html5-video-player"));
+        if (hasPlayer) {
+          delete parsed.left;
+          delete parsed.top;
+        }
         const next = { ...DEFAULT_LAYOUT, ...parsed };
         if (!stored && options.collapsedOnStart) next.sideCollapsed = true;
         return next;
@@ -54,6 +58,12 @@
     let ytObserver = null;
     let ytPollTimer = null;
     let isTranslating = false;
+
+    // Subtitle visual state variables
+    let currentFontSize = 22;
+    let currentBgOpacity = 75;
+    let currentShadowStyle = "drop-shadow";
+    let currentSubtitleOrder = "translation-top";
 
     function ensureYouTubeControlButton() {
       if (typeof doc === "undefined" || !doc.querySelector) return null;
@@ -145,7 +155,7 @@
 
     function clampLayout() {
       const maxW = Math.max(280, win.innerWidth - 24);
-      const w = Math.min(Math.max(layout.width || 300, 260), maxW);
+      const w = Math.min(Math.max(layout.width || 320, 260), maxW);
       if (layout.left !== null && layout.top !== null) {
         const left = Math.min(Math.max(layout.left, 8), win.innerWidth - w - 8);
         const top = Math.min(Math.max(layout.top, 8), win.innerHeight - 44);
@@ -157,31 +167,284 @@
 
     function applyLayout() {
       if (!root) return;
-      clampLayout();
-      if (layout.left !== null && layout.top !== null) {
-        root.style.left = layout.left + "px";
-        root.style.top = layout.top + "px";
-        root.style.width = layout.sideCollapsed ? "auto" : layout.width + "px";
-        root.style.height = "auto";
-        root.style.right = "auto";
-        root.style.bottom = "auto";
-        root.style.position = "fixed";
-      } else {
-        const inPlayer = Boolean(root.parentElement && (root.parentElement.id === "movie_player" || root.parentElement.classList?.contains("html5-video-player")));
-        root.style.position = inPlayer ? "absolute" : "fixed";
-        root.style.right = "12px";
-        root.style.bottom = "60px";
-        root.style.left = "auto";
+      const moviePlayer = typeof doc !== "undefined" ? doc.querySelector("#movie_player, .html5-video-player") : null;
+      const inPlayer = Boolean(moviePlayer && (root.parentElement === moviePlayer || moviePlayer.contains(root) || (doc.body && doc.body.contains(moviePlayer))));
+
+      if (inPlayer) {
+        root.style.position = "absolute";
+        root.style.bottom = "56px";
         root.style.top = "auto";
-        root.style.width = layout.sideCollapsed ? "auto" : (layout.width || 300) + "px";
+        root.style.left = "auto";
+        let rightPx = 12;
+        if (ytButton && moviePlayer) {
+          try {
+            const playerRect = moviePlayer.getBoundingClientRect();
+            const btnRect = ytButton.getBoundingClientRect();
+            if (playerRect.width > 0 && btnRect.right > 0) {
+              rightPx = Math.max(12, Math.round(playerRect.right - btnRect.right - 6));
+            }
+          } catch {}
+        }
+        root.style.right = rightPx + "px";
+        root.style.width = layout.sideCollapsed ? "auto" : "320px";
         root.style.height = "auto";
+      } else {
+        clampLayout();
+        if (layout.left !== null && layout.top !== null) {
+          root.style.left = layout.left + "px";
+          root.style.top = layout.top + "px";
+          root.style.width = layout.sideCollapsed ? "auto" : (layout.width || 320) + "px";
+          root.style.height = "auto";
+          root.style.right = "auto";
+          root.style.bottom = "auto";
+          root.style.position = "fixed";
+        } else {
+          root.style.position = "fixed";
+          root.style.right = "12px";
+          root.style.bottom = "56px";
+          root.style.left = "auto";
+          root.style.top = "auto";
+          root.style.width = layout.sideCollapsed ? "auto" : (layout.width || 320) + "px";
+          root.style.height = "auto";
+        }
       }
       root.classList.toggle("is-side-collapsed", !!layout.sideCollapsed);
-      root.classList.toggle("is-compact", layout.width < 560);
+      root.classList.toggle("is-compact", false);
       if (elements.hideBtn) {
         elements.hideBtn.title = layout.sideCollapsed ? "Open Lumeo (Esc)" : "Minimize Lumeo (Esc)";
       }
       updateYouTubeControlButton();
+    }
+
+    const SUBMENUS = {
+      subtitles: {
+        title: "Subtitles",
+        getItems: () => [
+          { id: "stacked", label: "Bilingual (Original + Translated)" },
+          { id: "translated-only", label: "Translation only" },
+          { id: "source-only", label: "Original only" },
+        ],
+        getValue: () => elements.layoutPreset?.value || "stacked",
+        onSelect: (val) => {
+          if (elements.layoutPreset) {
+            elements.layoutPreset.value = val;
+            elements.layoutPreset.dispatchEvent(new win.Event("change", { bubbles: true }));
+          }
+          try { chrome.storage?.local?.set({ layoutPreset: val }); } catch {}
+          updateMenuLabels();
+        },
+      },
+      language: {
+        title: "Target Language",
+        getItems: () => {
+          if (languages && languages.length > 0) {
+            return languages.map(([code, name]) => ({ id: code, label: name }));
+          }
+          return [
+            { id: "vi", label: "Vietnamese (Tiếng Việt)" },
+            { id: "en", label: "English" },
+            { id: "ja", label: "Japanese (日本語)" },
+            { id: "ko", label: "Korean (한국어)" },
+            { id: "zh", label: "Chinese (中文)" },
+            { id: "fr", label: "French (Français)" },
+            { id: "es", label: "Spanish (Español)" },
+            { id: "de", label: "German (Deutsch)" },
+          ];
+        },
+        getValue: () => elements.langSelect?.value || "vi",
+        onSelect: (val) => {
+          if (elements.langSelect) {
+            elements.langSelect.value = val;
+            elements.langSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+          }
+          try { chrome.storage?.local?.set({ targetLanguage: val }); } catch {}
+          updateMenuLabels();
+        },
+      },
+      voice: {
+        title: "AI Voice",
+        getItems: () => {
+          const opts = Array.from(elements.voiceSelect?.options || []);
+          if (opts.length > 0) {
+            return opts.map((o) => ({ id: o.value, label: o.textContent }));
+          }
+          return [
+            { id: "auto", label: "Auto (Recommended)" },
+            { id: "female-1", label: "Female (Natural)" },
+            { id: "male-1", label: "Male (Deep)" },
+            { id: "off", label: "Off / Mute" },
+          ];
+        },
+        getValue: () => elements.voiceSelect?.value || "auto",
+        onSelect: (val) => {
+          if (elements.voiceSelect) {
+            elements.voiceSelect.value = val;
+            elements.voiceSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+          }
+          try { chrome.storage?.local?.set({ voice: val }); } catch {}
+          updateMenuLabels();
+        },
+      },
+      fontsize: {
+        title: "Font size",
+        getItems: () => [
+          { id: "14", label: "50%" },
+          { id: "18", label: "75%" },
+          { id: "22", label: "100%" },
+          { id: "28", label: "125%" },
+          { id: "34", label: "150%" },
+          { id: "42", label: "200%" },
+        ],
+        getValue: () => String(currentFontSize),
+        onSelect: (val) => {
+          currentFontSize = Number(val);
+          if (elements.fontVal) elements.fontVal.textContent = `${val}px`;
+          if (elements.styleSize) {
+            elements.styleSize.value = val;
+            elements.styleSize.dispatchEvent(new win.Event("input", { bubbles: true }));
+          }
+          try { chrome.storage?.local?.set({ fontSize: Number(val) }); } catch {}
+          applyLiveCaptionStyle();
+          updateMenuLabels();
+        },
+      },
+      opacity: {
+        title: "Background opacity",
+        getItems: () => [
+          { id: "0", label: "0%" },
+          { id: "25", label: "25%" },
+          { id: "50", label: "50%" },
+          { id: "75", label: "75%" },
+          { id: "100", label: "100%" },
+        ],
+        getValue: () => String(currentBgOpacity),
+        onSelect: (val) => {
+          currentBgOpacity = Number(val);
+          try { chrome.storage?.local?.set({ subBackgroundOpacity: Number(val) }); } catch {}
+          applyLiveCaptionStyle();
+          updateMenuLabels();
+        },
+      },
+      edge: {
+        title: "Character edge style",
+        getItems: () => [
+          { id: "none", label: "None" },
+          { id: "drop-shadow", label: "Drop shadow" },
+          { id: "raised", label: "Raised" },
+          { id: "depressed", label: "Depressed" },
+          { id: "outline", label: "Uniform (Outline)" },
+        ],
+        getValue: () => currentShadowStyle,
+        onSelect: (val) => {
+          currentShadowStyle = val;
+          try { chrome.storage?.local?.set({ subShadowStyle: val }); } catch {}
+          applyLiveCaptionStyle();
+          updateMenuLabels();
+        },
+      },
+      order: {
+        title: "Subtitle order",
+        getItems: () => [
+          { id: "translation-top", label: "Translation on top" },
+          { id: "source-top", label: "Original on top" },
+        ],
+        getValue: () => elements.subtitleOrder?.value || currentSubtitleOrder,
+        onSelect: (val) => {
+          currentSubtitleOrder = val;
+          if (elements.subtitleOrder) {
+            elements.subtitleOrder.value = val;
+            elements.subtitleOrder.dispatchEvent(new win.Event("change", { bubbles: true }));
+          }
+          try { chrome.storage?.local?.set({ subtitleOrder: val }); } catch {}
+          updateMenuLabels();
+        },
+      },
+    };
+
+    function openSubmenu(subKey) {
+      const sub = SUBMENUS[subKey];
+      if (!sub || !elements.subContainer) return;
+
+      const items = sub.getItems();
+      const currentVal = sub.getValue();
+
+      elements.subContainer.replaceChildren();
+      for (const item of items) {
+        const btn = doc.createElement("button");
+        btn.type = "button";
+        btn.className = "ytp-lumeo-sub-item" + (String(item.id) === String(currentVal) ? " is-selected" : "");
+        btn.setAttribute("data-sub-id", item.id);
+        btn.innerHTML = `
+          <span class="ytp-lumeo-sub-check">✓</span>
+          <span class="ytp-lumeo-sub-label">${item.label}</span>
+        `;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          sub.onSelect(item.id);
+          closeSubmenu();
+        });
+        elements.subContainer.appendChild(btn);
+      }
+
+      if (elements.backTitle) elements.backTitle.textContent = sub.title;
+      if (elements.backBtn) elements.backBtn.style.display = "inline-flex";
+      if (elements.brand) elements.brand.style.display = "none";
+      if (elements.rootView) elements.rootView.style.display = "none";
+      elements.subContainer.style.display = "flex";
+      elements.subContainer.scrollTop = 0;
+    }
+
+    function closeSubmenu() {
+      if (elements.subContainer) elements.subContainer.style.display = "none";
+      if (elements.rootView) elements.rootView.style.display = "block";
+      if (elements.backBtn) elements.backBtn.style.display = "none";
+      if (elements.brand) elements.brand.style.display = "flex";
+    }
+
+    function applyLiveCaptionStyle() {
+      const player = typeof doc !== "undefined" ? doc.querySelector("#movie_player, .html5-video-player") : null;
+      const sub = player ? player.querySelector(".lumeo-video-sub") : (typeof doc !== "undefined" ? doc.querySelector(".lumeo-video-sub") : null);
+      if (sub) {
+        sub.style.setProperty("--lumeo-caption-font-size", `${currentFontSize}px`);
+        sub.style.setProperty("--lumeo-sub-bg-opacity", String(currentBgOpacity / 100));
+        sub.classList.remove("lumeo-shadow-none", "lumeo-shadow-drop-shadow", "lumeo-shadow-raised", "lumeo-shadow-depressed", "lumeo-shadow-outline");
+        sub.classList.add(`lumeo-shadow-${currentShadowStyle}`);
+      }
+    }
+
+    function updateMenuLabels() {
+      if (!root) return;
+      const subVal = elements.layoutPreset?.value || "stacked";
+      const subItem = SUBMENUS.subtitles.getItems().find((i) => i.id === subVal);
+      const subLabelEl = root.querySelector('[data-val="subtitles"]');
+      if (subLabelEl) subLabelEl.textContent = subItem ? subItem.label.split(" ")[0] : "Bilingual";
+
+      const langVal = elements.langSelect?.value || "vi";
+      const langItem = SUBMENUS.language.getItems().find((i) => i.id === langVal);
+      const langLabelEl = root.querySelector('[data-val="language"]');
+      if (langLabelEl) langLabelEl.textContent = langItem ? langItem.label.split(" (")[0] : langVal;
+
+      const voiceVal = elements.voiceSelect?.value || "auto";
+      const voiceItem = SUBMENUS.voice.getItems().find((i) => i.id === voiceVal);
+      const voiceLabelEl = root.querySelector('[data-val="voice"]');
+      if (voiceLabelEl) voiceLabelEl.textContent = voiceItem ? voiceItem.label.split(" (")[0] : voiceVal;
+
+      const fontItem = SUBMENUS.fontsize.getItems().find((i) => String(i.id) === String(currentFontSize));
+      const fontLabelEl = root.querySelector('[data-val="fontsize"]');
+      if (fontLabelEl) fontLabelEl.textContent = fontItem ? fontItem.label : `${currentFontSize}px`;
+
+      const opacItem = SUBMENUS.opacity.getItems().find((i) => String(i.id) === String(currentBgOpacity));
+      const opacLabelEl = root.querySelector('[data-val="opacity"]');
+      if (opacLabelEl) opacLabelEl.textContent = opacItem ? opacItem.label : `${currentBgOpacity}%`;
+
+      const edgeItem = SUBMENUS.edge.getItems().find((i) => i.id === currentShadowStyle);
+      const edgeLabelEl = root.querySelector('[data-val="edge"]');
+      if (edgeLabelEl) edgeLabelEl.textContent = edgeItem ? edgeItem.label.split(" (")[0] : currentShadowStyle;
+
+      const orderVal = elements.subtitleOrder?.value || currentSubtitleOrder;
+      const orderItem = SUBMENUS.order.getItems().find((i) => i.id === orderVal);
+      const orderLabelEl = root.querySelector('[data-val="order"]');
+      if (orderLabelEl) orderLabelEl.textContent = orderItem ? orderItem.label : orderVal;
     }
 
     function build() {
@@ -193,7 +456,11 @@
       root.innerHTML = `
         <div class="ytp-lumeo-popover" role="dialog" aria-label="Lumeo Quick Settings">
           <div class="ytp-lumeo-header" data-ec-drag>
-            <div class="ytp-lumeo-brand">
+            <button class="ytp-lumeo-back-btn" type="button" data-lumeo-back aria-label="Back" title="Back" style="display: none;">
+              <span class="ytp-lumeo-back-arrow">‹</span>
+              <span data-lumeo-back-title>Back</span>
+            </button>
+            <div class="ytp-lumeo-brand" data-lumeo-brand>
               <span class="ytp-lumeo-logo-badge">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
                   <circle cx="12" cy="12" r="10" stroke="#f97316" stroke-width="2.2"/>
@@ -219,89 +486,123 @@
             </div>
           </div>
           <div class="ytp-lumeo-body">
-            <div class="ytp-lumeo-row ytp-lumeo-session-row">
-              <button type="button" class="ytp-lumeo-toggle-session-btn is-start" data-lumeo-toggle-session title="Start real-time translation" aria-label="Start Translation">
-                <span class="ytp-lumeo-session-icon">▶</span>
-                <span class="ytp-lumeo-session-text">Start Translation</span>
-              </button>
-            </div>
-            <div class="ytp-lumeo-row">
-              <label class="ytp-lumeo-label">Target Language</label>
-              <select class="ec-select ytp-lumeo-select" data-ec-language aria-label="Target language" title="Select target language"></select>
-            </div>
-            <div class="ytp-lumeo-row" data-ec-voice-row>
-              <label class="ytp-lumeo-label">AI Voice</label>
-              <select class="ec-select ytp-lumeo-select" data-ec-voice aria-label="AI Voice" title="Select dubbing voice"></select>
-            </div>
-            <div class="ytp-lumeo-row ytp-lumeo-stepper-row">
-              <span class="ytp-lumeo-label">Subtitle Size</span>
-              <div class="ytp-lumeo-stepper">
-                <button type="button" class="ytp-lumeo-step-btn" data-lumeo-font-dec title="Decrease font size" aria-label="Decrease font size">A−</button>
-                <span class="ytp-lumeo-step-val" data-lumeo-font-val>22px</span>
-                <button type="button" class="ytp-lumeo-step-btn" data-lumeo-font-inc title="Increase font size" aria-label="Increase font size">A+</button>
+            <!-- Root View -->
+            <div class="ytp-lumeo-root-view" data-lumeo-root-view>
+              <div class="ytp-lumeo-row ytp-lumeo-session-row">
+                <button type="button" class="ytp-lumeo-toggle-session-btn is-start" data-lumeo-toggle-session title="Start real-time translation" aria-label="Start Translation">
+                  <span class="ytp-lumeo-session-icon">▶</span>
+                  <span class="ytp-lumeo-session-text">Start Translation</span>
+                </button>
+              </div>
+
+              <div class="ytp-lumeo-menu-list">
+                <!-- Subtitles / Display mode -->
+                <button type="button" class="ytp-lumeo-menu-item" data-open-sub="subtitles">
+                  <span class="ytp-lumeo-item-label">Subtitles</span>
+                  <span class="ytp-lumeo-item-val" data-val="subtitles">Bilingual</span>
+                  <span class="ytp-lumeo-item-arrow">›</span>
+                </button>
+
+                <!-- Target Language -->
+                <button type="button" class="ytp-lumeo-menu-item" data-open-sub="language">
+                  <span class="ytp-lumeo-item-label">Target Language</span>
+                  <span class="ytp-lumeo-item-val" data-val="language">Vietnamese</span>
+                  <span class="ytp-lumeo-item-arrow">›</span>
+                </button>
+
+                <!-- AI Voice -->
+                <button type="button" class="ytp-lumeo-menu-item" data-open-sub="voice" data-ec-voice-row>
+                  <span class="ytp-lumeo-item-label">AI Voice</span>
+                  <span class="ytp-lumeo-item-val" data-val="voice">Auto</span>
+                  <span class="ytp-lumeo-item-arrow">›</span>
+                </button>
+
+                <!-- Font size -->
+                <button type="button" class="ytp-lumeo-menu-item" data-open-sub="fontsize">
+                  <span class="ytp-lumeo-item-label">Font size</span>
+                  <span class="ytp-lumeo-item-val" data-val="fontsize">100%</span>
+                  <span class="ytp-lumeo-item-arrow">›</span>
+                </button>
+
+                <!-- Background opacity -->
+                <button type="button" class="ytp-lumeo-menu-item" data-open-sub="opacity">
+                  <span class="ytp-lumeo-item-label">Background opacity</span>
+                  <span class="ytp-lumeo-item-val" data-val="opacity">75%</span>
+                  <span class="ytp-lumeo-item-arrow">›</span>
+                </button>
+
+                <!-- Character edge style -->
+                <button type="button" class="ytp-lumeo-menu-item" data-open-sub="edge">
+                  <span class="ytp-lumeo-item-label">Character edge style</span>
+                  <span class="ytp-lumeo-item-val" data-val="edge">Drop shadow</span>
+                  <span class="ytp-lumeo-item-arrow">›</span>
+                </button>
+
+                <!-- Subtitle order -->
+                <button type="button" class="ytp-lumeo-menu-item" data-open-sub="order">
+                  <span class="ytp-lumeo-item-label">Subtitle order</span>
+                  <span class="ytp-lumeo-item-val" data-val="order">Translation on top</span>
+                  <span class="ytp-lumeo-item-arrow">›</span>
+                </button>
+
+                <!-- Reset Subtitle Position -->
+                <button type="button" class="ytp-lumeo-menu-item ytp-lumeo-item-reset" data-lumeo-reset-pos title="Reset subtitle position to default bottom-center">
+                  <span class="ytp-lumeo-item-label" style="display: inline-flex; align-items: center; gap: 6px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 13px; height: 13px;">
+                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                      <path d="M3 3v5h5"/>
+                    </svg>
+                    Reset Subtitle Position
+                  </span>
+                </button>
               </div>
             </div>
-            <div class="ytp-lumeo-row">
-              <label class="ytp-lumeo-label">Display Mode</label>
-              <select class="ec-select ytp-lumeo-select" data-ec-layout-preset aria-label="Subtitle layout mode">
-                <option value="stacked">Bilingual (Original + Translated)</option>
-                <option value="translated-only">Translation only</option>
-                <option value="source-only">Original only</option>
-              </select>
-            </div>
-            <div class="ytp-lumeo-row">
-              <label class="ytp-lumeo-label">Subtitle Order</label>
-              <select class="ec-select ytp-lumeo-select" data-lumeo-subtitle-order aria-label="Subtitle vertical order">
-                <option value="translation-top">Translation on top</option>
-                <option value="source-top">Original on top</option>
-              </select>
-            </div>
-            <div class="ytp-lumeo-row">
-              <button type="button" class="ytp-lumeo-btn-secondary" data-lumeo-reset-pos title="Reset subtitle position to default bottom-center">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 12px; height: 12px; margin-right: 5px;">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                  <path d="M3 3v5h5"/>
-                </svg>
-                Reset Subtitle Position
-              </button>
-            </div>
-            <div class="ytp-lumeo-row" style="display: none;">
-              <button type="button" class="ec-btn-stop-session ytp-lumeo-btn-stop" data-ec-stop title="Stop active translation">
-                ✕ Stop translation
-              </button>
-            </div>
-            <div class="ytp-lumeo-footer">
-              <button type="button" class="ytp-lumeo-link-options" data-ec-open-options title="Open detailed settings & API keys">
-                Detailed Settings & API Keys ↗
-              </button>
-            </div>
+
+            <!-- Submenu View -->
+            <div class="ytp-lumeo-sub-container" data-lumeo-sub-container style="display: none;"></div>
           </div>
         </div>
 
         <!-- Preserved DOM nodes for backward-compatibility with tests & content.js -->
-        <div class="ec-body" data-ec-body style="display: none !important;">
-          <div class="ec-target" data-ec-target></div>
-        </div>
-        <div class="ec-toolbar" style="display: none !important;">
-          <span class="ec-toolbar-cap" data-ec-tts-cap hidden></span>
-          <button data-ec-settings hidden aria-label="Quick settings" type="button"></button>
-          <button data-ec-pip hidden aria-label="PiP subtitles" type="button"></button>
-          <button data-ec-transcript hidden aria-label="Transcript" type="button"></button>
-          <button data-ec-help hidden aria-label="Keyboard shortcuts" type="button"></button>
-        </div>
-        <div class="ec-style-popover" data-ec-settings-panel hidden style="display: none !important;">
-          <input type="range" data-ec-style-size min="12" max="36" step="1" value="22">
-          <output data-ec-style-size-value>22px</output>
-          <input type="range" data-ec-style-position min="0" max="80" step="1" value="28">
-          <output data-ec-style-position-value>28%</output>
-          <input type="range" data-ec-original-volume min="0" max="100" step="1" value="100">
-          <output data-ec-original-volume-value>100%</output>
-          <input type="range" data-ec-voice-volume min="0" max="100" step="1" value="100">
-          <output data-ec-voice-volume-value>100%</output>
-          <input type="checkbox" data-ec-mute-original>
-          <input type="checkbox" data-ec-show-translated checked>
-          <input type="checkbox" data-ec-show-source checked>
-          <input type="checkbox" data-ec-high-contrast>
+        <div style="display: none !important;">
+          <button data-lumeo-font-dec type="button"></button>
+          <button data-lumeo-font-inc type="button"></button>
+          <span data-lumeo-font-val>22px</span>
+          <select class="ec-select ytp-lumeo-select" data-ec-language aria-label="Target language"></select>
+          <select class="ec-select ytp-lumeo-select" data-ec-voice aria-label="AI Voice"></select>
+          <select class="ec-select ytp-lumeo-select" data-ec-layout-preset aria-label="Subtitle layout mode">
+            <option value="stacked">Bilingual (Original + Translated)</option>
+            <option value="translated-only">Translation only</option>
+            <option value="source-only">Original only</option>
+          </select>
+          <select class="ec-select ytp-lumeo-select" data-lumeo-subtitle-order aria-label="Subtitle vertical order">
+            <option value="translation-top">Translation on top</option>
+            <option value="source-top">Original on top</option>
+          </select>
+          <button type="button" class="ec-btn-stop-session ytp-lumeo-btn-stop" data-ec-stop title="Stop active translation"></button>
+          <button type="button" class="ytp-lumeo-link-options" data-ec-open-options></button>
+          <div class="ec-body" data-ec-body><div class="ec-target" data-ec-target></div></div>
+          <div class="ec-toolbar">
+            <span class="ec-toolbar-cap" data-ec-tts-cap hidden></span>
+            <button data-ec-settings hidden aria-label="Quick settings" type="button"></button>
+            <button data-ec-pip hidden aria-label="PiP subtitles" type="button"></button>
+            <button data-ec-transcript hidden aria-label="Transcript" type="button"></button>
+            <button data-ec-help hidden aria-label="Keyboard shortcuts" type="button"></button>
+          </div>
+          <div class="ec-style-popover" data-ec-settings-panel hidden>
+            <input type="range" data-ec-style-size min="12" max="36" step="1" value="22">
+            <output data-ec-style-size-value>22px</output>
+            <input type="range" data-ec-style-position min="0" max="80" step="1" value="28">
+            <output data-ec-style-position-value>28%</output>
+            <input type="range" data-ec-original-volume min="0" max="100" step="1" value="100">
+            <output data-ec-original-volume-value>100%</output>
+            <input type="range" data-ec-voice-volume min="0" max="100" step="1" value="100">
+            <output data-ec-voice-volume-value>100%</output>
+            <input type="checkbox" data-ec-mute-original>
+            <input type="checkbox" data-ec-show-translated checked>
+            <input type="checkbox" data-ec-show-source checked>
+            <input type="checkbox" data-ec-high-contrast>
+          </div>
         </div>
       `;
       const moviePlayer = doc.querySelector("#movie_player, .html5-video-player");
@@ -316,6 +617,7 @@
       bindShortcuts();
       bindDragResize();
       applyLayout();
+      updateMenuLabels();
       bindYouTubeObserver();
       win.addEventListener("resize", applyLayout);
       doc.addEventListener("keydown", handleShortcutKeydown);
@@ -376,6 +678,11 @@
         fontVal: root.querySelector("[data-lumeo-font-val]"),
         resetPos: root.querySelector("[data-lumeo-reset-pos]"),
         subtitleOrder: root.querySelector("[data-lumeo-subtitle-order]"),
+        backBtn: root.querySelector("[data-lumeo-back]"),
+        backTitle: root.querySelector("[data-lumeo-back-title]"),
+        brand: root.querySelector("[data-lumeo-brand]"),
+        rootView: root.querySelector("[data-lumeo-root-view]"),
+        subContainer: root.querySelector("[data-lumeo-sub-container]"),
         source: null,
         history: null,
       };
@@ -399,6 +706,9 @@
       } else {
         layout.sideCollapsed = typeof forceState === "boolean" ? forceState : !layout.sideCollapsed;
       }
+      if (layout.sideCollapsed) {
+        closeSubmenu();
+      }
       saveLayout();
       applyLayout();
     }
@@ -411,16 +721,20 @@
       if (!root) return;
       const fontSize = captionStyle.fontSize || 22;
       const bottomOffset = captionStyle.bottomOffset || 14;
+      currentFontSize = fontSize;
       root.style.setProperty("--lumeo-caption-font-size", `${fontSize}px`);
       root.style.setProperty("--lumeo-caption-bottom-offset", `${bottomOffset}%`);
       root.classList.toggle("ec-hide-source-line", captionStyle.showSource === false || captionStyle.layoutPreset === "translated-only");
       root.classList.toggle("ec-hide-translated-line", captionStyle.layoutPreset === "source-only");
       root.classList.toggle("ec-caption-high-contrast", !!captionStyle.highContrast);
+      updateMenuLabels();
+      applyLiveCaptionStyle();
     }
 
     function syncCaptionControls(captionStyle = {}) {
       const fontSize = captionStyle.fontSize || 22;
       const bottomOffset = captionStyle.bottomOffset || 14;
+      currentFontSize = fontSize;
       if (elements.styleSize) elements.styleSize.value = String(fontSize);
       if (elements.styleSizeValue) elements.styleSizeValue.value = `${fontSize}px`;
       if (elements.stylePosition) elements.stylePosition.value = String(bottomOffset);
@@ -434,6 +748,7 @@
       if (elements.muteOriginal) elements.muteOriginal.checked = !!captionStyle.muteOriginal;
       if (elements.showTranslated) elements.showTranslated.checked = captionStyle.showTranslatedSub !== false;
       if (elements.showSource) elements.showSource.checked = captionStyle.showSourceSub !== false;
+      updateMenuLabels();
     }
 
     function setState(state) {
@@ -510,6 +825,7 @@
       elements.transcriptBtn?.addEventListener("click", (e) => {
         e.stopPropagation();
       });
+
       // Stepper buttons for font size
       elements.fontDec?.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -542,25 +858,57 @@
       elements.subtitleOrder?.addEventListener("change", (e) => {
         e.stopPropagation();
         const nextOrder = elements.subtitleOrder.value;
+        currentSubtitleOrder = nextOrder;
         try {
           if (typeof chrome !== "undefined" && chrome.storage?.local) {
             chrome.storage.local.set({ subtitleOrder: nextOrder });
           }
         } catch {}
+        updateMenuLabels();
+      });
+
+      // Back button in submenu header
+      elements.backBtn?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeSubmenu();
+      });
+
+      // Menu items that open submenus
+      root.querySelectorAll("[data-open-sub]").forEach((item) => {
+        item.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const subKey = item.getAttribute("data-open-sub");
+          if (subKey) openSubmenu(subKey);
+        });
       });
 
       // Init settings from storage
       try {
         if (typeof chrome !== "undefined" && chrome.storage?.local) {
-          chrome.storage.local.get(["fontSize", "subtitleOrder"], (items) => {
+          chrome.storage.local.get(["fontSize", "subtitleOrder", "subBackgroundOpacity", "subShadowStyle", "targetLanguage", "layoutPreset"], (items) => {
             if (items?.fontSize) {
-              const sz = Number(items.fontSize);
-              if (elements.fontVal) elements.fontVal.textContent = `${sz}px`;
-              if (elements.styleSize) elements.styleSize.value = sz;
+              currentFontSize = Number(items.fontSize);
+              if (elements.fontVal) elements.fontVal.textContent = `${currentFontSize}px`;
+              if (elements.styleSize) elements.styleSize.value = currentFontSize;
             }
-            if (items?.subtitleOrder && elements.subtitleOrder) {
-              elements.subtitleOrder.value = items.subtitleOrder;
+            if (items?.subBackgroundOpacity != null) {
+              currentBgOpacity = Number(items.subBackgroundOpacity);
             }
+            if (items?.subShadowStyle) {
+              currentShadowStyle = items.subShadowStyle;
+            }
+            if (items?.subtitleOrder) {
+              currentSubtitleOrder = items.subtitleOrder;
+              if (elements.subtitleOrder) elements.subtitleOrder.value = items.subtitleOrder;
+            }
+            if (items?.targetLanguage && elements.langSelect) {
+              elements.langSelect.value = items.targetLanguage;
+            }
+            if (items?.layoutPreset && elements.layoutPreset) {
+              elements.layoutPreset.value = items.layoutPreset;
+            }
+            updateMenuLabels();
+            applyLiveCaptionStyle();
           });
         }
       } catch {}
@@ -619,8 +967,9 @@
     }
 
     function stepFontSize(delta) {
-      const current = Number(elements.styleSize?.value || 22);
+      const current = Number(elements.styleSize?.value || currentFontSize || 22);
       const next = Math.min(36, Math.max(14, current + delta));
+      currentFontSize = next;
       if (elements.fontVal) elements.fontVal.textContent = `${next}px`;
       if (elements.styleSize) {
         elements.styleSize.value = next;
@@ -632,6 +981,8 @@
           chrome.storage.local.set({ fontSize: next });
         }
       } catch {}
+      applyLiveCaptionStyle();
+      updateMenuLabels();
     }
 
     function showShortcutHelp() {
@@ -650,7 +1001,8 @@
       }
 
       if (e.key === "Escape") {
-        if (isOpen()) {
+        const isBodyOrNull = !doc.activeElement || doc.activeElement === doc.body || doc.activeElement === doc.documentElement;
+        if (isOpen() && (overlayFocused || isBodyOrNull)) {
           toggleSideCollapsed(true);
           e.preventDefault();
           return;
@@ -696,73 +1048,9 @@
     }
 
     function bindDragResize() {
-      let dragMode = null;
-      let pointer = null;
-
-      elements.drag.addEventListener("pointerdown", (e) => {
-        if (e.button !== 0) return;
-        if (e.target.closest("button, select, input, label, a, .ec-btn, .ec-select")) return;
-        dragMode = "move";
-        pointer = capturePointer(e);
-        root.setPointerCapture?.(e.pointerId);
-        e.preventDefault();
-      });
-
-      for (const handle of root.querySelectorAll("[data-ec-resize]")) {
-        handle.addEventListener("pointerdown", (e) => {
-          if (e.button !== 0) return;
-          dragMode = "resize-" + handle.dataset.ecResize;
-          pointer = capturePointer(e);
-          handle.setPointerCapture?.(e.pointerId);
-          e.preventDefault();
-        });
-      }
-
-      const finishPointer = () => {
-        if (dragMode) saveLayout();
-        dragMode = null;
-        pointer = null;
-      };
-
-      win.addEventListener("pointermove", (e) => {
-        if (!dragMode || !pointer) return;
-        const dx = e.clientX - pointer.x;
-        const dy = e.clientY - pointer.y;
-        if (dragMode === "move") {
-          layout.left = pointer.left + dx;
-          layout.top = pointer.top + dy;
-          layout.openLeft = layout.left;
-          layout.openTop = layout.top;
-        } else {
-          const mode = dragMode.slice(7);
-          if (mode.includes("e")) layout.width = pointer.width + dx;
-          if (mode.includes("s")) layout.height = pointer.height + dy;
-          if (mode.includes("w")) {
-            layout.width = pointer.width - dx;
-            layout.left = pointer.left + dx;
-          }
-          if (mode.includes("n")) {
-            layout.height = pointer.height - dy;
-            layout.top = pointer.top + dy;
-          }
-        }
-        applyLayout();
-      });
-
-      win.addEventListener("pointerup", finishPointer);
-      win.addEventListener("pointercancel", finishPointer);
-    }
-
-    function capturePointer(e) {
-      const rect = root.getBoundingClientRect();
-      return {
-        x: e.clientX,
-        y: e.clientY,
-        left: layout.left ?? rect.left,
-        top: layout.top ?? rect.top,
-        width: layout.width ?? rect.width,
-        height: layout.height ?? rect.height,
-      };
+      // Popover dragging is intentionally disabled per ADR 0004.
+      // Settings popovers must remain strictly anchored to YouTube's player controls.
+      // Subtitle drag on the video player is handled exclusively by LumeoSubtitleOverlay.
     }
 
     return {

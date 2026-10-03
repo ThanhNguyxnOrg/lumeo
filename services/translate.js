@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  if (window.LumeoTranslate?.__loaded) return;
+  if (globalThis.LumeoTranslate?.__loaded) return;
 
   const DEFAULT_BATCH_SIZE = 40;
   const DEFAULT_TIMEOUT_MS = 30_000;
@@ -101,28 +101,41 @@
     }
   }
 
-  async function translateGoogleFree(texts, targetLanguage) {
-    const results = [];
-    for (const text of texts) {
-      if (!text.trim()) {
-        results.push("");
-        continue;
+  async function mapConcurrent(items, concurrency, fn) {
+    const results = new Array(items.length);
+    let index = 0;
+    const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (index < items.length) {
+        const i = index++;
+        results[i] = await fn(items[i], i);
       }
+    });
+    await Promise.all(workers);
+    return results;
+  }
+
+  async function translateGoogleFree(texts, targetLanguage) {
+    const cache = new Map();
+    return mapConcurrent(texts, 5, async (text) => {
+      const trimmed = String(text ?? "").trim();
+      if (!trimmed) return "";
+      if (cache.has(trimmed)) return cache.get(trimmed);
       const url =
         "https://translate.googleapis.com/translate_a/single" +
         `?client=gtx&sl=auto&tl=${encodeURIComponent(targetLanguage)}` +
-        `&dt=t&q=${encodeURIComponent(text)}`;
+        `&dt=t&q=${encodeURIComponent(trimmed)}`;
       try {
         const data = await requestJSON(url);
         const translated = Array.isArray(data?.[0])
           ? data[0].map((part) => part?.[0] || "").join("").trim()
           : "";
-        results.push(translated || text);
+        const result = translated || text;
+        cache.set(trimmed, result);
+        return result;
       } catch {
-        results.push(text);
+        return text;
       }
-    }
-    return results;
+    });
   }
 
   async function translateGoogleCloud(texts, targetLanguage, options) {
@@ -293,10 +306,129 @@
     return outputs;
   }
 
-  window.LumeoTranslate = {
+  function parseExplanation(rawText) {
+    const text = String(rawText || "").trim();
+    const getField = (names) => {
+      const re = new RegExp(`(?:^|\\n)[\\s-*•\\d.]*\\*{0,2}(?:${names})\\*{0,2}[:*\\s]+([^\\n]+)`, "i");
+      const m = text.match(re);
+      return m ? m[1].replace(/^[\s:*]+|[\s:*]+$/g, "").trim() : "";
+    };
+    const meaning = getField("Meaning|Nghĩa");
+    const nuance = getField("Nuance|Sắc thái");
+    const synonyms = getField("Synonyms|Từ đồng nghĩa");
+
+    if (meaning) {
+      return { meaning, nuance, synonyms, raw: text };
+    }
+    const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+    return {
+      meaning: lines[0] || text,
+      nuance: lines[1] || "",
+      synonyms: lines[2] || "",
+      raw: text,
+    };
+  }
+
+  async function explainWordInContext(word, sentence, targetLanguage = "en", options = {}) {
+    const provider = normalizeProvider(options.provider || PROVIDERS.GOOGLE_FREE);
+    const lang = options.targetLanguageName || targetLanguage;
+    const cleanWord = String(word || "").trim();
+    const cleanSentence = String(sentence || cleanWord).trim();
+    if (!cleanWord) return { meaning: "", nuance: "", synonyms: "" };
+
+    const hasSentence = cleanSentence && cleanSentence.toLowerCase() !== cleanWord.toLowerCase();
+    const system = hasSentence
+      ? "You are a concise language learning tutor. Explain the exact meaning of the word/phrase in the context of the given sentence. Keep definitions crisp and punchy."
+      : "You are a concise language learning tutor. Explain the core definition, common nuances, and synonyms of the word/phrase. Keep definitions crisp and punchy.";
+    const userPrompt = hasSentence
+      ? `Word: "${cleanWord}"\nSentence: "${cleanSentence}"\nTarget Language: ${lang}\n\nRespond strictly in this format:\nMeaning: <precise meaning in this sentence in ${lang}>\nNuance: <brief note on tone or register in ${lang}>\nSynonyms: <1-3 synonyms in this context>`
+      : `Word: "${cleanWord}"\nTarget Language: ${lang}\n\nRespond strictly in this format:\nMeaning: <precise definition in ${lang}>\nNuance: <brief note on tone, register, or usage in ${lang}>\nSynonyms: <1-3 common synonyms in ${lang}>`;
+
+    if (provider === PROVIDERS.GEMINI) {
+      const key = assertKey(options.geminiKey || options.apiKey, "Gemini");
+      const model = options.geminiModel || "gemini-2.5-flash-lite";
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+      const data = await requestJSON(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${system}\n\n${userPrompt}` }] }],
+          generationConfig: { temperature: 0.2 },
+        }),
+        signal: options.signal,
+      });
+      const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      return parseExplanation(raw);
+    }
+
+    if ([PROVIDERS.OPENAI, PROVIDERS.GROQ, PROVIDERS.OPENROUTER].includes(provider)) {
+      const isOpenRouter = provider === PROVIDERS.OPENROUTER;
+      const isGroq = provider === PROVIDERS.GROQ;
+      const key = assertKey(
+        isOpenRouter
+          ? options.openRouterKey || options.apiKey
+          : isGroq
+            ? options.groqApiKey || options.apiKey
+            : options.openaiKey || options.apiKey,
+        isOpenRouter ? "OpenRouter" : isGroq ? "Groq" : "OpenAI",
+      );
+      const model = isOpenRouter
+        ? options.openRouterModel || "openrouter/free"
+        : isGroq
+          ? options.groqModel || "llama-3.3-70b-versatile"
+          : options.openaiModel || "gpt-4o-mini";
+      const url = isOpenRouter
+        ? "https://openrouter.ai/api/v1/chat/completions"
+        : isGroq
+          ? "https://api.groq.com/openai/v1/chat/completions"
+          : "https://api.openai.com/v1/chat/completions";
+
+      const data = await requestJSON(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+          ...(isOpenRouter ? {
+            "HTTP-Referer": "https://github.com/ThanhNguyxnOrg/lumeo",
+            "X-Title": "Lumeo",
+          } : {}),
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.2,
+        }),
+        signal: options.signal,
+      });
+      const raw = data?.choices?.[0]?.message?.content || "";
+      return parseExplanation(raw);
+    }
+
+    // Fallback: Google Free Translate
+    const textsToTranslate = cleanSentence !== cleanWord ? [cleanWord, cleanSentence] : [cleanWord];
+    const trans = await translateGoogleFree(textsToTranslate, targetLanguage, options);
+    return {
+      meaning: trans[0] || cleanWord,
+      nuance: trans[1] ? `Sentence: "${trans[1]}"` : "",
+      synonyms: "",
+      raw: trans[0] || "",
+    };
+  }
+
+  const api = {
     __loaded: true,
     PROVIDERS,
     labelFor,
     translateBatch,
+    explainWordInContext,
+    parseExplanation,
   };
+
+  globalThis.LumeoTranslate = api;
+  if (typeof window !== "undefined") {
+    window.LumeoTranslate = api;
+  }
 })();

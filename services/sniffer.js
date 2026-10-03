@@ -20,8 +20,16 @@
   const TARGET_ORIGIN = window.location.origin;
   const TIMEDTEXT_RE = /\/api\/timedtext(?:\/|$|\?)/;
 
-  const isTimedtextUrl = (value) =>
-    typeof value === 'string' && TIMEDTEXT_RE.test(value);
+  const isTimedtextUrl = (value) => {
+    if (typeof value !== 'string') return false;
+    try {
+      const parsed = new URL(value, window.location.origin);
+      const isAllowedHost = parsed.hostname === 'www.youtube.com' || parsed.hostname === 'youtube.com' || parsed.hostname === window.location.hostname;
+      return isAllowedHost && TIMEDTEXT_RE.test(parsed.pathname + parsed.search);
+    } catch {
+      return false;
+    }
+  };
 
   const postSnifferMessage = (type, payload) => {
     try {

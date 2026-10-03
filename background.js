@@ -339,16 +339,18 @@ async function persistSettings(partial) {
   }
 }
 
-async function handleStart(settings) {
+async function handleStart(settings, explicitTab = null) {
   if (state.running || state.connecting) {
     return { ok: false, error: "Session already running." };
   }
   await persistSettings(settings || {});
-  let tab;
-  try {
-    tab = await activeYouTubeTab();
-  } catch (err) {
-    return { ok: false, error: err.message };
+  let tab = explicitTab;
+  if (!tab) {
+    try {
+      tab = await activeYouTubeTab();
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   }
   state.tabId = tab.id;
   state.connecting = true;
@@ -710,12 +712,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Content-originated messages (have sender.tab from non-extension origin).
   const isExtensionOrigin = !!(sender.url && sender.url.startsWith(chrome.runtime.getURL("")));
   if (sender.tab && !isExtensionOrigin) {
-    handleContentEvent(message);
-    sendResponse?.({ ok: true });
-    return false;
+    if (!["START", "STOP", "GET_STATE", "UPDATE_SETTINGS", "UPDATE_VOLUME"].includes(message?.type)) {
+      handleContentEvent(message);
+      sendResponse?.({ ok: true });
+      return false;
+    }
   }
 
-  // Popup-originated messages (no sender.tab).
+  // Session commands & router.
   (async () => {
     try {
       switch (message?.type) {
@@ -731,7 +735,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ ok: true, state: snapshot() });
           break;
         case "START":
-          sendResponse(await handleStart(message.settings));
+          sendResponse(await handleStart(message.settings, sender?.tab || null));
           break;
         case "STOP":
           sendResponse(await handleStop());

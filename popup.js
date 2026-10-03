@@ -30,6 +30,7 @@ const buildBadge = $("buildBadge");
 const modeRadios = Array.from(document.querySelectorAll('input[name="modeProxy"]'));
 const providerRegistry = globalThis.LumeoProviders;
 const browserApi = globalThis.LumeoBrowserApi;
+const cachedModelsByProvider = {};
 
 const DUB_LANGUAGES = [
   ["en", "English"], ["vi", "Vietnamese"], ["ja", "Japanese"],
@@ -266,6 +267,94 @@ function renderKeyFields(card, provider) {
     label.append(span, input);
     card.appendChild(label);
   }
+
+  const baseModels = provider.models || [];
+  const cachedList = cachedModelsByProvider[provider.id] || [];
+  const modelMap = new Map();
+  for (const m of baseModels) modelMap.set(m.id, m.name);
+  for (const m of cachedList) modelMap.set(m.id, m.name);
+
+  if (modelMap.size > 0) {
+    const settingKey = provider.id === "openrouter" ? "openRouterModel" : provider.id + "Model";
+    const currentModelVal = state[settingKey] || baseModels[0]?.id || "";
+
+    const label = document.createElement("label");
+    label.className = "field slot-provider-model";
+
+    const header = document.createElement("div");
+    header.className = "slot-model-header";
+    const span = document.createElement("span");
+    span.textContent = "Model";
+
+    const refreshBtn = document.createElement("button");
+    refreshBtn.type = "button";
+    refreshBtn.className = "slot-model-refresh-btn";
+    refreshBtn.dataset.refreshProvider = provider.id;
+    refreshBtn.textContent = "🔄 Refresh";
+    refreshBtn.title = `Fetch latest models from ${provider.label} API`;
+    refreshBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const keyField = provider.keyFields?.[0];
+      const key = keyField ? keyValue(keyField) : "";
+      if (!key) {
+        statusEl.textContent = `Enter your ${provider.label} key first to fetch models.`;
+        setStateClass("error");
+        return;
+      }
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = "Fetching...";
+      statusEl.textContent = `Fetching models from ${provider.label}...`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(new Error("Request timed out.")), 10000);
+      try {
+        const fetched = await providerRegistry.fetchProviderModels(provider.id, key, { signal: controller.signal });
+        clearTimeout(timer);
+        cachedModelsByProvider[provider.id] = fetched;
+        statusEl.textContent = `Loaded ${fetched.length} models for ${provider.label}.`;
+        setStateClass("idle");
+        renderSetupStack();
+      } catch (err) {
+        clearTimeout(timer);
+        statusEl.textContent = `Could not fetch models: ${err.message || err}`;
+        setStateClass("error");
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = "🔄 Refresh";
+      }
+    });
+
+    header.append(span, refreshBtn);
+
+    const select = document.createElement("select");
+    select.dataset.modelSetting = settingKey;
+
+    let isKnownOption = false;
+    for (const [id, name] of modelMap.entries()) {
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = name;
+      select.appendChild(opt);
+      if (id === currentModelVal) isKnownOption = true;
+    }
+
+    const customOpt = document.createElement("option");
+    customOpt.value = "__custom__";
+    customOpt.textContent = "✏️ Custom Model...";
+    select.appendChild(customOpt);
+
+    select.value = isKnownOption ? currentModelVal : "__custom__";
+
+    const customInput = document.createElement("input");
+    customInput.type = "text";
+    customInput.className = "slot-custom-model-input";
+    customInput.dataset.customModelSetting = settingKey;
+    customInput.placeholder = "e.g. gemini-3.0-flash / llama-4";
+    customInput.value = isKnownOption ? "" : currentModelVal;
+    customInput.hidden = select.value !== "__custom__";
+
+    label.append(header, select, customInput);
+    card.appendChild(label);
+  }
 }
 
 function renderSetupStack() {
@@ -433,6 +522,10 @@ function readSettings() {
     originalVolume: Number(originalVolumeInput.value),
     voiceVolume: Number(voiceVolumeInput.value),
     showSource: showSourceCheckbox.checked,
+    openaiModel: state.openaiModel || "gpt-4o-mini",
+    geminiModel: state.geminiModel || "gemini-2.5-flash-lite",
+    openRouterModel: state.openRouterModel || "openrouter/free",
+    groqModel: state.groqModel || "llama-3.3-70b-versatile",
   };
   if (tier === "caption") settings.captionTtsProvider = state.captionTtsProvider || voiceSelect.value || "off";
   return settings;
@@ -518,7 +611,8 @@ function applyState(s) {
 function getVideoIdFromUrl(url) {
   try {
     const parsed = new URL(url || "");
-    return parsed.hostname.includes("youtube.com") ? parsed.searchParams.get("v") : null;
+    if (!parsed.hostname.includes("youtube.com")) return null;
+    return parsed.searchParams.get("v") || parsed.pathname.match(/\/shorts\/([a-zA-Z0-9_-]+)/)?.[1] || null;
   } catch {
     return null;
   }
@@ -526,9 +620,28 @@ function getVideoIdFromUrl(url) {
 
 async function loadActiveTabContext() {
   try {
-    const [tab] = await browserApi.queryTabs({ active: true, currentWindow: true });
+    let [tab] = await browserApi.queryTabs({ active: true, currentWindow: true });
+    let videoId = getVideoIdFromUrl(tab?.url);
+    if (!videoId) {
+      try {
+        const [focusedTab] = await browserApi.queryTabs({ active: true, lastFocusedWindow: true });
+        if (getVideoIdFromUrl(focusedTab?.url)) {
+          tab = focusedTab;
+          videoId = getVideoIdFromUrl(tab.url);
+        }
+      } catch {}
+    }
+    if (!videoId) {
+      try {
+        const ytTabs = await browserApi.queryTabs({ url: ["*://*.youtube.com/*", "*://youtube.com/*"] });
+        const match = ytTabs.find((t) => getVideoIdFromUrl(t.url)) || ytTabs[0];
+        if (match) {
+          tab = match;
+          videoId = getVideoIdFromUrl(tab.url);
+        }
+      } catch {}
+    }
     activeTabInfo = tab || null;
-    const videoId = getVideoIdFromUrl(tab?.url);
     const isYouTubeWatch = !!videoId;
     tabContext?.classList.toggle("is-invalid", !isYouTubeWatch);
     tabTitle.textContent = isYouTubeWatch
@@ -735,17 +848,49 @@ exportCaptionBundleBtn?.addEventListener("click", exportCaptionBundle);
 importCaptionBundleInput?.addEventListener("change", importCaptionBundle);
 
 setupStack?.addEventListener("change", (event) => {
-  const select = event.target.closest("select[data-slot]");
-  if (!select) return;
-  const slot = providerRegistry.slotDefinitions[select.dataset.slot];
-  if (!slot) return;
-  state[slot.storageKey] = stateValueForSlot(slot, select.value);
-  highlightSlotId = "";
-  if (slot.id === "tts") voiceSelect.value = state.captionTtsProvider;
-  renderSetupStack();
-  void pushSettings();
+  const selectSlot = event.target.closest("select[data-slot]");
+  if (selectSlot) {
+    const slot = providerRegistry.slotDefinitions[selectSlot.dataset.slot];
+    if (slot) {
+      state[slot.storageKey] = stateValueForSlot(slot, selectSlot.value);
+      highlightSlotId = "";
+      if (slot.id === "tts") voiceSelect.value = state.captionTtsProvider;
+      renderSetupStack();
+      void pushSettings();
+    }
+    return;
+  }
+
+  const selectModel = event.target.closest("select[data-model-setting]");
+  if (selectModel) {
+    const settingKey = selectModel.dataset.modelSetting;
+    const parent = selectModel.closest(".slot-provider-model");
+    const customInput = parent?.querySelector(".slot-custom-model-input");
+    if (selectModel.value === "__custom__") {
+      if (customInput) {
+        customInput.hidden = false;
+        customInput.focus();
+        if (customInput.value.trim()) {
+          state[settingKey] = customInput.value.trim();
+        }
+      }
+    } else {
+      if (customInput) customInput.hidden = true;
+      state[settingKey] = selectModel.value;
+    }
+    void pushSettings();
+    return;
+  }
 });
 setupStack?.addEventListener("input", (event) => {
+  const customModelInput = event.target.closest("input[data-custom-model-setting]");
+  if (customModelInput) {
+    const settingKey = customModelInput.dataset.customModelSetting;
+    state[settingKey] = customModelInput.value.trim();
+    scheduleProviderSave();
+    return;
+  }
+
   const input = event.target.closest("input[data-key-field]");
   if (!input) return;
   state[input.dataset.keyField] = input.value.trim();
@@ -754,6 +899,17 @@ setupStack?.addEventListener("input", (event) => {
 });
 setupStack?.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
+
+  const customModelInput = event.target.closest("input[data-custom-model-setting]");
+  if (customModelInput) {
+    event.preventDefault();
+    clearTimeout(providerSaveTimer);
+    const settingKey = customModelInput.dataset.customModelSetting;
+    state[settingKey] = customModelInput.value.trim();
+    void pushSettings();
+    return;
+  }
+
   const input = event.target.closest("input[data-key-field]");
   if (!input) return;
   event.preventDefault();
@@ -782,6 +938,15 @@ loadActiveTabContext();
 populateLanguages(state.tier, state.targetLanguage);
 repopulateVoices(state.tier, activeVoiceForTier(state.tier));
 renderSetupStack();
+
+for (const p of ["gemini", "groq", "openai", "openrouter"]) {
+  providerRegistry?.getCachedModels?.(p).then((list) => {
+    if (Array.isArray(list) && list.length) {
+      cachedModelsByProvider[p] = list;
+      renderSetupStack();
+    }
+  }).catch(() => {});
+}
 
 (async () => {
   try {

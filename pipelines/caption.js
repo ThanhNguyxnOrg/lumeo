@@ -158,6 +158,28 @@
     return "Could not load YouTube captions for this video.";
   }
 
+  const SENTENCE_END_RE = /[.?!。！？]\s*$/;
+
+  function findBatchEndIndex(cues, startIndex, targetBatchSize = 40, maxLookahead = 10) {
+    const minEnd = Math.min(cues.length, startIndex + Math.max(15, targetBatchSize - 10));
+    const preferredEnd = Math.min(cues.length, startIndex + targetBatchSize);
+    const maxEnd = Math.min(cues.length, startIndex + targetBatchSize + maxLookahead);
+
+    if (preferredEnd >= cues.length) return cues.length;
+
+    for (let i = preferredEnd; i < maxEnd; i++) {
+      if (SENTENCE_END_RE.test(String(cues[i]?.text || "").trim())) {
+        return i + 1;
+      }
+    }
+    for (let i = preferredEnd - 1; i >= minEnd; i--) {
+      if (SENTENCE_END_RE.test(String(cues[i]?.text || "").trim())) {
+        return i + 1;
+      }
+    }
+    return preferredEnd;
+  }
+
   class CaptionPipeline {
     constructor() {
       this.token = 0;
@@ -216,14 +238,17 @@
         let completed = resumable ? countTranslated(cues) : 0;
         options.onProgress?.({ phase: resumable ? "resuming" : "translating", completed, total });
         const batchSize = Math.max(1, Number(options.batchSize || 40));
-        for (let start = 0; start < cues.length; start += batchSize) {
+        let start = 0;
+        while (start < cues.length) {
+          const nextEnd = findBatchEndIndex(cues, start, batchSize);
           const batchIndexes = [];
           const sourceTexts = [];
-          for (let index = start; index < Math.min(start + batchSize, cues.length); index += 1) {
+          for (let index = start; index < nextEnd; index += 1) {
             if (cues[index]?.translated) continue;
             batchIndexes.push(index);
             sourceTexts.push(cues[index].text);
           }
+          start = nextEnd;
           if (!sourceTexts.length) continue;
           const translated = await window.LumeoTranslate.translateBatch(
             sourceTexts,

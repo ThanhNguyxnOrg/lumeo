@@ -59,6 +59,11 @@
       status: "available",
       helpUrl: "https://aistudio.google.com/app/apikey",
       description: "Good free-tier/BYOK caption translation.",
+      models: [
+        { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
+        { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+        { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro" },
+      ],
     },
     openrouter: {
       id: "openrouter",
@@ -70,6 +75,12 @@
       status: "available",
       helpUrl: "https://openrouter.ai/keys",
       description: "Free model router or user-selected OpenRouter models.",
+      models: [
+        { id: "openrouter/free", name: "OpenRouter Free (Default)" },
+        { id: "google/gemini-2.5-flash-lite:free", name: "Gemini 2.5 Flash Lite (Free)" },
+        { id: "meta-llama/llama-3-8b-instruct:free", name: "Llama 3 8B Instruct (Free)" },
+        { id: "mistralai/mistral-7b-instruct:free", name: "Mistral 7B Instruct (Free)" },
+      ],
     },
     groq: {
       id: "groq",
@@ -81,6 +92,11 @@
       status: "available",
       helpUrl: "https://console.groq.com/keys",
       description: "Fast BYOK caption translation through Groq chat models.",
+      models: [
+        { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B Versatile" },
+        { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B" },
+        { id: "gemma2-9b-it", name: "Gemma 2 9B" },
+      ],
     },
     openai: {
       id: "openai",
@@ -92,6 +108,11 @@
       status: "available",
       helpUrl: "https://platform.openai.com/api-keys",
       description: "BYOK caption translation.",
+      models: [
+        { id: "gpt-4o-mini", name: "GPT-4o Mini" },
+        { id: "gpt-4o", name: "GPT-4o" },
+        { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo" },
+      ],
     },
     googleCloud: {
       id: "google-cloud",
@@ -477,7 +498,138 @@
       .filter(Boolean);
   }
 
-  globalThis.LumeoProviders = {
+  const CACHED_MODELS_PREFIX = "lumeo_cached_models_";
+
+  async function getCachedModels(providerId, storage = globalThis.chrome?.storage?.local) {
+    if (!storage?.get) return [];
+    try {
+      const key = `${CACHED_MODELS_PREFIX}${providerId}`;
+      const res = await new Promise((resolve) => storage.get(key, resolve));
+      const entry = res?.[key];
+      if (Array.isArray(entry)) return entry;
+      if (Array.isArray(entry?.models)) return entry.models;
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function setCachedModels(providerId, models, storage = globalThis.chrome?.storage?.local) {
+    if (!storage?.set || !Array.isArray(models)) return;
+    try {
+      const key = `${CACHED_MODELS_PREFIX}${providerId}`;
+      await new Promise((resolve) => storage.set({ [key]: { models, updatedAt: Date.now() } }, resolve));
+    } catch {}
+  }
+
+  async function fetchProviderModels(providerId, apiKey, options = {}) {
+    const fetchFn = options.fetch || globalThis.fetch;
+    const cleanKey = String(apiKey || "").trim();
+    if (!cleanKey) {
+      throw new Error("API key is required to fetch models.");
+    }
+
+    if (providerId === "gemini") {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`;
+      const res = await fetchFn(url, { signal: options.signal });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error?.message || `HTTP ${res.status}`);
+      }
+      const rawList = Array.isArray(data?.models) ? data.models : [];
+      const models = rawList
+        .filter((m) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent"))
+        .map((m) => ({
+          id: String(m.name || "").replace(/^models\//, ""),
+          name: m.displayName || String(m.name || "").replace(/^models\//, ""),
+        }))
+        .filter((m) => m.id);
+
+      if (models.length) {
+        await setCachedModels(providerId, models, options.storage);
+      }
+      return models;
+    }
+
+    if (providerId === "groq") {
+      const url = "https://api.groq.com/openai/v1/models";
+      const res = await fetchFn(url, {
+        headers: { Authorization: `Bearer ${cleanKey}` },
+        signal: options.signal,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error?.message || `HTTP ${res.status}`);
+      }
+      const rawList = Array.isArray(data?.data) ? data.data : [];
+      const models = rawList
+        .filter((m) => m.active !== false)
+        .map((m) => ({
+          id: m.id,
+          name: m.id,
+        }))
+        .filter((m) => m.id && !m.id.includes("whisper"));
+
+      if (models.length) {
+        await setCachedModels(providerId, models, options.storage);
+      }
+      return models;
+    }
+
+    if (providerId === "openai") {
+      const url = "https://api.openai.com/v1/models";
+      const res = await fetchFn(url, {
+        headers: { Authorization: `Bearer ${cleanKey}` },
+        signal: options.signal,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error?.message || `HTTP ${res.status}`);
+      }
+      const rawList = Array.isArray(data?.data) ? data.data : [];
+      const chatPrefixes = ["gpt-", "o1-", "o3-", "chatgpt-"];
+      const models = rawList
+        .filter((m) => chatPrefixes.some((p) => m.id.startsWith(p)))
+        .sort((a, b) => (b.created || 0) - (a.created || 0))
+        .map((m) => ({
+          id: m.id,
+          name: m.id,
+        }));
+
+      if (models.length) {
+        await setCachedModels(providerId, models, options.storage);
+      }
+      return models;
+    }
+
+    if (providerId === "openrouter") {
+      const url = "https://openrouter.ai/api/v1/models";
+      const res = await fetchFn(url, {
+        headers: { Authorization: `Bearer ${cleanKey}` },
+        signal: options.signal,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error?.message || `HTTP ${res.status}`);
+      }
+      const rawList = Array.isArray(data?.data) ? data.data : [];
+      const models = rawList
+        .map((m) => ({
+          id: m.id,
+          name: m.name ? `${m.name} (${m.id})` : m.id,
+        }))
+        .filter((m) => m.id);
+
+      if (models.length) {
+        await setCachedModels(providerId, models, options.storage);
+      }
+      return models;
+    }
+
+    throw new Error(`Provider ${providerId} does not support fetching models.`);
+  }
+
+  const exported = {
     __loaded: true,
     providers,
     modes,
@@ -494,5 +646,13 @@
     slotsForMode,
     selectedProviderForSlot,
     requiredProvidersForMode,
+    fetchProviderModels,
+    getCachedModels,
+    setCachedModels,
   };
+
+  globalThis.LumeoProviders = exported;
+  if (typeof window !== "undefined") {
+    window.LumeoProviders = exported;
+  }
 })();

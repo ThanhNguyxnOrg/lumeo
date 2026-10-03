@@ -88,11 +88,18 @@
       overlayController.toggleSideCollapsed(open);
     },
     onStartSession: async () => {
+      overlayController?.setSessionState?.({ isTranslating: true });
       const stored = await browserApi.sendRuntimeMessage({ type: "GET_STATE" }).catch(() => null);
       const currentSettings = stored?.state || settings || { tier: "caption", targetLanguage: "vi", translateProvider: "google-free" };
+      settings = currentSettings;
+      LumeoSessionManager.setSettings(currentSettings);
+      if (!LumeoSessionManager.getSession()) {
+        await LumeoSessionManager.startSession(currentSettings).catch(() => {});
+      }
       browserApi.sendRuntimeMessage({ type: "START", settings: currentSettings }).catch(() => {});
     },
     onStopSession: () => {
+      overlayController?.setSessionState?.({ isTranslating: false });
       LumeoSessionManager.stopSession("user-stop");
       notifyBackground({ type: "CONTENT_STATE", running: false, status: "Stopped" });
       emitEnded("Stopped");
