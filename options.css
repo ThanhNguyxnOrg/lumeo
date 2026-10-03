@@ -494,17 +494,20 @@ select option:checked {
 }
 
 /* Shadow variants */
-.cinema-mock-player .lumeo-video-sub.lumeo-shadow-glow {
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.8), 0 4px 12px rgba(0, 0, 0, 0.6);
+.cinema-mock-player .lumeo-video-sub.lumeo-shadow-none .lumeo-video-sub-line {
+  text-shadow: none !important;
 }
-.cinema-mock-player .lumeo-video-sub.lumeo-shadow-outline {
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.9);
+.cinema-mock-player .lumeo-video-sub.lumeo-shadow-drop-shadow .lumeo-video-sub-line {
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9), 0 0 12px rgba(0, 0, 0, 0.7) !important;
 }
-.cinema-mock-player .lumeo-video-sub.lumeo-shadow-box {
-  background-color: rgba(0, 0, 0, 0.95) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85);
+.cinema-mock-player .lumeo-video-sub.lumeo-shadow-raised .lumeo-video-sub-line {
+  text-shadow: -1px -1px 0 rgba(0, 0, 0, 0.8), 1px 1px 0 rgba(255, 255, 255, 0.2), 0 2px 4px rgba(0, 0, 0, 0.9) !important;
+}
+.cinema-mock-player .lumeo-video-sub.lumeo-shadow-depressed .lumeo-video-sub-line {
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.8), -1px -1px 0 rgba(255, 255, 255, 0.2) !important;
+}
+.cinema-mock-player .lumeo-video-sub.lumeo-shadow-outline .lumeo-video-sub-line {
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 2px 4px rgba(0, 0, 0, 0.9) !important;
 }
 
 .cinema-mock-player .lumeo-video-sub-line {

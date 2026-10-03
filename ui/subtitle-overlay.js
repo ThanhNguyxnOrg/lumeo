@@ -240,7 +240,9 @@
       target.style.setProperty("--lumeo-caption-font-size", `${captionStyle.fontSize || 22}px`);
       target.style.setProperty("--lumeo-caption-bottom-offset", `${captionStyle.bottomOffset || 14}%`);
       if (captionStyle.subBackgroundOpacity != null) {
-        target.style.setProperty("--lumeo-sub-bg-opacity", String(captionStyle.subBackgroundOpacity));
+        const raw = Number(captionStyle.subBackgroundOpacity);
+        const normalized = Number.isFinite(raw) ? (raw > 1 ? raw / 100 : raw) : 0.92;
+        target.style.setProperty("--lumeo-sub-bg-opacity", String(Math.max(0, Math.min(1, normalized))));
       }
       const layoutPreset = captionStyle.layoutPreset || "stacked";
       target.classList.toggle("lumeo-hide-translated", captionStyle.showTranslatedSub === false || layoutPreset === "source-only");
@@ -249,9 +251,16 @@
       target.classList.toggle("lumeo-layout-source-only", layoutPreset === "source-only");
       target.classList.toggle("lumeo-layout-translated-only", layoutPreset === "translated-only");
       target.classList.toggle("lumeo-high-contrast", !!captionStyle.highContrast);
-      target.classList.toggle("lumeo-shadow-glow", captionStyle.subShadowStyle === "glow");
-      target.classList.toggle("lumeo-shadow-outline", captionStyle.subShadowStyle === "outline");
-      target.classList.toggle("lumeo-shadow-box", captionStyle.subShadowStyle === "box");
+
+      let shadowStyle = captionStyle.subShadowStyle || "drop-shadow";
+      if (shadowStyle === "glow") shadowStyle = "drop-shadow";
+      if (shadowStyle === "box") shadowStyle = "outline";
+
+      target.classList.toggle("lumeo-shadow-none", shadowStyle === "none");
+      target.classList.toggle("lumeo-shadow-drop-shadow", shadowStyle === "drop-shadow");
+      target.classList.toggle("lumeo-shadow-raised", shadowStyle === "raised");
+      target.classList.toggle("lumeo-shadow-depressed", shadowStyle === "depressed");
+      target.classList.toggle("lumeo-shadow-outline", shadowStyle === "outline");
     }
 
     function applyStyle(captionStyle = {}) {

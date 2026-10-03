@@ -106,6 +106,79 @@ describe("ui/subtitle-overlay.js", () => {
     expect(overlay.dir).toBe("rtl");
   });
 
+  it("normalizes subBackgroundOpacity scale to 0.0..1.0 and applies standardized shadow classes", () => {
+    // Test percentage 75 -> 0.75
+    controller.updateCue(
+      { text: "hello", translated: "xin chào" },
+      {
+        captionStyle: { subBackgroundOpacity: 75, subShadowStyle: "drop-shadow" },
+        targetLanguage: "vi",
+        rtlLangs: new Set(),
+      },
+    );
+    let overlay = controller.getElement();
+    expect(overlay.style.getPropertyValue("--lumeo-sub-bg-opacity")).toBe("0.75");
+    expect(overlay.classList.contains("lumeo-shadow-drop-shadow")).toBe(true);
+    expect(overlay.classList.contains("lumeo-shadow-outline")).toBe(false);
+
+    // Test float 0.4 -> 0.4 and outline shadow
+    controller.updateCue(
+      { text: "hello", translated: "xin chào" },
+      {
+        captionStyle: { subBackgroundOpacity: 0.4, subShadowStyle: "outline" },
+        targetLanguage: "vi",
+        rtlLangs: new Set(),
+      },
+    );
+    expect(overlay.style.getPropertyValue("--lumeo-sub-bg-opacity")).toBe("0.4");
+    expect(overlay.classList.contains("lumeo-shadow-outline")).toBe(true);
+    expect(overlay.classList.contains("lumeo-shadow-drop-shadow")).toBe(false);
+
+    // Test raised shadow
+    controller.updateCue(
+      { text: "hello", translated: "xin chào" },
+      {
+        captionStyle: { subShadowStyle: "raised" },
+        targetLanguage: "vi",
+        rtlLangs: new Set(),
+      },
+    );
+    expect(overlay.classList.contains("lumeo-shadow-raised")).toBe(true);
+
+    // Test depressed shadow
+    controller.updateCue(
+      { text: "hello", translated: "xin chào" },
+      {
+        captionStyle: { subShadowStyle: "depressed" },
+        targetLanguage: "vi",
+        rtlLangs: new Set(),
+      },
+    );
+    expect(overlay.classList.contains("lumeo-shadow-depressed")).toBe(true);
+
+    // Test none shadow
+    controller.updateCue(
+      { text: "hello", translated: "xin chào" },
+      {
+        captionStyle: { subShadowStyle: "none" },
+        targetLanguage: "vi",
+        rtlLangs: new Set(),
+      },
+    );
+    expect(overlay.classList.contains("lumeo-shadow-none")).toBe(true);
+
+    // Test legacy "glow" backward-compatibility -> maps to drop-shadow
+    controller.updateCue(
+      { text: "hello", translated: "xin chào" },
+      {
+        captionStyle: { subShadowStyle: "glow" },
+        targetLanguage: "vi",
+        rtlLangs: new Set(),
+      },
+    );
+    expect(overlay.classList.contains("lumeo-shadow-drop-shadow")).toBe(true);
+  });
+
   it("allows dragging subtitle with normalized percentage coordinates", () => {
     controller.updateCue(
       { text: "hello", translated: "xin chào" },

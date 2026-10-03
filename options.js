@@ -21,7 +21,7 @@
     highContrast: false,
     layoutPreset: "stacked",
     subtitleOrder: "translation-top",
-    subShadowStyle: "glow",
+    subShadowStyle: "drop-shadow",
     subBackgroundOpacity: 75,
   };
 
@@ -228,14 +228,11 @@
     previewSubBox.style.setProperty("--lumeo-sub-bg-opacity", String((currentSettings.subBackgroundOpacity ?? 75) / 100));
 
     // Shadow style classes
-    previewSubBox.classList.remove("lumeo-shadow-glow", "lumeo-shadow-outline", "lumeo-shadow-box");
-    if (currentSettings.subShadowStyle === "outline") {
-      previewSubBox.classList.add("lumeo-shadow-outline");
-    } else if (currentSettings.subShadowStyle === "box") {
-      previewSubBox.classList.add("lumeo-shadow-box");
-    } else {
-      previewSubBox.classList.add("lumeo-shadow-glow");
-    }
+    previewSubBox.classList.remove("lumeo-shadow-none", "lumeo-shadow-drop-shadow", "lumeo-shadow-raised", "lumeo-shadow-depressed", "lumeo-shadow-outline");
+    let shadow = currentSettings.subShadowStyle || "drop-shadow";
+    if (shadow === "glow") shadow = "drop-shadow";
+    if (shadow === "box") shadow = "outline";
+    previewSubBox.classList.add(`lumeo-shadow-${shadow}`);
 
     previewSubBox.classList.toggle("high-contrast", !!currentSettings.highContrast);
 
