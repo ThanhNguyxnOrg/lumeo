@@ -231,5 +231,66 @@ describe("ui/overlay.js native YouTube popover menu", () => {
     const btnResetPos = root.querySelector("[data-lumeo-reset-pos]");
     expect(btnResetPos).not.toBeNull();
   });
+
+  it("handles explicit Start/Stop Translation and preserves YouTube control button across session states", async () => {
+    const { window } = await createSandboxWindow();
+    loadService("ui/overlay.js", window);
+
+    const moviePlayer = window.document.createElement("div");
+    moviePlayer.id = "movie_player";
+    const chromeBottom = window.document.createElement("div");
+    chromeBottom.className = "ytp-chrome-bottom";
+    const rightControls = window.document.createElement("div");
+    rightControls.className = "ytp-right-controls";
+    chromeBottom.appendChild(rightControls);
+    moviePlayer.appendChild(chromeBottom);
+    window.document.body.appendChild(moviePlayer);
+
+    let startCalled = false;
+    let stopCalled = false;
+
+    const controller = window.LumeoOverlay.createOverlayController({
+      onStartSession: () => { startCalled = true; },
+      onStopSession: () => { stopCalled = true; },
+    });
+    const root = controller.build();
+    const ytBtn = rightControls.querySelector(".ytp-lumeo-button");
+    expect(ytBtn).not.toBeNull();
+    expect(controller.isTranslating()).toBe(false);
+
+    const toggleBtn = root.querySelector("[data-lumeo-toggle-session]");
+    expect(toggleBtn).not.toBeNull();
+    expect(toggleBtn.textContent).toContain("Start Translation");
+
+    // Clicking toggle while idle triggers onStartSession
+    toggleBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(startCalled).toBe(true);
+
+    // Update state to active translating
+    controller.setSessionState({ isTranslating: true });
+    expect(controller.isTranslating()).toBe(true);
+    expect(ytBtn.classList.contains("is-translating")).toBe(true);
+    expect(toggleBtn.textContent).toContain("Stop Translation");
+    expect(toggleBtn.classList.contains("is-stop")).toBe(true);
+
+    // Clicking toggle while translating triggers onStopSession
+    toggleBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(stopCalled).toBe(true);
+
+    // Minimizing / closing popover preserves YouTube button and translating state
+    controller.toggleSideCollapsed(true);
+    expect(root.classList.contains("is-side-collapsed")).toBe(true);
+    expect(rightControls.querySelector(".ytp-lumeo-button")).not.toBeNull();
+
+    // Ending session does not remove YouTube control button
+    controller.setSessionState({ isTranslating: false });
+    expect(controller.isTranslating()).toBe(false);
+    expect(ytBtn.classList.contains("is-translating")).toBe(false);
+    expect(rightControls.querySelector(".ytp-lumeo-button")).toBe(ytBtn);
+
+    controller.destroy();
+    expect(rightControls.querySelector(".ytp-lumeo-button")).toBeNull();
+  });
 });
+
 

@@ -71,6 +71,30 @@
   display: none !important;
 }
 
+/* ─── YouTube Native Player Control Button ─── */
+.ytp-button.ytp-lumeo-button {
+  position: relative;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.ytp-button.ytp-lumeo-button .ytp-lumeo-dot {
+  fill: #94a3b8;
+  opacity: 0.5;
+  transition: all 0.2s ease;
+}
+.ytp-button.ytp-lumeo-button.is-translating .ytp-lumeo-dot {
+  fill: #f97316;
+  opacity: 1;
+  filter: drop-shadow(0 0 3px #f97316);
+  animation: ytp-lumeo-pulse 2s infinite ease-in-out;
+}
+.ytp-button.ytp-lumeo-button.ytp-lumeo-active svg {
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.5));
+}
+@keyframes ytp-lumeo-pulse {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+
 /* ─── YouTube Native Lumeo Popover ─── */
 .ytp-lumeo-popover {
   width: 290px;
@@ -154,6 +178,58 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.ytp-lumeo-session-row {
+  margin-bottom: 2px;
+}
+
+.ytp-lumeo-toggle-session-btn {
+  width: 100%;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  user-select: none;
+}
+.ytp-lumeo-toggle-session-btn.is-start {
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.ytp-lumeo-toggle-session-btn.is-start:hover {
+  background: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
+  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.45);
+  transform: translateY(-1px);
+}
+.ytp-lumeo-toggle-session-btn.is-start:active {
+  transform: translateY(0);
+}
+.ytp-lumeo-toggle-session-btn.is-stop {
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+.ytp-lumeo-toggle-session-btn.is-stop:hover {
+  background: rgba(239, 68, 68, 0.28);
+  border-color: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
+}
+.ytp-lumeo-session-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+.ytp-lumeo-session-text {
+  letter-spacing: 0.01em;
 }
 
 .ytp-lumeo-label {

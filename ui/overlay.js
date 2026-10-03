@@ -53,6 +53,7 @@
     let ytButton = null;
     let ytObserver = null;
     let ytPollTimer = null;
+    let isTranslating = false;
 
     function ensureYouTubeControlButton() {
       if (typeof doc === "undefined" || !doc.querySelector) return null;
@@ -75,7 +76,7 @@
           <svg viewBox="0 0 36 36" width="100%" height="100%">
             <rect x="8" y="10.5" width="20" height="15" rx="3" stroke="currentColor" stroke-width="2" fill="none" />
             <path d="M12 15h6M12 19h12M20 15h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-            <circle class="ytp-lumeo-dot" cx="24.5" cy="11.5" r="2.2" fill="#f97316" />
+            <circle class="ytp-lumeo-dot" cx="24.5" cy="11.5" r="2.2" />
           </svg>
         `;
         btn.addEventListener("click", (e) => {
@@ -112,8 +113,17 @@
       if (!ytButton) return;
       const isOpen = Boolean(root && !layout.sideCollapsed);
       ytButton.classList.toggle("ytp-lumeo-active", isOpen);
+      ytButton.classList.toggle("is-translating", isTranslating);
       ytButton.setAttribute("aria-pressed", String(isOpen));
-      ytButton.title = isOpen ? "Hide Lumeo (Esc)" : "Open Lumeo (Esc)";
+      if (isTranslating) {
+        ytButton.title = isOpen
+          ? "Minimize Lumeo (Translating) - Esc"
+          : "Lumeo (Translating) - Alt+L";
+      } else {
+        ytButton.title = isOpen
+          ? "Minimize Lumeo - Esc"
+          : "Lumeo — AI Captions & Dubbing (Alt+L)";
+      }
     }
 
     function bindYouTubeObserver() {
@@ -174,14 +184,6 @@
       updateYouTubeControlButton();
     }
 
-    function updateYouTubeControlButton() {
-      if (!ytButton) return;
-      const isOpen = Boolean(root && !layout.sideCollapsed);
-      ytButton.classList.toggle("ytp-lumeo-active", isOpen);
-      ytButton.setAttribute("aria-pressed", String(isOpen));
-      ytButton.title = isOpen ? "Minimize Lumeo (Esc)" : "Open Lumeo — AI Captions & Dubbing (Esc)";
-    }
-
     function build() {
       if (root) return root;
       root = doc.createElement("aside");
@@ -217,6 +219,12 @@
             </div>
           </div>
           <div class="ytp-lumeo-body">
+            <div class="ytp-lumeo-row ytp-lumeo-session-row">
+              <button type="button" class="ytp-lumeo-toggle-session-btn is-start" data-lumeo-toggle-session title="Start real-time translation" aria-label="Start Translation">
+                <span class="ytp-lumeo-session-icon">▶</span>
+                <span class="ytp-lumeo-session-text">Start Translation</span>
+              </button>
+            </div>
             <div class="ytp-lumeo-row">
               <label class="ytp-lumeo-label">Target Language</label>
               <select class="ec-select ytp-lumeo-select" data-ec-language aria-label="Target language" title="Select target language"></select>
@@ -257,7 +265,7 @@
                 Reset Subtitle Position
               </button>
             </div>
-            <div class="ytp-lumeo-row">
+            <div class="ytp-lumeo-row" style="display: none;">
               <button type="button" class="ec-btn-stop-session ytp-lumeo-btn-stop" data-ec-stop title="Stop active translation">
                 ✕ Stop translation
               </button>
@@ -338,6 +346,7 @@
         voiceSelect: root.querySelector("[data-ec-voice]"),
         ttsCap: root.querySelector("[data-ec-tts-cap]"),
         hideBtn: root.querySelector("[data-ec-hide]"),
+        toggleSessionBtn: root.querySelector("[data-lumeo-toggle-session]"),
         stopBtn: root.querySelector("[data-ec-stop]"),
         pipBtn: root.querySelector("[data-ec-pip]"),
         transcriptBtn: root.querySelector("[data-ec-transcript]"),
@@ -475,8 +484,25 @@
         e.stopPropagation();
         toggleSideCollapsed();
       });
+      elements.toggleSessionBtn?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (isTranslating) {
+          if (typeof options.onStopSession === "function") {
+            options.onStopSession();
+          } else if (elements.stopBtn) {
+            elements.stopBtn.click();
+          }
+        } else {
+          if (typeof options.onStartSession === "function") {
+            options.onStartSession();
+          }
+        }
+      });
       elements.stopBtn?.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (typeof options.onStopSession === "function") {
+          options.onStopSession();
+        }
       });
       elements.pipBtn?.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -561,6 +587,37 @@
       });
     }
 
+    function updateSessionControls() {
+      if (!elements.toggleSessionBtn) return;
+      if (isTranslating) {
+        elements.toggleSessionBtn.classList.remove("is-start");
+        elements.toggleSessionBtn.classList.add("is-stop");
+        elements.toggleSessionBtn.title = "Stop active translation";
+        elements.toggleSessionBtn.setAttribute("aria-label", "Stop Translation");
+        elements.toggleSessionBtn.innerHTML = `
+          <span class="ytp-lumeo-session-icon">⏹</span>
+          <span class="ytp-lumeo-session-text">Stop Translation</span>
+        `;
+      } else {
+        elements.toggleSessionBtn.classList.remove("is-stop");
+        elements.toggleSessionBtn.classList.add("is-start");
+        elements.toggleSessionBtn.title = "Start real-time translation";
+        elements.toggleSessionBtn.setAttribute("aria-label", "Start Translation");
+        elements.toggleSessionBtn.innerHTML = `
+          <span class="ytp-lumeo-session-icon">▶</span>
+          <span class="ytp-lumeo-session-text">Start Translation</span>
+        `;
+      }
+    }
+
+    function setSessionState(sessionState = {}) {
+      if (typeof sessionState.isTranslating === "boolean") {
+        isTranslating = sessionState.isTranslating;
+      }
+      updateSessionControls();
+      updateYouTubeControlButton();
+    }
+
     function stepFontSize(delta) {
       const current = Number(elements.styleSize?.value || 22);
       const next = Math.min(36, Math.max(14, current + delta));
@@ -592,13 +649,15 @@
         return;
       }
 
-      if (!overlayFocused) return;
-
       if (e.key === "Escape") {
-        if (!layout.sideCollapsed) toggleSideCollapsed();
-        e.preventDefault();
-        return;
+        if (isOpen()) {
+          toggleSideCollapsed(true);
+          e.preventDefault();
+          return;
+        }
       }
+
+      if (!overlayFocused) return;
 
       if (key === "?" || key === "h") {
         showShortcutHelp();
@@ -717,6 +776,8 @@
       syncCaptionControls,
       setState,
       setStatusText,
+      setSessionState,
+      isTranslating: () => isTranslating,
       showToast,
       toggleSideCollapsed,
       isOpen,

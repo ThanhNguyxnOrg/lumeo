@@ -66,6 +66,7 @@
     notifyBackground({ type: "CONTENT_STATE", ...partial });
   }
   function emitEnded(reason) {
+    clearSessionUI();
     notifyBackground({ type: "CONTENT_ENDED", reason });
   }
 
@@ -81,19 +82,20 @@
     layoutKey: getOverlayLayoutKey,
     languages: LANGUAGES,
     collapsedOnStart: false,
-    onButtonClick: async () => {
+    onButtonClick: () => {
       buildOverlay();
       const open = overlayController.isOpen?.();
-      if (open) {
-        overlayController.toggleSideCollapsed(true);
-      } else {
-        overlayController.toggleSideCollapsed(false);
-        if (!LumeoSessionManager.getSession()) {
-          const stored = await browserApi.sendRuntimeMessage({ type: "GET_STATE" }).catch(() => null);
-          const currentSettings = stored?.state || { tier: "caption", targetLanguage: "vi", translateProvider: "google-free" };
-          browserApi.sendRuntimeMessage({ type: "START", settings: currentSettings }).catch(() => {});
-        }
-      }
+      overlayController.toggleSideCollapsed(open);
+    },
+    onStartSession: async () => {
+      const stored = await browserApi.sendRuntimeMessage({ type: "GET_STATE" }).catch(() => null);
+      const currentSettings = stored?.state || settings || { tier: "caption", targetLanguage: "vi", translateProvider: "google-free" };
+      browserApi.sendRuntimeMessage({ type: "START", settings: currentSettings }).catch(() => {});
+    },
+    onStopSession: () => {
+      LumeoSessionManager.stopSession("user-stop");
+      notifyBackground({ type: "CONTENT_STATE", running: false, status: "Stopped" });
+      emitEnded("Stopped");
     },
   });
   overlayController?.ensureYouTubeControlButton?.();
@@ -419,12 +421,16 @@
     overlayController?.showToast(text, opts, durationMs);
   }
 
-  function removeOverlay() {
-    if (!root) return;
-    overlayController?.destroy();
-    root = null;
-    elements = {};
+  function clearSessionUI() {
     subtitleOverlay?.remove();
+    overlayController?.setSessionState?.({ isTranslating: false });
+    currentTargetText = "";
+    currentSourceText = "";
+    lastDisplayedCue = null;
+  }
+
+  function removeOverlay() {
+    clearSessionUI();
   }
 
   let lastSeenCaption = "";
@@ -477,8 +483,7 @@
     getCurrentTexts: () => ({ source: currentSourceText, target: currentTargetText }),
     setCurrentTexts: (src, tgt) => { currentSourceText = src; currentTargetText = tgt; },
     onSessionStopped: () => {
-      currentSourceText = "";
-      currentTargetText = "";
+      clearSessionUI();
       transcriptController?.remove?.();
     },
     onSettingsUpdated: (newSettings, prev) => {
@@ -562,11 +567,13 @@
           case "CONTENT_START":
             settings = { ...(msg.settings || {}) };
             LumeoSessionManager.setSettings(settings);
+            overlayController?.setSessionState?.({ isTranslating: true });
             const startRes = await LumeoSessionManager.startSession(settings);
             sendResponse(startRes || { ok: true });
             break;
           case "CONTENT_STOP":
             LumeoSessionManager.stopSession("backend-stop");
+            clearSessionUI();
             sendResponse({ ok: true });
             break;
           case "CONTENT_UPDATE_SETTINGS":
@@ -594,5 +601,9 @@
       }
     })();
     return true;
+  });
+
+  window.addEventListener("pagehide", () => {
+    overlayController?.destroy?.();
   });
 })();
