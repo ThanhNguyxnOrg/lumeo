@@ -291,6 +291,104 @@ describe("ui/overlay.js native YouTube popover menu", () => {
     controller.destroy();
     expect(rightControls.querySelector(".ytp-lumeo-button")).toBeNull();
   });
+
+  it("supports bounded dragging within movie_player and double-click reset", async () => {
+    const { window } = await createSandboxWindow();
+    if (!window.PointerEvent) {
+      window.PointerEvent = class extends window.MouseEvent {
+        constructor(type, params = {}) {
+          super(type, params);
+          this.pointerId = params.pointerId || 1;
+        }
+      };
+    }
+    loadService("ui/overlay.js", window);
+
+    const moviePlayer = window.document.createElement("div");
+    moviePlayer.id = "movie_player";
+    moviePlayer.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 600, right: 1000, bottom: 600 });
+    window.document.body.appendChild(moviePlayer);
+
+    let layoutChanged = null;
+    let resetCalled = false;
+
+    const controller = window.LumeoOverlay.createOverlayController({
+      onLayoutChange: (l) => { layoutChanged = l; },
+      onResetPosition: () => { resetCalled = true; },
+    });
+    const root = controller.build();
+    moviePlayer.appendChild(root);
+
+    root.getBoundingClientRect = () => ({ left: 660, top: 200, width: 320, height: 340, right: 980, bottom: 540 });
+    const header = root.querySelector(".ytp-lumeo-header");
+    expect(header).not.toBeNull();
+
+    // Drag header left by 100px, up by 50px
+    header.dispatchEvent(new window.PointerEvent("pointerdown", { clientX: 700, clientY: 220, button: 0, bubbles: true }));
+    header.dispatchEvent(new window.PointerEvent("pointermove", { clientX: 600, clientY: 170, bubbles: true }));
+    header.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true }));
+
+    expect(root.style.left).toBe("560px");
+    expect(root.style.top).toBe("150px");
+    expect(layoutChanged).toMatchObject({ left: 560, top: 150, customPosition: true });
+
+    // Double-click header restores default anchor position
+    header.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true }));
+    expect(root.style.left).toBe("auto");
+    expect(root.style.top).toBe("auto");
+    expect(resetCalled).toBe(true);
+  });
+
+  it("fires direct reactive callbacks when submenus select options", async () => {
+    const { window } = await createSandboxWindow();
+    loadService("ui/overlay.js", window);
+
+    let langSelected = null;
+    let fontSelected = null;
+    let opacitySelected = null;
+    let shadowSelected = null;
+
+    const controller = window.LumeoOverlay.createOverlayController({
+      onLanguageChange: (lang) => { langSelected = lang; },
+      onFontSizeChange: (size) => { fontSelected = size; },
+      onOpacityChange: (op) => { opacitySelected = op; },
+      onShadowStyleChange: (s) => { shadowSelected = s; },
+    });
+    const root = controller.build();
+
+    // Open language submenu
+    const langBtn = root.querySelector('[data-open-sub="language"]');
+    langBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    const subContainer = root.querySelector("[data-lumeo-sub-container]");
+    const enItem = Array.from(subContainer.querySelectorAll(".ytp-lumeo-sub-item")).find(b => b.textContent.includes("English"));
+    expect(enItem).toBeDefined();
+    enItem.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(langSelected).toBe("en");
+
+    // Open fontsize submenu
+    const fontBtn = root.querySelector('[data-open-sub="fontsize"]');
+    fontBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    const size14 = Array.from(subContainer.querySelectorAll(".ytp-lumeo-sub-item")).find(b => b.textContent.includes("50%"));
+    expect(size14).toBeDefined();
+    size14.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(fontSelected).toBe(14);
+
+    // Open opacity submenu
+    const opBtn = root.querySelector('[data-open-sub="opacity"]');
+    opBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    const op50 = Array.from(subContainer.querySelectorAll(".ytp-lumeo-sub-item")).find(b => b.textContent.includes("50%"));
+    expect(op50).toBeDefined();
+    op50.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(opacitySelected).toBe(50);
+
+    // Open edge submenu
+    const edgeBtn = root.querySelector('[data-open-sub="edge"]');
+    edgeBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    const edgeOutline = Array.from(subContainer.querySelectorAll(".ytp-lumeo-sub-item")).find(b => b.textContent.includes("Outline"));
+    expect(edgeOutline).toBeDefined();
+    edgeOutline.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(shadowSelected).toBe("outline");
+  });
 });
 
 

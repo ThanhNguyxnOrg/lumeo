@@ -33,7 +33,7 @@
         const stored = storage.getItem(layoutKey) || (layoutKey !== fallbackLayoutKey ? storage.getItem(fallbackLayoutKey) : null);
         const parsed = JSON.parse(stored || "{}");
         const hasPlayer = typeof doc !== "undefined" && Boolean(doc.querySelector("#movie_player, .html5-video-player"));
-        if (hasPlayer) {
+        if (hasPlayer && !parsed.customPosition) {
           delete parsed.left;
           delete parsed.top;
         }
@@ -171,22 +171,30 @@
       const inPlayer = Boolean(moviePlayer && (root.parentElement === moviePlayer || moviePlayer.contains(root) || (doc.body && doc.body.contains(moviePlayer))));
 
       if (inPlayer) {
-        root.style.position = "absolute";
-        root.style.bottom = "56px";
-        root.style.top = "auto";
-        root.style.left = "auto";
-        let rightPx = 12;
-        if (ytButton && moviePlayer) {
-          try {
-            const playerRect = moviePlayer.getBoundingClientRect();
-            const btnRect = ytButton.getBoundingClientRect();
-            if (playerRect.width > 0 && btnRect.right > 0) {
-              rightPx = Math.max(12, Math.round(playerRect.right - btnRect.right - 6));
-            }
-          } catch {}
+        if (layout.customPosition && typeof layout.left === "number" && typeof layout.top === "number") {
+          root.style.position = "absolute";
+          root.style.left = `${layout.left}px`;
+          root.style.top = `${layout.top}px`;
+          root.style.right = "auto";
+          root.style.bottom = "auto";
+        } else {
+          root.style.position = "absolute";
+          root.style.bottom = "56px";
+          root.style.top = "auto";
+          root.style.left = "auto";
+          let rightPx = 12;
+          if (ytButton && moviePlayer) {
+            try {
+              const playerRect = moviePlayer.getBoundingClientRect();
+              const btnRect = ytButton.getBoundingClientRect();
+              if (playerRect.width > 0 && btnRect.right > 0) {
+                rightPx = Math.max(12, Math.round(playerRect.right - btnRect.right - 6));
+              }
+            } catch {}
+          }
+          root.style.right = rightPx + "px";
         }
-        root.style.right = rightPx + "px";
-        root.style.width = layout.sideCollapsed ? "auto" : "320px";
+        root.style.width = layout.sideCollapsed ? "auto" : (layout.width || 320) + "px";
         root.style.height = "auto";
       } else {
         clampLayout();
@@ -231,6 +239,9 @@
             elements.layoutPreset.dispatchEvent(new win.Event("change", { bubbles: true }));
           }
           try { chrome.storage?.local?.set({ layoutPreset: val }); } catch {}
+          if (typeof options.onLayoutChange === "function") {
+            try { options.onLayoutChange(val); } catch {}
+          }
           updateMenuLabels();
         },
       },
@@ -258,6 +269,9 @@
             elements.langSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
           }
           try { chrome.storage?.local?.set({ targetLanguage: val }); } catch {}
+          if (typeof options.onLanguageChange === "function") {
+            try { options.onLanguageChange(val); } catch {}
+          }
           updateMenuLabels();
         },
       },
@@ -282,6 +296,9 @@
             elements.voiceSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
           }
           try { chrome.storage?.local?.set({ voice: val }); } catch {}
+          if (typeof options.onVoiceChange === "function") {
+            try { options.onVoiceChange(val); } catch {}
+          }
           updateMenuLabels();
         },
       },
@@ -304,6 +321,9 @@
             elements.styleSize.dispatchEvent(new win.Event("input", { bubbles: true }));
           }
           try { chrome.storage?.local?.set({ fontSize: Number(val) }); } catch {}
+          if (typeof options.onFontSizeChange === "function") {
+            try { options.onFontSizeChange(Number(val)); } catch {}
+          }
           applyLiveCaptionStyle();
           updateMenuLabels();
         },
@@ -321,6 +341,9 @@
         onSelect: (val) => {
           currentBgOpacity = Number(val);
           try { chrome.storage?.local?.set({ subBackgroundOpacity: Number(val) }); } catch {}
+          if (typeof options.onOpacityChange === "function") {
+            try { options.onOpacityChange(Number(val)); } catch {}
+          }
           applyLiveCaptionStyle();
           updateMenuLabels();
         },
@@ -338,6 +361,9 @@
         onSelect: (val) => {
           currentShadowStyle = val;
           try { chrome.storage?.local?.set({ subShadowStyle: val }); } catch {}
+          if (typeof options.onShadowStyleChange === "function") {
+            try { options.onShadowStyleChange(val); } catch {}
+          }
           applyLiveCaptionStyle();
           updateMenuLabels();
         },
@@ -356,6 +382,9 @@
             elements.subtitleOrder.dispatchEvent(new win.Event("change", { bubbles: true }));
           }
           try { chrome.storage?.local?.set({ subtitleOrder: val }); } catch {}
+          if (typeof options.onSubtitleOrderChange === "function") {
+            try { options.onSubtitleOrderChange(val); } catch {}
+          }
           updateMenuLabels();
         },
       },
@@ -463,14 +492,19 @@
             <div class="ytp-lumeo-brand" data-lumeo-brand>
               <span class="ytp-lumeo-logo-badge">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="#f97316" stroke-width="2.2"/>
-                  <path d="M7 12h10M12 7v10" stroke="#f97316" stroke-width="2.2" stroke-linecap="round"/>
+                  <rect x="2" y="2" width="20" height="20" rx="5" fill="#ea580c"/>
+                  <path d="M7 13v-2M10 16V8M14 18V6M17 13v-2" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
                 </svg>
               </span>
               <span class="ytp-lumeo-title">Lumeo</span>
               <span class="ec-dot" data-ec-dot title="Lumeo: Ready"></span>
             </div>
             <div class="ytp-lumeo-header-actions">
+              <button class="ytp-lumeo-icon-btn" type="button" data-lumeo-toggle-transcript aria-label="Transcript" title="Interactive Transcript Drawer">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;">
+                  <path d="M4 6h16M4 12h16M4 18h10"/>
+                </svg>
+              </button>
               <button class="ytp-lumeo-icon-btn" type="button" data-ec-open-options aria-label="Settings" title="Full Settings & API Keys ↗">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;">
                   <circle cx="12" cy="12" r="3"/>
@@ -651,7 +685,7 @@
         toggleSessionBtn: root.querySelector("[data-lumeo-toggle-session]"),
         stopBtn: root.querySelector("[data-ec-stop]"),
         pipBtn: root.querySelector("[data-ec-pip]"),
-        transcriptBtn: root.querySelector("[data-ec-transcript]"),
+        transcriptBtn: root.querySelector("[data-ec-transcript], [data-lumeo-toggle-transcript]"),
         helpBtn: root.querySelector("[data-ec-help]"),
         settingsBtn: root.querySelector("[data-ec-settings]"),
         settingsPanel: root.querySelector("[data-ec-settings-panel]"),
@@ -824,6 +858,9 @@
       });
       elements.transcriptBtn?.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (typeof options.onToggleTranscript === "function") {
+          options.onToggleTranscript();
+        }
       });
 
       // Stepper buttons for font size
@@ -839,6 +876,7 @@
       // Reset dragged subtitle position
       elements.resetPos?.addEventListener("click", (e) => {
         e.stopPropagation();
+        resetPopoverPosition();
         try {
           storage.removeItem("lumeoSubPosition");
           win.localStorage?.removeItem("lumeoSubPosition");
@@ -851,6 +889,9 @@
         try {
           win.dispatchEvent(new win.CustomEvent("lumeo:reset-sub-position"));
         } catch {}
+        if (typeof options.onResetPosition === "function") {
+          try { options.onResetPosition(); } catch {}
+        }
         showToast("Subtitle position reset to bottom-center", 3000);
       });
 
@@ -933,6 +974,9 @@
           elements.settingsPanel.hidden = true;
         }
       });
+
+      bindDragResize();
+      return root;
     }
 
     function updateSessionControls() {
@@ -1048,9 +1092,82 @@
     }
 
     function bindDragResize() {
-      // Popover dragging is intentionally disabled per ADR 0004.
-      // Settings popovers must remain strictly anchored to YouTube's player controls.
-      // Subtitle drag on the video player is handled exclusively by LumeoSubtitleOverlay.
+      const header = root.querySelector(".ytp-lumeo-header") || root.querySelector(".ec-header");
+      if (!header) return;
+
+      let isDragging = false;
+      let dragStartX = 0;
+      let dragStartY = 0;
+      let initialRootRect = null;
+      let initialPlayerRect = null;
+
+      const onPointerDown = (e) => {
+        if (e.button !== 0) return;
+        if (e.target.closest("button, select, input, a, .ytp-lumeo-icon-btn, .ytp-lumeo-back-btn")) return;
+
+        const player = typeof doc !== "undefined" ? doc.querySelector("#movie_player, .html5-video-player") : null;
+        const container = player || doc.body;
+
+        isDragging = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        initialRootRect = root.getBoundingClientRect();
+        initialPlayerRect = container.getBoundingClientRect();
+
+        try { header.setPointerCapture?.(e.pointerId); } catch {}
+      };
+
+      const onPointerMove = (e) => {
+        if (!isDragging || !initialRootRect || !initialPlayerRect) return;
+        const dx = e.clientX - dragStartX;
+        const dy = e.clientY - dragStartY;
+
+        const playerW = Math.max(1, initialPlayerRect.width);
+        const playerH = Math.max(1, initialPlayerRect.height);
+        const popW = initialRootRect.width;
+        const popH = initialRootRect.height;
+
+        const rawLeft = initialRootRect.left - initialPlayerRect.left + dx;
+        const rawTop = initialRootRect.top - initialPlayerRect.top + dy;
+
+        const clampedLeft = Math.max(8, Math.min(rawLeft, playerW - popW - 8));
+        const clampedTop = Math.max(8, Math.min(rawTop, playerH - popH - 52));
+
+        layout = { ...layout, left: clampedLeft, top: clampedTop, customPosition: true };
+        root.style.left = `${clampedLeft}px`;
+        root.style.top = `${clampedTop}px`;
+        root.style.right = "auto";
+        root.style.bottom = "auto";
+      };
+
+      const onPointerUp = (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        try { header.releasePointerCapture?.(e.pointerId); } catch {}
+        saveLayout();
+        if (typeof options.onLayoutChange === "function") {
+          try { options.onLayoutChange(layout); } catch {}
+        }
+      };
+
+      header.addEventListener("pointerdown", onPointerDown);
+      header.addEventListener("pointermove", onPointerMove);
+      header.addEventListener("pointerup", onPointerUp);
+      header.addEventListener("pointercancel", onPointerUp);
+
+      header.addEventListener("dblclick", (e) => {
+        if (e.target.closest("button, select, input, a, .ytp-lumeo-icon-btn, .ytp-lumeo-back-btn")) return;
+        resetPopoverPosition();
+      });
+    }
+
+    function resetPopoverPosition() {
+      layout = { ...layout, left: null, top: null, customPosition: false };
+      saveLayout();
+      applyLayout();
+      if (typeof options.onResetPosition === "function") {
+        try { options.onResetPosition(); } catch {}
+      }
     }
 
     return {
