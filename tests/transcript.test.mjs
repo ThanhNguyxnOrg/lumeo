@@ -77,4 +77,29 @@ describe("LumeoTranscriptDrawer", () => {
     controller.remove();
     expect(controller.getElement()).toBeNull();
   });
+
+  it("handles AI summarization trigger and summary view state", () => {
+    const onSummarize = vi.fn();
+    const ctrl = window.LumeoTranscript.createTranscriptController({
+      doc: document,
+      win: window,
+      onSummarize,
+    });
+    ctrl.build();
+    const cues = [{ start: 1, text: "A" }, { start: 2, text: "B" }];
+    ctrl.renderCaptionTranscript(cues);
+
+    const summarizeBtn = ctrl.getElement().querySelector(".lumeo-transcript-summarize");
+    expect(summarizeBtn).not.toBeNull();
+    summarizeBtn.click();
+    expect(onSummarize).toHaveBeenCalledWith(cues);
+
+    ctrl.showSummaryLoading();
+    expect(ctrl.getElement().querySelector(".lumeo-summary-loading")).not.toBeNull();
+
+    ctrl.setSummary("### Key Takeaways\n- Point 1\n- Point 2");
+    const summaryBox = ctrl.getElement().querySelector(".lumeo-transcript-summary");
+    expect(summaryBox.hidden).toBe(false);
+    expect(ctrl.getElement().querySelector(".lumeo-summary-content").textContent).toContain("Point 1");
+  });
 });

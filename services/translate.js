@@ -432,6 +432,106 @@
     };
   }
 
+  async function summarizeTranscript(textOrCues, targetLanguage, options = {}) {
+    let combinedText = "";
+    if (Array.isArray(textOrCues)) {
+      combinedText = textOrCues
+        .map((c) => (c.translated || c.text || "").trim())
+        .filter(Boolean)
+        .join(" ");
+    } else {
+      combinedText = String(textOrCues || "").trim();
+    }
+    if (!combinedText) {
+      throw new Error("No transcript content available to summarize.");
+    }
+    if (combinedText.length > 15000) {
+      combinedText = combinedText.slice(0, 15000) + "...";
+    }
+
+    const provider = normalizeProvider(options.provider);
+    if (provider === PROVIDERS.GOOGLE_FREE) {
+      throw new Error("AI Video Summary requires an AI provider with an API key (Gemini, Groq, OpenAI, or Custom Gateway).");
+    }
+
+    const langName = options.targetLanguageName || targetLanguage || "English";
+    const systemPrompt = `You are an expert video summarizer. Summarize the following video transcript clearly into 3-5 structured bullet points highlighting the main ideas and key takeaways. Output ONLY in ${langName}. Use clean markdown bullet points.`;
+    const userPrompt = `Transcript:\n${combinedText}`;
+
+    if (provider === PROVIDERS.GEMINI) {
+      const key = assertKey(options.geminiKey || options.apiKey, "Gemini");
+      const model = options.geminiModel || "gemini-2.5-flash-lite";
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+      const data = await requestJSON(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
+          generationConfig: { temperature: 0.3 },
+        }),
+        signal: options.signal,
+      });
+      const summary = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
+      return { summary: summary.trim(), provider: "gemini" };
+    }
+
+    const isOpenRouter = provider === PROVIDERS.OPENROUTER;
+    const isCustomGateway = provider === PROVIDERS.CUSTOM_GATEWAY;
+    const isGroq = provider === PROVIDERS.GROQ;
+    const key = assertKey(
+      isCustomGateway
+        ? options.customProxyApiKey || options.apiKey
+        : isOpenRouter
+          ? options.openRouterKey || options.apiKey
+          : isGroq
+            ? options.groqApiKey || options.apiKey
+            : options.openaiKey || options.apiKey,
+      isCustomGateway ? "Custom AI Gateway" : isOpenRouter ? "OpenRouter" : isGroq ? "Groq" : "OpenAI",
+    );
+    const model = isCustomGateway
+      ? options.customProxyModelId || "openrouter/free"
+      : isOpenRouter
+        ? options.openRouterModel || "openrouter/free"
+        : isGroq
+          ? options.groqModel || "llama-3.3-70b-versatile"
+          : options.openaiModel || "gpt-4o-mini";
+
+    let url;
+    if (isCustomGateway) {
+      const base = String(options.customProxyBaseUrl || "").trim().replace(/\/+$/, "");
+      url = base ? (base.endsWith("/chat/completions") ? base : `${base}/chat/completions`) : "https://openrouter.ai/api/v1/chat/completions";
+    } else if (isOpenRouter) {
+      url = "https://openrouter.ai/api/v1/chat/completions";
+    } else if (isGroq) {
+      url = "https://api.groq.com/openai/v1/chat/completions";
+    } else {
+      url = "https://api.openai.com/v1/chat/completions";
+    }
+
+    const data = await requestJSON(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+        ...(isOpenRouter || isCustomGateway ? {
+          "HTTP-Referer": "https://github.com/ThanhNguyxnOrg/lumeo",
+          "X-Title": "Lumeo",
+        } : {}),
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.3,
+      }),
+      signal: options.signal,
+    });
+    const summary = data?.choices?.[0]?.message?.content || "";
+    return { summary: summary.trim(), provider };
+  }
+
   const api = {
     __loaded: true,
     PROVIDERS,
@@ -439,6 +539,7 @@
     translateBatch,
     explainWordInContext,
     parseExplanation,
+    summarizeTranscript,
   };
 
   globalThis.LumeoTranslate = api;

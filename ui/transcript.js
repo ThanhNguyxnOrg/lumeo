@@ -7,9 +7,11 @@
     const doc = options.doc || document;
     const win = options.win || window;
     const onSeek = options.onSeek || (() => {});
+    const onSummarize = options.onSummarize || null;
 
     let root = null;
     let listEl = null;
+    let summaryEl = null;
     let activeCueIndex = -1;
     let cues = [];
     let isOpen = false;
@@ -38,6 +40,17 @@
       count.className = "lumeo-transcript-count";
       count.textContent = "0 cues";
 
+      const summarizeBtn = doc.createElement("button");
+      summarizeBtn.type = "button";
+      summarizeBtn.className = "lumeo-transcript-summarize";
+      summarizeBtn.setAttribute("aria-label", "Summarize video with AI");
+      summarizeBtn.textContent = "✨ Summarize";
+      summarizeBtn.addEventListener("click", () => {
+        if (typeof onSummarize === "function") {
+          onSummarize(cues);
+        }
+      });
+
       const closeBtn = doc.createElement("button");
       closeBtn.type = "button";
       closeBtn.className = "lumeo-transcript-close";
@@ -45,15 +58,25 @@
       closeBtn.textContent = "✕";
       closeBtn.addEventListener("click", () => toggle(false));
 
-      header.append(title, count, closeBtn);
+      const headerActions = doc.createElement("div");
+      headerActions.style.display = "flex";
+      headerActions.style.alignItems = "center";
+      headerActions.style.gap = "8px";
+      headerActions.append(summarizeBtn, count, closeBtn);
+
+      header.append(title, headerActions);
 
       const body = doc.createElement("div");
       body.className = "lumeo-transcript-body";
 
+      summaryEl = doc.createElement("div");
+      summaryEl.className = "lumeo-transcript-summary";
+      summaryEl.hidden = true;
+
       listEl = doc.createElement("div");
       listEl.className = "lumeo-transcript-list";
       listEl.setAttribute("role", "list");
-      body.appendChild(listEl);
+      body.append(summaryEl, listEl);
 
       root.append(header, body);
       (doc.body || doc.documentElement).appendChild(root);
@@ -129,10 +152,62 @@
       return isOpen;
     }
 
+    function showSummaryLoading() {
+      if (!summaryEl) build();
+      summaryEl.hidden = false;
+      summaryEl.innerHTML = '<div class="lumeo-summary-loading" style="padding: 10px; font-size: 12px; color: #38bdf8;">✨ Generating AI video summary...</div>';
+    }
+
+    function setSummary(summaryMarkdown) {
+      if (!summaryEl) build();
+      summaryEl.hidden = false;
+      summaryEl.replaceChildren();
+
+      const head = doc.createElement("div");
+      head.className = "lumeo-summary-head";
+      head.style.display = "flex";
+      head.style.justifyContent = "space-between";
+      head.style.alignItems = "center";
+      head.style.marginBottom = "6px";
+
+      const title = doc.createElement("strong");
+      title.style.fontSize = "12px";
+      title.style.color = "#f97316";
+      title.textContent = "✨ AI Key Takeaways";
+
+      const close = doc.createElement("button");
+      close.type = "button";
+      close.className = "lumeo-summary-close";
+      close.style.background = "transparent";
+      close.style.border = "none";
+      close.style.color = "#94a3b8";
+      close.style.cursor = "pointer";
+      close.textContent = "✕";
+      close.addEventListener("click", () => { summaryEl.hidden = true; });
+
+      head.append(title, close);
+
+      const content = doc.createElement("div");
+      content.className = "lumeo-summary-content";
+      content.style.fontSize = "12px";
+      content.style.lineHeight = "1.5";
+      content.style.whiteSpace = "pre-wrap";
+      content.textContent = summaryMarkdown;
+
+      summaryEl.append(head, content);
+    }
+
+    function setSummaryError(errMsg) {
+      if (!summaryEl) build();
+      summaryEl.hidden = false;
+      summaryEl.innerHTML = `<div class="lumeo-summary-error" style="padding: 10px; font-size: 12px; color: #f87171;">${errMsg}</div>`;
+    }
+
     function remove() {
       root?.remove();
       root = null;
       listEl = null;
+      summaryEl = null;
       isOpen = false;
       cues = [];
       activeCueIndex = -1;
@@ -143,6 +218,9 @@
       renderCaptionTranscript,
       updateCaptionTranscriptHighlight,
       toggle,
+      showSummaryLoading,
+      setSummary,
+      setSummaryError,
       isOpen: () => isOpen,
       getElement: () => root,
       remove,

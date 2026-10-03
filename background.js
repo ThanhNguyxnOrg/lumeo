@@ -700,10 +700,62 @@ async function handleExplainWordContext(message) {
   }
 }
 
+async function handleSummarizeTranscript(message) {
+  await loadSettings();
+  const cues = message?.cues || [];
+  const targetLanguage = message?.targetLanguage || state.targetLanguage || "vi";
+
+  let provider = state.translateProvider;
+  if (provider === "google-free" || !provider) {
+    if (state.geminiKey) provider = "gemini";
+    else if (state.groqApiKey) provider = "groq";
+    else if (state.openaiKey) provider = "openai";
+    else if (state.openRouterKey) provider = "openrouter";
+    else if (state.customProxyApiKey) provider = "custom-gateway";
+  }
+
+  if (provider === "google-free" || !provider) {
+    return {
+      ok: false,
+      needKey: true,
+      error: "Please configure an AI provider (Gemini, Groq, OpenAI, or Custom Gateway) in Lumeo Settings to summarize videos.",
+    };
+  }
+
+  const options = {
+    provider,
+    geminiKey: state.geminiKey,
+    geminiModel: state.geminiModel,
+    groqApiKey: state.groqApiKey,
+    groqModel: state.groqModel,
+    openaiKey: state.openaiKey,
+    openaiModel: state.openaiModel,
+    openRouterKey: state.openRouterKey,
+    openRouterModel: state.openRouterModel,
+    customProxyApiKey: state.customProxyApiKey,
+    customProxyBaseUrl: state.customProxyBaseUrl,
+    customProxyModelId: state.customProxyModelId,
+  };
+
+  const translateApi = globalThis.LumeoTranslate;
+  if (!translateApi?.summarizeTranscript) {
+    throw new Error("Translation service is unavailable.");
+  }
+  const result = await translateApi.summarizeTranscript(cues, targetLanguage, options);
+  return { ok: true, summary: result.summary, provider: result.provider };
+}
+
 // Popup → background → content router.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const legacyHandled = handleLegacyCaptionMessage(message, sender, sendResponse);
   if (legacyHandled !== null) return legacyHandled;
+
+  if (message?.type === "SUMMARIZE_TRANSCRIPT") {
+    handleSummarizeTranscript(message)
+      .then((res) => sendResponse(res))
+      .catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
+    return true;
+  }
 
   if (message?.type === "EXPLAIN_WORD_CONTEXT") {
     handleExplainWordContext(message)

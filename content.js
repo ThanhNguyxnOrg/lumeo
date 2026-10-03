@@ -133,6 +133,27 @@
       const v = findVideo ? findVideo() : document.querySelector("video");
       if (v) v.currentTime = seconds;
     },
+    onSummarize: async (cues) => {
+      if (!cues || cues.length === 0) {
+        showToast("No transcript cues available to summarize yet.", 3000);
+        return;
+      }
+      transcriptController?.showSummaryLoading?.();
+      const res = await browserApi.sendRuntimeMessage({
+        type: "SUMMARIZE_TRANSCRIPT",
+        cues,
+        targetLanguage: settings?.targetLanguage || "vi",
+      }).catch((e) => ({ ok: false, error: e?.message }));
+
+      if (res?.ok) {
+        transcriptController?.setSummary?.(res.summary);
+      } else {
+        transcriptController?.setSummaryError?.(res?.error || "Could not generate summary.");
+        if (res?.needKey) {
+          showToast("AI key required for summary. Click ⚙ in Lumeo to configure.", 5000);
+        }
+      }
+    },
   });
   const overlayController = window.LumeoOverlay?.createOverlayController?.({
     layoutKey: getOverlayLayoutKey,
