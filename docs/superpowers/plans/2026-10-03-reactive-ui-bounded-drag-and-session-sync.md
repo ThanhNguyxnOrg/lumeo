@@ -1,6 +1,6 @@
 # Reactive UI, Bounded Popover Dragging, and Dynamic Session Sync Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Eliminate all 8 discovered UI/UX and session lifecycle bugs by implementing first-class reactive callbacks, safe bounded popover dragging clamped to `#movie_player`, live subtitle style token synchronization (opacity & edge style), and an idempotent single-flight session handshake.
 
@@ -39,7 +39,7 @@
 - Consumes: `captionStyle` object with `subBackgroundOpacity` (number or string 0..100 or 0.0..1.0), `subShadowStyle` (`none`, `drop-shadow`, `raised`, `depressed`, `outline`).
 - Produces: Normalized CSS variable `--lumeo-sub-bg-opacity` in range `0.0..1.0` and CSS classes `lumeo-shadow-${style}` attached to `.lumeo-video-sub`.
 
-- [ ] **Step 1: Write the failing unit test in `tests/subtitle-overlay.test.mjs`**
+- [x] **Step 1: Write the failing unit test in `tests/subtitle-overlay.test.mjs`**
 
 Add assertions verifying that `subBackgroundOpacity: 75` outputs `--lumeo-sub-bg-opacity: 0.75` and `subShadowStyle: "drop-shadow"` applies `lumeo-shadow-drop-shadow`:
 
@@ -56,12 +56,12 @@ it("normalizes integer opacity (75 -> 0.75) and applies correct shadow class", a
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run tests/subtitle-overlay.test.mjs`  
 Expected: FAIL (received `"75"` instead of `"0.75"`, class `lumeo-shadow-drop-shadow` not toggled).
 
-- [ ] **Step 3: Implement style normalization in `ui/subtitle-overlay.js` and `ui/overlay.js`**
+- [x] **Step 3: Implement style normalization in `ui/subtitle-overlay.js` and `ui/overlay.js`**
 
 In `ui/subtitle-overlay.js:applySubtitleStyle`:
 ```javascript
@@ -95,12 +95,12 @@ function applyLiveCaptionStyle() {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run tests/subtitle-overlay.test.mjs`  
 Expected: PASS.
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add ui/subtitle-overlay.js ui/overlay.js tests/subtitle-overlay.test.mjs
@@ -127,7 +127,7 @@ git commit -m "fix(ui): normalize opacity decimal scale and standardize shadow c
   - `onResetPosition()`
 - Produces: Direct invocation of corresponding callbacks on submenu selection, safe pointer capture dragging on `.ytp-lumeo-header` clamped inside `#movie_player`, and reset position behavior.
 
-- [ ] **Step 1: Write the failing unit tests in `tests/overlay.test.mjs`**
+- [x] **Step 1: Write the failing unit tests in `tests/overlay.test.mjs`**
 
 Add tests for direct callback dispatch and bounded drag reset:
 
@@ -155,12 +155,12 @@ it("resets popover position when reset position is triggered", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run tests/overlay.test.mjs`  
 Expected: FAIL (`setLanguage` not defined or callback not called).
 
-- [ ] **Step 3: Implement reactive callbacks and bounded dragging in `ui/overlay.js`**
+- [x] **Step 3: Implement reactive callbacks and bounded dragging in `ui/overlay.js`**
 
 1. Wire `options.onLanguageChange`, `options.onVoiceChange`, etc., into `SUBMENUS` so each selection calls the callback immediately in addition to setting storage and updating labels.
 2. Add public helper methods on the controller: `setLanguage(val)`, `setVoice(val)`, `setLayoutPreset(val)`, `setFontSize(val)`, `setOpacity(val)`, `setShadowStyle(val)`.
@@ -236,12 +236,12 @@ function resetPopoverPosition() {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run tests/overlay.test.mjs`  
 Expected: PASS (all 11+ tests passing).
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add ui/overlay.js tests/overlay.test.mjs
@@ -260,7 +260,7 @@ git commit -m "feat(ui): implement reactive controller callbacks and bounded pop
 - Consumes: Direct callbacks from `LumeoOverlay.createOverlayController`.
 - Produces: Synchronous handler dispatch to `LumeoSessionManager`, `subtitleOverlay`, and `notifyBackground`. In-place reactive re-translation when changing language.
 
-- [ ] **Step 1: Write integration test verifying reactive language update**
+- [x] **Step 1: Write integration test verifying reactive language update**
 
 In `tests/overlay.test.mjs`:
 ```javascript
@@ -276,11 +276,11 @@ it("supports dynamic in-place language update without tearing down overlay", () 
 });
 ```
 
-- [ ] **Step 2: Run test to verify it passes or fails**
+- [x] **Step 2: Run test to verify it passes or fails**
 
 Run: `npx vitest run tests/overlay.test.mjs`
 
-- [ ] **Step 3: Refactor `content.js` to initialize bindings at creation time**
+- [x] **Step 3: Refactor `content.js` to initialize bindings at creation time**
 
 In `content.js`:
 Pass direct callbacks to `createOverlayController`:
@@ -363,12 +363,12 @@ function ensureOverlayBuilt() {
 }
 ```
 
-- [ ] **Step 4: Run unit tests**
+- [x] **Step 4: Run unit tests**
 
 Run: `npx vitest run`  
 Expected: 149+ tests passing.
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add content.js tests/overlay.test.mjs
@@ -388,12 +388,12 @@ git commit -m "fix(content): bind direct reactive callbacks and eliminate zombie
 - Consumes: `START` runtime message from content or popup, `CONTENT_START` tab message from background.
 - Produces: Idempotent session initialization where pre-started sessions return `{ ok: true }` without crashing state machine.
 
-- [ ] **Step 1: Check existing session lifecycle tests**
+- [x] **Step 1: Check existing session lifecycle tests**
 
 Run: `npx vitest run tests/caption-pipeline.test.mjs tests/realtime-pipeline.test.mjs`  
 Confirm baseline passes.
 
-- [ ] **Step 2: Update `content.js` and `background.js` handshake**
+- [x] **Step 2: Update `content.js` and `background.js` handshake**
 
 In `content.js`:
 ```javascript
@@ -434,12 +434,12 @@ async function handleStartFromUI() {
 In `background.js:handleStart`:
 If `state.running` is already true for the same tab, reply `{ ok: true, alreadyRunning: true }`.
 
-- [ ] **Step 3: Run full Vitest suite to ensure no regressions**
+- [x] **Step 3: Run full Vitest suite to ensure no regressions**
 
 Run: `npx vitest run`  
 Expected: All 149+ tests pass.
 
-- [ ] **Step 4: Commit changes**
+- [x] **Step 4: Commit changes**
 
 ```bash
 git add content.js background.js
@@ -457,7 +457,7 @@ git commit -m "fix(lifecycle): make session startup handshake idempotent and eli
 - Modify: `content.js` (auto-start, smart-skip, auto-pause logic)
 - Test: `tests/options.test.mjs` or `tests/dynamic-models.test.mjs`
 
-- [ ] **Step 1: Modernize `options.html`**
+- [x] **Step 1: Modernize `options.html`**
   - Remove confusing `<span class="badge">Free Default</span>` badge from Translation Provider card.
   - Add Default Target Language select (`targetLanguage`) under Translation Provider (Vietnamese, English, Japanese, Korean, Chinese, Spanish, etc.).
   - Add OpenRouter card to Key Vault:
@@ -501,7 +501,7 @@ git commit -m "fix(lifecycle): make session startup handshake idempotent and eli
   - Add Automation card (Opt-in, default OFF): `autoStart` (Auto-translate on video load), `smartSkipNative` (Skip if video language matches target), `autoPauseOnHover` (Pause video on subtitle hover/dictionary lookup), `navHotkeys` (A/S/D keys to jump prev/replay/next subtitle).
   - Add dynamic shortcut `<kbd id="shortcutToggle">` and direct button `Configure in Chrome ↗` (`chrome://extensions/shortcuts`).
 
-- [ ] **Step 2: Update `options.js`**
+- [x] **Step 2: Update `options.js`**
   - Implement dynamic shortcut querying via `chrome.commands.getAll()`.
   - Wire up `btnExportSrt` click handler to download cached subtitle cues as `.srt`.
   - Connect Custom Proxy / Third-Party key testing, neutral Base URL, and dynamic model loading (`LumeoProviders.fetchProviderModels`).
@@ -510,7 +510,7 @@ git commit -m "fix(lifecycle): make session startup handshake idempotent and eli
   - Handle toggle for Custom Model ID and Custom Voice inputs when custom mode is selected.
   - Read & save `openRouterKey`, `customProxyBaseUrl`, `openRouterModel`, `openRouterCustomModel`, `customTtsBaseUrl`, `customTtsApiKey`, `customTtsVoiceId`, `ttsEngineMode`, `autoStart`, `smartSkipNative`, `autoPauseOnHover`, `navHotkeys`, `targetLanguage`, and `standardVoice`.
 
-- [ ] **Step 3: Update `ui/overlay.js` & `content.js` for Brand Icon, Transcript Drawer & Automations**
+- [x] **Step 3: Update `ui/overlay.js` & `content.js` for Brand Icon, Transcript Drawer & Automations**
   - Replace temporary `+` circle SVG in popover header with official Lumeo icon (`icons/icon-32.png` or orange audio-waveform brand SVG matching Options page).
   - Unhide transcript button in `ui/overlay.js` and connect it to `ui/transcript.js` to open the Seekable Transcript Drawer.
   - In `content.js`: If `autoStart` is enabled, automatically trigger session on new video URL.
@@ -522,7 +522,7 @@ git commit -m "fix(lifecycle): make session startup handshake idempotent and eli
   - In `content.js` / `services/tts-browser.js`: Implement smart language-to-voice pairing across all 30+ languages, auto-selecting the best native neural voice without manual friction.
   - Gated AI Summarization: Provide a "Summarize Video" button in Transcript drawer; if user is on Google-Free with no AI key, prompt to add a free Gemini/OpenRouter key.
 
-- [ ] **Step 4: Verify with Vitest & Commit**
+- [x] **Step 4: Verify with Vitest & Commit**
 
 ```bash
 npx vitest run
@@ -540,22 +540,22 @@ git commit -m "feat(options): add OpenRouter & ElevenLabs vaults, dynamic models
 - Test: All tests in `tests/*.test.mjs`
 - Verify: Syntax across all JavaScript files
 
-- [ ] **Step 1: Run comprehensive Vitest tests**
+- [x] **Step 1: Run comprehensive Vitest tests**
 
 Run: `npx vitest run`  
 Expected: 100% pass rate.
 
-- [ ] **Step 2: Run syntax validation across all files**
+- [x] **Step 2: Run syntax validation across all files**
 
 Run: `node scripts/check-all.mjs` or `git status`  
 Expected: Clean status, zero syntax errors.
 
-- [ ] **Step 3: Run Semgrep security check**
+- [x] **Step 3: Run Semgrep security check**
 
 Run: `semgrep scan --config=p/javascript --config=p/security-audit --metrics=off --exclude="tests" --json`  
 Expected: 0 findings.
 
-- [ ] **Step 4: Final commit and cleanup**
+- [x] **Step 4: Final commit and cleanup**
 
 ```bash
 git add -A
