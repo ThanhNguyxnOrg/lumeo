@@ -49,12 +49,10 @@
 29. **Cross-Platform Unicode Typography**: Standardize subtitle rendering on a universal system font stack (`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`) with explicit anti-aliasing. Guarantee zero font breakage across all Vietnamese diacritics, CJK characters (Japanese Kana/Kanji, Chinese Hanzi, Korean Hangul), and RTL layout (`dir="rtl"`) for Arabic and Hebrew.
 30. **Global Language Coverage & Tiered Categorization**: Expand supported target languages beyond the initial 13 to over 30 top global languages. Organize dropdowns into a pinned "Popular & Recommended" tier (Vietnamese, English, Japanese, Korean, Chinese, Spanish, French, German) followed by an alphabetical index of all supported languages.
 31. **Intelligent Language-to-Voice Pairing (Zero-Configuration TTS)**: Automatically map the chosen Target Language to the operating system's highest-quality natural neural voice (e.g. `vi` -> Microsoft HoaiMy (Natural) / Google tiếng Việt; `ja` -> Microsoft Nanami (Natural); `ko` -> Microsoft SunHi (Natural); `en` -> Microsoft Jenny (Natural)) with smart fallback to any installed voice matching the language code. Users never have to manually search through an unfiltered multi-language voice list.
-32. **Unified Universal AI Voice Engine (Zero Favoritism & Strict Vendor-Neutrality)**:
-    - **Tier 1 (Browser Native TTS - Default & Free)**: Uses system neural speech. Standard Voice selection dropdown is shown and auto-pairs the best natural voice for the target language. Zero network latency, zero configuration.
-    - **Tier 2 (Custom AI Voice Engine / Remote / Local)**: Switched on when the user chooses Custom AI Voice. In this mode, the standard voice dropdown list is **completely hidden/removed** because voice selection is 100% determined by the user's custom Voice ID.
-33. **Custom Voice Input Requirements & Zero Pre-filled Defaults**:
-    - When Custom AI Voice is active, the user must provide:
-      - **Base URL** (Strictly empty `""` by default, absolutely no pre-filled ElevenLabs URL; user enters their endpoint e.g., cloud provider, proxy, or local `http://localhost:...`).
-      - **API Key** (Required for paid cloud APIs, optional for local TTS).
-      - **Voice ID / Voice Name** (Required, exact model or voice ID; auto-cleaned of whitespace).
-    - The in-player popover and options page reflect this dynamically: if Custom Voice is active, the standard voice picker disappears and displays the active Custom Voice indicator.
+32. **Unified Universal Voice Engine (Zero Favoritism & Strict Vendor-Neutrality)**:
+    - **Tier 1 (Browser Natural Speech - Default & Free)**: Uses system neural speech. Standard Voice selection dropdown is shown and auto-pairs the best natural voice for the target language. Zero network latency, zero configuration.
+    - **Tier 2 (Custom Neural Voice Engine)**: Labeled as `Custom Neural Voice Engine` in settings. When selected, the standard voice dropdown list is **completely hidden/removed** because voice synthesis is 100% determined by the user's configured Voice ID.
+33. **Custom Gateway & Neural Voice Requirements & Zero Pre-filled Defaults**:
+    - **AI Translation Custom Gateway**: Labeled as `Custom AI Gateway (OpenRouter / Compatible)` in provider selection. Features empty Base URL (`customProxyBaseUrl`, default: `""`), API Key, and Model ID input.
+    - **Custom Neural Voice Engine**: Features empty Base URL (`customTtsBaseUrl`, strictly empty `""` by default, no pre-filled URLs; supports ElevenLabs, Cloud TTS, or Local Kokoro/Piper models), API Key (optional for local), Voice ID/Name (required text input with auto-clean regex), and `🔊 Test Voice` action.
+    - If `Custom Neural Voice Engine` is active, the in-player popover replaces the standard voice picker with a clean `Custom Voice (Active)` status indicator.
