@@ -176,3 +176,60 @@ describe("ui/overlay.js layout persistence", () => {
     expect(root.style.height).toBe("auto");
   });
 });
+
+describe("ui/overlay.js YouTube control bar button integration", () => {
+  it("injects .ytp-lumeo-button into .ytp-right-controls and toggles overlay", async () => {
+    const { window } = await createSandboxWindow();
+    loadService("ui/overlay.js", window);
+
+    // Mock YouTube player structure in document
+    const moviePlayer = window.document.createElement("div");
+    moviePlayer.id = "movie_player";
+    const chromeBottom = window.document.createElement("div");
+    chromeBottom.className = "ytp-chrome-bottom";
+    const rightControls = window.document.createElement("div");
+    rightControls.className = "ytp-right-controls";
+    const settingsBtn = window.document.createElement("button");
+    settingsBtn.className = "ytp-button ytp-settings-button";
+    rightControls.appendChild(settingsBtn);
+    chromeBottom.appendChild(rightControls);
+    moviePlayer.appendChild(chromeBottom);
+    window.document.body.appendChild(moviePlayer);
+
+    const controller = window.LumeoOverlay.createOverlayController();
+    const root = controller.build();
+
+    const ytBtn = rightControls.querySelector(".ytp-lumeo-button");
+    expect(ytBtn).not.toBeNull();
+    expect(ytBtn.classList.contains("ytp-lumeo-active")).toBe(true);
+
+    // Clicking native YouTube button collapses the overlay
+    ytBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(root.classList.contains("is-side-collapsed")).toBe(true);
+    expect(ytBtn.classList.contains("ytp-lumeo-active")).toBe(false);
+
+    // Clicking again expands it
+    ytBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(root.classList.contains("is-side-collapsed")).toBe(false);
+    expect(ytBtn.classList.contains("ytp-lumeo-active")).toBe(true);
+
+    // Calling destroy cleans up YouTube control button
+    controller.destroy();
+    expect(rightControls.querySelector(".ytp-lumeo-button")).toBeNull();
+  });
+});
+
+describe("ui/overlay.js native YouTube popover menu", () => {
+  it("renders YouTube-native popover menu with A-/A+ steppers and reset position", async () => {
+    const { root } = await setup();
+    const popover = root.querySelector(".ytp-lumeo-popover");
+    expect(popover).not.toBeNull();
+    const btnFontDec = root.querySelector("[data-lumeo-font-dec]");
+    const btnFontInc = root.querySelector("[data-lumeo-font-inc]");
+    expect(btnFontDec).not.toBeNull();
+    expect(btnFontInc).not.toBeNull();
+    const btnResetPos = root.querySelector("[data-lumeo-reset-pos]");
+    expect(btnResetPos).not.toBeNull();
+  });
+});
+
