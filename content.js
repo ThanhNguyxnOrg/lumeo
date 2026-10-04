@@ -202,7 +202,7 @@
       applyCaptionStyle();
     },
     onResetPosition: () => {
-      subtitleOverlay?.applyStyle(captionStyle);
+      subtitleOverlay?.resetPosition?.();
     },
     onToggleTranscript: () => {
       transcriptController?.toggle();
@@ -236,9 +236,25 @@
       showSourceSub: true,
       layoutPreset: "stacked",
       subtitleOrder: "translation-top",
-      subBackgroundOpacity: 0.92,
-      subShadowStyle: "drop",
+      subBackgroundOpacity: 75,
+      subShadowStyle: "drop-shadow",
     };
+  }
+
+  // Live voiceschanged listener
+  if (typeof window !== "undefined" && window.speechSynthesis) {
+    const handleVoicesChanged = () => {
+      if (elements.voiceSelect) {
+        populateVoicePicker(settings?.tier || "caption");
+      }
+      overlayController?.updateMenuLabels?.();
+    };
+    try {
+      window.speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged);
+      if (window.speechSynthesis.onvoiceschanged !== undefined) {
+        window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
+      }
+    } catch {}
   }
 
   // Load from chrome.storage.local on startup
@@ -423,6 +439,7 @@
 
     populateVoicePicker(settings?.tier || "caption");
     if (elements.langSelect) elements.langSelect.value = settings?.targetLanguage || "vi";
+    overlayController?.updateMenuLabels?.();
 
     elements.langSelect?.addEventListener("change", () => {
       handleLanguageChange(elements.langSelect.value);

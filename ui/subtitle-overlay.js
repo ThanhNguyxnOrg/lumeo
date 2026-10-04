@@ -71,6 +71,23 @@
       } catch {}
     }
 
+    function resetPosition() {
+      try {
+        win.localStorage?.removeItem("lumeoSubPosition");
+      } catch {}
+      lastPosition = null;
+      if (overlay) {
+        overlay.style.left = "50%";
+        overlay.style.top = "auto";
+        overlay.style.bottom = "var(--lumeo-caption-bottom-offset, 14%)";
+        overlay.style.transform = "translateX(-50%)";
+      }
+    }
+
+    try {
+      win.addEventListener("lumeo:reset-sub-position", resetPosition);
+    } catch {}
+
     function initDragging() {
       if (!overlay || detachDragListeners) return;
 
@@ -179,7 +196,17 @@
       // Load persistent caption style from storage
       try {
         if (typeof chrome !== "undefined" && chrome.storage?.local) {
-          chrome.storage.local.get(["fontSize", "bottomOffset", "highContrast", "layoutPreset"], (res) => {
+          chrome.storage.local.get([
+            "fontSize",
+            "bottomOffset",
+            "highContrast",
+            "layoutPreset",
+            "subBackgroundOpacity",
+            "subShadowStyle",
+            "subtitleOrder",
+            "showSourceSub",
+            "showTranslatedSub",
+          ], (res) => {
             if (res) applyStyle(res);
           });
         }
@@ -198,6 +225,11 @@
             if (changes.bottomOffset) updated.bottomOffset = changes.bottomOffset.newValue;
             if (changes.highContrast) updated.highContrast = changes.highContrast.newValue;
             if (changes.layoutPreset) updated.layoutPreset = changes.layoutPreset.newValue;
+            if (changes.subBackgroundOpacity) updated.subBackgroundOpacity = changes.subBackgroundOpacity.newValue;
+            if (changes.subShadowStyle) updated.subShadowStyle = changes.subShadowStyle.newValue;
+            if (changes.subtitleOrder) updated.subtitleOrder = changes.subtitleOrder.newValue;
+            if (changes.showSourceSub) updated.showSourceSub = changes.showSourceSub.newValue;
+            if (changes.showTranslatedSub) updated.showTranslatedSub = changes.showTranslatedSub.newValue;
             if (Object.keys(updated).length > 0) {
               applyStyle(updated);
               if (currentCue && overlay) appendSubtitleLines(overlay, currentCue, lastCaptionStyle);
@@ -241,8 +273,10 @@
       target.style.setProperty("--lumeo-caption-bottom-offset", `${captionStyle.bottomOffset || 14}%`);
       if (captionStyle.subBackgroundOpacity != null) {
         const raw = Number(captionStyle.subBackgroundOpacity);
-        const normalized = Number.isFinite(raw) ? (raw > 1 ? raw / 100 : raw) : 0.92;
-        target.style.setProperty("--lumeo-sub-bg-opacity", String(Math.max(0, Math.min(1, normalized))));
+        const normalized = Number.isFinite(raw) ? (raw > 1 ? raw / 100 : raw) : 0.75;
+        const clamped = Math.max(0, Math.min(1, normalized));
+        target.style.setProperty("--lumeo-sub-bg-opacity", String(clamped));
+        target.classList.toggle("lumeo-sub-transparent", clamped === 0);
       }
       const layoutPreset = captionStyle.layoutPreset || "stacked";
       target.classList.toggle("lumeo-hide-translated", captionStyle.showTranslatedSub === false || layoutPreset === "source-only");
@@ -264,9 +298,9 @@
     }
 
     function applyStyle(captionStyle = {}) {
-      lastCaptionStyle = { ...captionStyle };
-      applySubtitleStyle(overlay, captionStyle);
-      applySubtitleStyle(pipRoot, captionStyle);
+      lastCaptionStyle = { ...lastCaptionStyle, ...captionStyle };
+      applySubtitleStyle(overlay, lastCaptionStyle);
+      applySubtitleStyle(pipRoot, lastCaptionStyle);
     }
 
     function ensurePopover() {
@@ -746,6 +780,7 @@
       build,
       remove,
       applyStyle,
+      resetPosition,
       updateCue,
       getElement,
       isPictureInPictureSupported,

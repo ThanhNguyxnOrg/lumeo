@@ -306,8 +306,13 @@
           hi = mid - 1;
         }
       }
-      if (best >= 0 && t < this.cues[best].end) {
-        return { cue: this.cues[best], index: best };
+      if (best >= 0) {
+        const cue = this.cues[best];
+        const nextStart = this.cues[best + 1] ? this.cues[best + 1].start : Infinity;
+        const effectiveEnd = Math.min(nextStart, Math.max(cue.end, cue.start + 1.0));
+        if (t < effectiveEnd) {
+          return { cue, index: best };
+        }
       }
       return { cue: null, index: -1 };
     }

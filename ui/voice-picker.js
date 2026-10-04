@@ -31,6 +31,78 @@
     return text ? text.charAt(0).toUpperCase() + text.slice(1) : "";
   }
 
+  const SMART_VOICE_PREFERENCES = {
+    vi: ["Microsoft HoaiMy Online (Natural) - Vietnamese (Vietnam)", "Google tiếng Việt", "Microsoft NamMinh Online (Natural)"],
+    en: ["Microsoft Jenny Online (Natural) - English (United States)", "Google US English", "Microsoft Guy Online (Natural)", "Samantha"],
+    ja: ["Microsoft Nanami Online (Natural) - Japanese (Japan)", "Google 日本語", "Microsoft Keita Online (Natural)", "Kyoko"],
+    ko: ["Microsoft SunHi Online (Natural) - Korean (Korea)", "Google 한국의", "Microsoft InJoon Online (Natural)", "Yuna"],
+    zh: ["Microsoft Xiaoxiao Online (Natural) - Chinese (Mainland)", "Google 普通话 (中国大陆)", "Microsoft Yunxi Online (Natural)"],
+    es: ["Microsoft Elvira Online (Natural) - Spanish (Spain)", "Google español", "Microsoft Alvaro Online (Natural)"],
+    fr: ["Microsoft Denise Online (Natural) - French (France)", "Google français", "Microsoft Henri Online (Natural)"],
+    de: ["Microsoft Katja Online (Natural) - German (Germany)", "Google Deutsch", "Microsoft Conrad Online (Natural)"],
+    ru: ["Microsoft Svetlana Online (Natural) - Russian (Russia)", "Google русский", "Microsoft Dmitri Online (Natural)"],
+    pt: ["Microsoft Francisca Online (Natural) - Portuguese (Brazil)", "Google português do Brasil"],
+    it: ["Microsoft Elsa Online (Natural) - Italian (Italy)", "Google italiano"],
+  };
+
+  function cleanVoiceLabel(name) {
+    if (!name) return "";
+    let clean = name
+      .replace(/Online\s*\(Natural\)/gi, "(Natural)")
+      .replace(/Microsoft\s+/gi, "")
+      .replace(/Google\s+/gi, "Google ")
+      .replace(/\s*-\s*[A-Za-z\s()]+$/g, "")
+      .trim();
+    return clean || name;
+  }
+
+  function autoPairVoice(langCode, voices = []) {
+    if (!voices || voices.length === 0) return null;
+    const prefs = SMART_VOICE_PREFERENCES[langCode] || [];
+    for (const prefName of prefs) {
+      const match = voices.find((v) => v.name.includes(prefName) || prefName.includes(v.name));
+      if (match) return match;
+    }
+    const langPrefix = (langCode || "vi").split("-")[0].toLowerCase();
+    const langMatch = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith(langPrefix));
+    return langMatch || null;
+  }
+
+  function getTopVoicesForLanguage(langCode, voices = []) {
+    if (!voices || voices.length === 0) return [];
+    const langPrefix = (langCode || "vi").split("-")[0].toLowerCase();
+    const matching = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith(langPrefix));
+    if (matching.length === 0) return [];
+
+    const prefs = SMART_VOICE_PREFERENCES[langCode] || [];
+    const prioritized = [];
+    const seen = new Set();
+
+    for (const prefName of prefs) {
+      const found = matching.find((v) => (v.name.includes(prefName) || prefName.includes(v.name)) && !seen.has(v.name));
+      if (found) {
+        prioritized.push(found);
+        seen.add(found.name);
+      }
+    }
+
+    for (const v of matching) {
+      if (!seen.has(v.name) && (v.name.includes("Natural") || v.name.includes("Google"))) {
+        prioritized.push(v);
+        seen.add(v.name);
+      }
+    }
+
+    for (const v of matching) {
+      if (!seen.has(v.name)) {
+        prioritized.push(v);
+        seen.add(v.name);
+      }
+    }
+
+    return prioritized.slice(0, 3);
+  }
+
   function appendOption(selectEl, value, label) {
     const opt = selectEl.ownerDocument.createElement("option");
     opt.value = value;
@@ -49,24 +121,25 @@
       if (settings.captionTtsProvider === "custom-voice-engine") {
         const voiceLabel = settings.customTtsVoiceId ? `Custom Voice (${settings.customTtsVoiceId.slice(0, 12)}...)` : "Custom Voice (Active)";
         appendOption(selectEl, "custom-voice-engine", voiceLabel);
-        appendOption(selectEl, "off", "TTS Off");
+        appendOption(selectEl, "off", "Off / Mute");
         selectEl.value = "custom-voice-engine";
         return;
       }
 
-      appendOption(selectEl, "auto", "Auto (Recommended)");
-
       const targetLang = settings.targetLanguage || "vi";
       const voices = (typeof window !== "undefined" && window.speechSynthesis?.getVoices?.()) || [];
-      const langPrefix = targetLang.split("-")[0].toLowerCase();
-      const matchingVoices = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith(langPrefix));
+      const pairedVoice = autoPairVoice(targetLang, voices);
+      const pairedClean = pairedVoice ? cleanVoiceLabel(pairedVoice.name) : "";
+      const autoText = pairedClean ? `Auto (${pairedClean})` : "Auto (Recommended)";
 
-      for (const v of matchingVoices.slice(0, 8)) {
-        const cleanName = v.name.replace(/Microsoft\s+|Google\s+|Online\s+/g, "").trim();
-        appendOption(selectEl, v.name, cleanName || v.name);
+      appendOption(selectEl, "auto", autoText);
+
+      const topVoices = getTopVoicesForLanguage(targetLang, voices);
+      for (const v of topVoices) {
+        appendOption(selectEl, v.name, cleanVoiceLabel(v.name));
       }
 
-      appendOption(selectEl, "off", "TTS Off");
+      appendOption(selectEl, "off", "Off / Mute");
 
       if (settings.captionTtsProvider === "off") {
         selectEl.value = "off";

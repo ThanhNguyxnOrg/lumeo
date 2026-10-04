@@ -380,4 +380,14 @@ describe("ui/subtitle-overlay.js", () => {
     expect(controller.getElement()).toBeNull();
     expect(player.querySelector(".lumeo-video-sub")).toBeNull();
   });
+
+  it("resets dragged subtitle position back to default bottom-center", () => {
+    const overlay = controller.build();
+    overlay.style.left = "20%";
+    overlay.style.top = "30%";
+    controller.resetPosition();
+    expect(overlay.style.left).toBe("50%");
+    expect(overlay.style.top).toBe("auto");
+    expect(overlay.style.transform).toBe("translateX(-50%)");
+  });
 });

@@ -51,6 +51,22 @@
         }
       });
 
+      const exportBtn = doc.createElement("button");
+      exportBtn.type = "button";
+      exportBtn.className = "lumeo-transcript-summarize";
+      exportBtn.style.background = "transparent";
+      exportBtn.style.border = "1px solid var(--lumeo-line, rgba(255,255,255,0.15))";
+      exportBtn.setAttribute("aria-label", "Export subtitles as SRT");
+      exportBtn.textContent = "📥 SRT";
+      exportBtn.addEventListener("click", () => {
+        if (!cues || cues.length === 0) return;
+        if (win.LumeoSrtExport?.toSrt && win.LumeoSrtExport?.downloadText) {
+          const srtText = win.LumeoSrtExport.toSrt(cues);
+          const safeTitle = win.LumeoSrtExport.sanitizeFilename(doc.title || "video-subtitles");
+          win.LumeoSrtExport.downloadText(srtText, `${safeTitle}.srt`);
+        }
+      });
+
       const closeBtn = doc.createElement("button");
       closeBtn.type = "button";
       closeBtn.className = "lumeo-transcript-close";
@@ -62,7 +78,7 @@
       headerActions.style.display = "flex";
       headerActions.style.alignItems = "center";
       headerActions.style.gap = "8px";
-      headerActions.append(summarizeBtn, count, closeBtn);
+      headerActions.append(summarizeBtn, exportBtn, count, closeBtn);
 
       header.append(title, headerActions);
 
@@ -83,46 +99,64 @@
       return root;
     }
 
+    function createCueItem(cue, index) {
+      const item = doc.createElement("button");
+      item.type = "button";
+      item.className = "lumeo-transcript-item";
+      item.dataset.index = String(index);
+      item.setAttribute("role", "listitem");
+      item.setAttribute("aria-label", `Seek to ${formatTime(cue.start)}`);
+
+      const time = doc.createElement("span");
+      time.className = "lumeo-transcript-time";
+      time.textContent = formatTime(cue.start);
+
+      const textWrap = doc.createElement("div");
+      textWrap.className = "lumeo-transcript-texts";
+
+      const target = doc.createElement("div");
+      target.className = "lumeo-transcript-target";
+      target.textContent = cue.translated || cue.text;
+
+      const source = doc.createElement("div");
+      source.className = "lumeo-transcript-source";
+      source.textContent = cue.text;
+
+      textWrap.append(target, source);
+      item.append(time, textWrap);
+
+      item.addEventListener("click", () => {
+        onSeek(cue.start);
+        updateCaptionTranscriptHighlight(index);
+      });
+      return item;
+    }
+
+    function updateCaptionTranscriptCount(count) {
+      if (!root) build();
+      const countEl = root.querySelector(".lumeo-transcript-count");
+      if (countEl) countEl.textContent = `${count} cues`;
+    }
+
+    function appendCaptionRow(cue, index) {
+      if (!root) build();
+      const idx = typeof index === "number" ? index : cues.length;
+      cues.push(cue);
+      updateCaptionTranscriptCount(cues.length);
+      if (!listEl) return;
+      const item = createCueItem(cue, idx);
+      listEl.appendChild(item);
+    }
+
     function renderCaptionTranscript(newCues = []) {
       cues = Array.isArray(newCues) ? newCues : [];
       if (!root) build();
-      const countEl = root.querySelector(".lumeo-transcript-count");
-      if (countEl) countEl.textContent = `${cues.length} cues`;
+      updateCaptionTranscriptCount(cues.length);
       if (!listEl) return;
       listEl.replaceChildren();
 
       cues.forEach((cue, index) => {
-        const item = doc.createElement("button");
-        item.type = "button";
-        item.className = "lumeo-transcript-item";
-        item.dataset.index = String(index);
-        item.setAttribute("role", "listitem");
-        item.setAttribute("aria-label", `Seek to ${formatTime(cue.start)}`);
-
-        const time = doc.createElement("span");
-        time.className = "lumeo-transcript-time";
-        time.textContent = formatTime(cue.start);
-
-        const textWrap = doc.createElement("div");
-        textWrap.className = "lumeo-transcript-texts";
-
-        const target = doc.createElement("div");
-        target.className = "lumeo-transcript-target";
-        target.textContent = cue.translated || cue.text;
-
-        const source = doc.createElement("div");
-        source.className = "lumeo-transcript-source";
-        source.textContent = cue.text;
-
-        textWrap.append(target, source);
-        item.append(time, textWrap);
-
-        item.addEventListener("click", () => {
-          onSeek(cue.start);
-          updateCaptionTranscriptHighlight(index);
-        });
-
-        listEl.appendChild(item);
+        listEl.appendChild(createCueItem(cue, index));
       });
       updateCaptionTranscriptHighlight(activeCueIndex);
     }
@@ -216,6 +250,8 @@
     return {
       build,
       renderCaptionTranscript,
+      appendCaptionRow,
+      updateCaptionTranscriptCount,
       updateCaptionTranscriptHighlight,
       toggle,
       showSummaryLoading,

@@ -284,8 +284,6 @@
           }
           return [
             { id: "auto", label: "Auto (Recommended)" },
-            { id: "female-1", label: "Female (Natural)" },
-            { id: "male-1", label: "Male (Deep)" },
             { id: "off", label: "Off / Mute" },
           ];
         },
@@ -295,7 +293,7 @@
             elements.voiceSelect.value = val;
             elements.voiceSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
           }
-          try { chrome.storage?.local?.set({ voice: val }); } catch {}
+          try { chrome.storage?.local?.set({ voice: val, standardVoice: val }); } catch {}
           if (typeof options.onVoiceChange === "function") {
             try { options.onVoiceChange(val); } catch {}
           }
@@ -435,7 +433,9 @@
       const sub = player ? player.querySelector(".lumeo-video-sub") : (typeof doc !== "undefined" ? doc.querySelector(".lumeo-video-sub") : null);
       if (sub) {
         sub.style.setProperty("--lumeo-caption-font-size", `${currentFontSize}px`);
-        sub.style.setProperty("--lumeo-sub-bg-opacity", String(currentBgOpacity / 100));
+        const opac = Math.max(0, Math.min(1, currentBgOpacity / 100));
+        sub.style.setProperty("--lumeo-sub-bg-opacity", String(opac));
+        sub.classList.toggle("lumeo-sub-transparent", opac === 0);
         sub.classList.remove("lumeo-shadow-none", "lumeo-shadow-drop-shadow", "lumeo-shadow-raised", "lumeo-shadow-depressed", "lumeo-shadow-outline");
         sub.classList.add(`lumeo-shadow-${currentShadowStyle}`);
       }
@@ -456,7 +456,7 @@
       const voiceVal = elements.voiceSelect?.value || "auto";
       const voiceItem = SUBMENUS.voice.getItems().find((i) => i.id === voiceVal);
       const voiceLabelEl = root.querySelector('[data-val="voice"]');
-      if (voiceLabelEl) voiceLabelEl.textContent = voiceItem ? voiceItem.label.split(" (")[0] : voiceVal;
+      if (voiceLabelEl) voiceLabelEl.textContent = voiceItem ? voiceItem.label : voiceVal;
 
       const fontItem = SUBMENUS.fontsize.getItems().find((i) => String(i.id) === String(currentFontSize));
       const fontLabelEl = root.querySelector('[data-val="fontsize"]');
@@ -962,6 +962,38 @@
             }
             updateMenuLabels();
             applyLiveCaptionStyle();
+          });
+        }
+      } catch {}
+
+      try {
+        if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
+          chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === "local") {
+              if (changes.fontSize?.newValue != null) {
+                currentFontSize = Number(changes.fontSize.newValue);
+                if (elements.styleSize) elements.styleSize.value = currentFontSize;
+              }
+              if (changes.subBackgroundOpacity?.newValue != null) {
+                const raw = changes.subBackgroundOpacity.newValue;
+                currentBgOpacity = typeof raw === "number" && raw <= 1 ? Math.round(raw * 100) : Number(raw);
+              }
+              if (changes.subShadowStyle?.newValue != null) {
+                currentShadowStyle = changes.subShadowStyle.newValue;
+              }
+              if (changes.subtitleOrder?.newValue != null) {
+                currentSubtitleOrder = changes.subtitleOrder.newValue;
+                if (elements.subtitleOrder) elements.subtitleOrder.value = currentSubtitleOrder;
+              }
+              if (changes.targetLanguage?.newValue != null && elements.langSelect) {
+                elements.langSelect.value = changes.targetLanguage.newValue;
+              }
+              if (changes.layoutPreset?.newValue != null && elements.layoutPreset) {
+                elements.layoutPreset.value = changes.layoutPreset.newValue;
+              }
+              updateMenuLabels();
+              applyLiveCaptionStyle();
+            }
           });
         }
       } catch {}
