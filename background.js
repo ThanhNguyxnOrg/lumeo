@@ -345,7 +345,7 @@ async function persistSettings(partial) {
   Object.assign(state, partial);
   const persistable = {};
   for (const k of Object.keys(DEFAULT_SETTINGS)) {
-    if (k in partial) persistable[k] = state[k];
+    if (k in partial && partial[k] !== undefined) persistable[k] = state[k];
   }
   if (Object.keys(persistable).length) {
     await chrome.storage.local.set(persistable);
@@ -356,6 +356,7 @@ async function handleStart(settings, explicitTab = null) {
   if (state.running || state.connecting) {
     return { ok: true, alreadyRunning: true, state: snapshot() };
   }
+  await loadSettings();
   await persistSettings(settings || {});
   let tab = explicitTab;
   if (!tab) {
@@ -861,4 +862,16 @@ chrome.action?.onClicked?.addListener(async (tab) => {
 });
 
 void loadSettings();
+
+if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local") {
+      for (const [key, change] of Object.entries(changes)) {
+        if (key in state) {
+          state[key] = change.newValue;
+        }
+      }
+    }
+  });
+}
 

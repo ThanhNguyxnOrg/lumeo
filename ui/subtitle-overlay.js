@@ -761,8 +761,8 @@
     function updateCue(cue, optionsForCue = {}) {
       if (!overlay) build();
       if (!overlay) return;
-      const captionStyle = optionsForCue.captionStyle || {};
-      lastCueOptions = { ...optionsForCue };
+      const captionStyle = { ...lastCaptionStyle, ...(optionsForCue.captionStyle || {}) };
+      lastCueOptions = { ...optionsForCue, captionStyle };
       currentCue = cue || null;
       popover = null;
       applyStyle(captionStyle);

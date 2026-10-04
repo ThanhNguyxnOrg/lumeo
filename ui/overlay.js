@@ -647,7 +647,8 @@
         (doc.body || doc.documentElement).appendChild(root);
       }
       elements = mapElements();
-      populateLanguages();
+      const initialLang = options.targetLanguage || "vi";
+      populateLanguages(initialLang);
       bindShortcuts();
       bindDragResize();
       applyLayout();
@@ -722,7 +723,7 @@
       };
     }
 
-    function populateLanguages() {
+    function populateLanguages(selectedCode) {
       if (!elements.langSelect) return;
       elements.langSelect.replaceChildren();
       for (const [code, name] of languages) {
@@ -730,6 +731,9 @@
         opt.value = code;
         opt.textContent = name;
         elements.langSelect.appendChild(opt);
+      }
+      if (selectedCode) {
+        elements.langSelect.value = selectedCode;
       }
     }
 
@@ -781,6 +785,20 @@
       const fontSize = captionStyle.fontSize || 22;
       const bottomOffset = captionStyle.bottomOffset || 14;
       currentFontSize = fontSize;
+      if (captionStyle.subBackgroundOpacity != null) {
+        const raw = captionStyle.subBackgroundOpacity;
+        currentBgOpacity = typeof raw === "number" && raw <= 1 ? Math.round(raw * 100) : Number(raw);
+      }
+      if (captionStyle.subShadowStyle) {
+        currentShadowStyle = captionStyle.subShadowStyle;
+      }
+      if (captionStyle.subtitleOrder) {
+        currentSubtitleOrder = captionStyle.subtitleOrder;
+        if (elements.subtitleOrder) elements.subtitleOrder.value = captionStyle.subtitleOrder;
+      }
+      if (captionStyle.targetLanguage && elements.langSelect) {
+        elements.langSelect.value = captionStyle.targetLanguage;
+      }
       if (elements.styleSize) elements.styleSize.value = String(fontSize);
       if (elements.styleSizeValue) elements.styleSizeValue.value = `${fontSize}px`;
       if (elements.stylePosition) elements.stylePosition.value = String(bottomOffset);
@@ -795,6 +813,7 @@
       if (elements.showTranslated) elements.showTranslated.checked = captionStyle.showTranslatedSub !== false;
       if (elements.showSource) elements.showSource.checked = captionStyle.showSourceSub !== false;
       updateMenuLabels();
+      applyLiveCaptionStyle();
     }
 
     function setState(state) {
@@ -955,7 +974,11 @@
               if (elements.subtitleOrder) elements.subtitleOrder.value = items.subtitleOrder;
             }
             if (items?.targetLanguage && elements.langSelect) {
+              const prev = elements.langSelect.value;
               elements.langSelect.value = items.targetLanguage;
+              if (prev !== items.targetLanguage && typeof options.onLanguageChange === "function") {
+                try { options.onLanguageChange(items.targetLanguage); } catch {}
+              }
             }
             if (items?.layoutPreset && elements.layoutPreset) {
               elements.layoutPreset.value = items.layoutPreset;
@@ -986,7 +1009,11 @@
                 if (elements.subtitleOrder) elements.subtitleOrder.value = currentSubtitleOrder;
               }
               if (changes.targetLanguage?.newValue != null && elements.langSelect) {
+                const prev = elements.langSelect.value;
                 elements.langSelect.value = changes.targetLanguage.newValue;
+                if (prev !== changes.targetLanguage.newValue && typeof options.onLanguageChange === "function") {
+                  try { options.onLanguageChange(changes.targetLanguage.newValue); } catch {}
+                }
               }
               if (changes.layoutPreset?.newValue != null && elements.layoutPreset) {
                 elements.layoutPreset.value = changes.layoutPreset.newValue;

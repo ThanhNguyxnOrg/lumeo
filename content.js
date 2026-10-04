@@ -271,6 +271,7 @@
           if (elements.voiceSelect) {
             populateVoicePicker(settings.tier || "caption");
           }
+          overlayController?.syncCaptionControls?.(captionStyle);
           applyCaptionStyle();
           overlayController?.updateMenuLabels?.();
         }
@@ -292,6 +293,7 @@
             if (updated.captionTtsProvider !== undefined || updated.standardVoice !== undefined || updated.targetLanguage !== undefined) {
               populateVoicePicker(settings.tier || "caption");
             }
+            overlayController?.syncCaptionControls?.(captionStyle);
             applyCaptionStyle();
             overlayController?.updateMenuLabels?.();
             if (lastDisplayedCue) setTargetCue(lastDisplayedCue);
@@ -379,6 +381,8 @@
     if (pairedVoice) {
       handleVoiceChange(pairedVoice);
     }
+    populateVoicePicker(settings?.tier || "caption");
+    overlayController?.updateMenuLabels?.();
 
     // In-place reactive handover without stopping active video playback (Decision 14)
     if (settings.tier === "caption" && lastDisplayedCue && lastDisplayedCue.text) {
@@ -437,9 +441,29 @@
     root = overlayController.build();
     elements = overlayController.getElements();
 
+    if (elements.langSelect && settings?.targetLanguage) {
+      elements.langSelect.value = settings.targetLanguage;
+    }
     populateVoicePicker(settings?.tier || "caption");
-    if (elements.langSelect) elements.langSelect.value = settings?.targetLanguage || "vi";
+    overlayController?.syncCaptionControls?.(captionStyle);
     overlayController?.updateMenuLabels?.();
+
+    if (typeof chrome !== "undefined" && chrome.storage?.local) {
+      try {
+        chrome.storage.local.get(null, (res) => {
+          if (res) {
+            settings = { ...(settings || {}), ...res };
+            captionStyle = { ...captionStyle, ...res };
+            if (elements.langSelect && settings.targetLanguage) {
+              elements.langSelect.value = settings.targetLanguage;
+            }
+            populateVoicePicker(settings?.tier || "caption");
+            overlayController?.syncCaptionControls?.(captionStyle);
+            overlayController?.updateMenuLabels?.();
+          }
+        });
+      } catch {}
+    }
 
     elements.langSelect?.addEventListener("change", () => {
       handleLanguageChange(elements.langSelect.value);
@@ -832,6 +856,12 @@
             settings = { ...(msg.settings || {}) };
             LumeoSessionManager.setSettings(settings);
             overlayController?.setSessionState?.({ isTranslating: true });
+            if (elements.langSelect && settings.targetLanguage) {
+              elements.langSelect.value = settings.targetLanguage;
+            }
+            populateVoicePicker(settings.tier || "caption");
+            overlayController?.syncCaptionControls?.(captionStyle);
+            overlayController?.updateMenuLabels?.();
             const startRes = await LumeoSessionManager.startSession(settings);
             sendResponse(startRes || { ok: true });
             break;

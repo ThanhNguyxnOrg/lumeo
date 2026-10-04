@@ -158,7 +158,7 @@
     if (provider === "custom-voice-engine") {
       if (browserVoiceWrap) browserVoiceWrap.style.display = "none";
       if (customVoiceEngineWrap) customVoiceEngineWrap.style.display = "block";
-    } else if (provider === "browser") {
+    } else if (provider === "browser" || provider === "off") {
       if (browserVoiceWrap) browserVoiceWrap.style.display = "block";
       if (customVoiceEngineWrap) customVoiceEngineWrap.style.display = "none";
     } else {
@@ -173,12 +173,35 @@
     const voices = window.speechSynthesis.getVoices() || [];
     const prev = browserVoiceInput.value || currentSettings.standardVoice || "";
     browserVoiceInput.innerHTML = '<option value="">Auto-pair best natural voice for language</option>';
-    voices.forEach((v) => {
-      const opt = document.createElement("option");
-      opt.value = v.voiceURI || v.name;
-      opt.textContent = `${v.name} (${v.lang})`;
-      browserVoiceInput.appendChild(opt);
-    });
+    const targetLang = currentSettings.targetLanguage || "vi";
+    const prefix = targetLang.split("-")[0].toLowerCase();
+    const matching = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith(prefix));
+    const others = voices.filter((v) => !v.lang || !v.lang.toLowerCase().startsWith(prefix));
+
+    if (matching.length > 0) {
+      const matchGroup = document.createElement("optgroup");
+      matchGroup.label = `Matching Voices (${targetLang})`;
+      matching.forEach((v) => {
+        const opt = document.createElement("option");
+        opt.value = v.voiceURI || v.name;
+        opt.textContent = `${v.name} (${v.lang})`;
+        matchGroup.appendChild(opt);
+      });
+      browserVoiceInput.appendChild(matchGroup);
+    }
+
+    if (others.length > 0) {
+      const otherGroup = document.createElement("optgroup");
+      otherGroup.label = "All Other Voices";
+      others.forEach((v) => {
+        const opt = document.createElement("option");
+        opt.value = v.voiceURI || v.name;
+        opt.textContent = `${v.name} (${v.lang})`;
+        otherGroup.appendChild(opt);
+      });
+      browserVoiceInput.appendChild(otherGroup);
+    }
+
     if (prev) browserVoiceInput.value = prev;
   }
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -261,6 +284,19 @@
   }
 
   // 5. Save Settings to Storage
+  async function saveImmediately() {
+    clearTimeout(saveDebounceTimer);
+    readInputs();
+    updatePreview();
+    updateTtsSectionsVisibility();
+    try {
+      await STORAGE.set(currentSettings);
+      showToast();
+    } catch (err) {
+      console.error("Failed to save settings:", err);
+    }
+  }
+
   function scheduleSave() {
     readInputs();
     updatePreview();
@@ -397,7 +433,13 @@
   allInputs.forEach((input) => {
     if (!input) return;
     input.addEventListener("input", scheduleSave);
-    input.addEventListener("change", scheduleSave);
+    input.addEventListener("change", () => {
+      if (input === targetLanguageInput) {
+        readInputs();
+        populateBrowserVoices();
+      }
+      saveImmediately();
+    });
   });
 
   // Reset Subtitle Position Button
