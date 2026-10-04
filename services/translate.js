@@ -225,7 +225,8 @@
     let url;
     if (isCustomGateway) {
       const base = String(options.customProxyBaseUrl || "").trim().replace(/\/+$/, "");
-      url = base ? (base.endsWith("/chat/completions") ? base : `${base}/chat/completions`) : "https://openrouter.ai/api/v1/chat/completions";
+      if (!base) throw new Error("Custom AI Gateway Base URL is required.");
+      url = base.endsWith("/chat/completions") ? base : `${base}/chat/completions`;
     } else if (isOpenRouter) {
       url = "https://openrouter.ai/api/v1/chat/completions";
     } else if (isGroq) {
@@ -499,7 +500,8 @@
     let url;
     if (isCustomGateway) {
       const base = String(options.customProxyBaseUrl || "").trim().replace(/\/+$/, "");
-      url = base ? (base.endsWith("/chat/completions") ? base : `${base}/chat/completions`) : "https://openrouter.ai/api/v1/chat/completions";
+      if (!base) throw new Error("Custom AI Gateway Base URL is required.");
+      url = base.endsWith("/chat/completions") ? base : `${base}/chat/completions`;
     } else if (isOpenRouter) {
       url = "https://openrouter.ai/api/v1/chat/completions";
     } else if (isGroq) {

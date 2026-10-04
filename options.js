@@ -463,8 +463,9 @@
           else { msg = `Error ${res.status}`; }
         } else if (provider === "custom-gateway") {
           const key = customProxyApiKeyInput.value.trim();
+          const base = customProxyBaseUrlInput.value.trim().replace(/\/+$/, "");
+          if (!base) throw new Error("Base URL is required. Please enter your Custom AI Gateway URL.");
           if (!key) throw new Error("Please enter an API Key for Custom AI Gateway");
-          const base = (customProxyBaseUrlInput.value.trim() || "https://openrouter.ai/api/v1").replace(/\/+$/, "");
           const url = base.endsWith("/models") ? base : `${base}/models`;
           const res = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
           if (res.ok) { msg = "Custom AI Gateway connected successfully!"; }
@@ -472,8 +473,9 @@
         } else if (provider === "custom-tts") {
           const key = customTtsApiKeyInput.value.trim();
           const voiceId = customTtsVoiceIdInput.value.trim();
+          const base = customTtsBaseUrlInput.value.trim().replace(/\/+$/, "");
+          if (!base) throw new Error("Base URL is required. Please enter your Custom Voice Gateway URL.");
           if (!voiceId) throw new Error("Please enter a Voice ID string");
-          const base = (customTtsBaseUrlInput.value.trim() || "https://api.elevenlabs.io/v1").replace(/\/+$/, "");
           if (base.includes("elevenlabs")) {
             if (!key) throw new Error("Please enter your ElevenLabs API Key");
             const url = `${base}/text-to-speech/${encodeURIComponent(voiceId)}`;

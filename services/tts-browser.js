@@ -157,15 +157,15 @@
     const base = String(options.customTtsBaseUrl || "").trim().replace(/\/+$/, "");
     const voiceId = String(options.customTtsVoiceId || "").trim();
     const apiKey = String(options.customTtsApiKey || "").trim();
-    if (!voiceId) throw new Error("Custom Voice ID is missing.");
+    if (!base) throw new Error("Custom Voice Base URL is required.");
+    if (!voiceId) throw new Error("Custom Voice ID is required.");
 
-    const effectiveBase = base || "https://api.elevenlabs.io/v1";
     let targetUrl;
     const headers = { "Content-Type": "application/json" };
     let body;
 
-    if (effectiveBase.includes("elevenlabs")) {
-      targetUrl = `${effectiveBase}/text-to-speech/${encodeURIComponent(voiceId)}`;
+    if (base.includes("elevenlabs")) {
+      targetUrl = `${base}/text-to-speech/${encodeURIComponent(voiceId)}`;
       if (apiKey) headers["xi-api-key"] = apiKey;
       body = JSON.stringify({
         text: clean,
@@ -173,7 +173,7 @@
         voice_settings: { stability: 0.5, similarity_boost: 0.75 },
       });
     } else {
-      targetUrl = effectiveBase.endsWith("/audio/speech") ? effectiveBase : `${effectiveBase}/audio/speech`;
+      targetUrl = base.endsWith("/audio/speech") ? base : `${base}/audio/speech`;
       if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
       body = JSON.stringify({
         input: clean,
