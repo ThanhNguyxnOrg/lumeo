@@ -151,12 +151,66 @@
     return true;
   }
 
+  async function speakCustomVoice(text, lang, options = {}) {
+    const clean = stripTtsNoise(text);
+    if (!clean) return false;
+    const base = String(options.customTtsBaseUrl || "").trim().replace(/\/+$/, "");
+    const voiceId = String(options.customTtsVoiceId || "").trim();
+    const apiKey = String(options.customTtsApiKey || "").trim();
+    if (!voiceId) throw new Error("Custom Voice ID is missing.");
+
+    const effectiveBase = base || "https://api.elevenlabs.io/v1";
+    let targetUrl;
+    const headers = { "Content-Type": "application/json" };
+    let body;
+
+    if (effectiveBase.includes("elevenlabs")) {
+      targetUrl = `${effectiveBase}/text-to-speech/${encodeURIComponent(voiceId)}`;
+      if (apiKey) headers["xi-api-key"] = apiKey;
+      body = JSON.stringify({
+        text: clean,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+      });
+    } else {
+      targetUrl = effectiveBase.endsWith("/audio/speech") ? effectiveBase : `${effectiveBase}/audio/speech`;
+      if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+      body = JSON.stringify({
+        input: clean,
+        voice: voiceId,
+        model: "tts-1",
+      });
+    }
+
+    const response = await fetch(targetUrl, {
+      method: "POST",
+      headers,
+      body,
+      signal: options.signal,
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData?.detail?.message || errData?.error?.message || `Custom Voice HTTP ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const audioUrl = URL.createObjectURL(blob);
+    stop();
+    currentAudio = new Audio(audioUrl);
+    currentAudio.volume = Number(options.volume ?? 1);
+    await currentAudio.play();
+    return true;
+  }
+
   async function speak(text, lang, options = {}) {
     const provider = options.provider || "browser";
+    if (provider === "custom-voice-engine") {
+      return speakCustomVoice(text, lang, options);
+    }
     if (provider === "google-cloud") {
       return speakGoogleCloud(text, lang, options);
     }
-    if (provider === "openai-tts") {
+    if (provider === "openai-tts" || provider === "openai") {
       if (!window.LumeoOpenAITTS) throw new Error("OpenAI TTS service is not loaded.");
       return window.LumeoOpenAITTS.speak(text, lang, {
         apiKey: options.openaiKey,
@@ -176,6 +230,8 @@
     speak,
     speakBrowser,
     speakGoogleCloud,
+    speakCustomVoice,
     stop,
   };
 })();
+

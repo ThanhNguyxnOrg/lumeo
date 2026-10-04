@@ -162,6 +162,28 @@
 
           <div class="key-field">
             <div class="key-label-row">
+              <label for="customTtsApiKey">Custom Voice Gateway (ElevenLabs / Compatible Speech)</label>
+              <span class="badge badge-neutral">Vendor-Neutral</span>
+            </div>
+            <div class="custom-gateway-grid">
+              <div class="key-sub-options">
+                <label for="customTtsBaseUrl">Base URL (Leave blank for default ElevenLabs or custom endpoint):</label>
+                <input type="text" id="customTtsBaseUrl" class="form-input mono" placeholder="https://api.elevenlabs.io/v1 or custom URL" />
+              </div>
+              <div class="key-sub-options">
+                <label for="customTtsVoiceId">Voice ID:</label>
+                <input type="text" id="customTtsVoiceId" class="form-input mono" placeholder="Voice ID (e.g. 21m00Tcm4TlvDq8ikWAM or custom ID)" />
+              </div>
+            </div>
+            <div class="key-input-wrap">
+              <input type="password" id="customTtsApiKey" class="form-input mono" placeholder="API Key / Token (xi-api-key or Bearer)..." autocomplete="off" />
+              <button type="button" class="btn-eye" data-target="customTtsApiKey" title="Toggle visibility">👁</button>
+              <button type="button" class="btn-test" id="btnTestCustomTts" data-test="custom-tts">🔊 Test Voice</button>
+            </div>
+          </div>
+
+          <div class="key-field">
+            <div class="key-label-row">
               <label for="geminiKey">Google Gemini API Key</label>
               <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="get-key-link">Get Free Key ↗</a>
             </div>
@@ -399,26 +421,10 @@
           <!-- Custom Neural Voice Engine (Vendor-Neutral, Voice selection driven by Voice ID) -->
           <div class="custom-tts-box" id="customVoiceEngineWrap" style="display: none;">
             <div class="custom-tts-header">
-              <h4>Custom Neural Voice Engine Settings</h4>
+              <h4>Custom Neural Voice Engine Active</h4>
               <span class="badge badge-neutral">Vendor-Neutral</span>
             </div>
-            <p class="custom-tts-desc">Vendor-neutral engine (supports ElevenLabs or compatible neural speech endpoints). Standard voice dropdown is removed when active, as speech is 100% driven by your configured Voice ID.</p>
-            <div class="form-group">
-              <label for="customTtsBaseUrl">Base URL (Leave blank for default ElevenLabs or custom endpoint):</label>
-              <input type="text" id="customTtsBaseUrl" class="form-input mono" placeholder="https://api.elevenlabs.io/v1" />
-            </div>
-            <div class="form-group">
-              <label for="customTtsVoiceId">Voice ID:</label>
-              <input type="text" id="customTtsVoiceId" class="form-input mono" placeholder="Enter Voice ID string (e.g. 21m00Tcm4TlvDq8ikWAM or custom ID)" />
-            </div>
-            <div class="form-group">
-              <label for="customTtsApiKey">API Key / Authorization Token:</label>
-              <div class="key-input-wrap">
-                <input type="password" id="customTtsApiKey" class="form-input mono" placeholder="Secret Key / xi-api-key..." autocomplete="off" />
-                <button type="button" class="btn-eye" data-target="customTtsApiKey" title="Toggle visibility">👁</button>
-                <button type="button" class="btn-test" id="btnTestCustomTts" data-test="custom-tts">🔊 Test Voice</button>
-              </div>
-            </div>
+            <p class="custom-tts-desc" style="margin-bottom: 0;">Speech is 100% driven by your Voice ID configured in <strong>Key Vault</strong> (supports ElevenLabs, Cloud TTS, or Local Kokoro/Piper models). Standard voice dropdown is removed.</p>
           </div>
 
           <div class="form-group">

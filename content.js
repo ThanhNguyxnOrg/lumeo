@@ -244,31 +244,40 @@
   // Load from chrome.storage.local on startup
   try {
     if (typeof chrome !== "undefined" && chrome.storage?.local) {
-      chrome.storage.local.get([
-        "fontSize", "bottomOffset", "highContrast", "layoutPreset",
-        "subtitleOrder", "subBackgroundOpacity", "subShadowStyle",
-        "originalVolume", "voiceVolume", "muteOriginal"
-      ], (res) => {
+      chrome.storage.local.get(null, (res) => {
         if (res) {
+          settings = { ...(settings || {}), ...res };
           captionStyle = { ...captionStyle, ...res };
+          if (elements.langSelect && res.targetLanguage) {
+            elements.langSelect.value = res.targetLanguage;
+            autoPairVoiceForLanguage(res.targetLanguage);
+          }
+          if (elements.voiceSelect) {
+            populateVoicePicker(settings.tier || "caption");
+          }
           applyCaptionStyle();
+          overlayController?.updateMenuLabels?.();
         }
       });
 
       chrome.storage.onChanged.addListener((changes, area) => {
         if (area === "local") {
           const updated = {};
-          const keys = [
-            "fontSize", "bottomOffset", "highContrast", "layoutPreset",
-            "subtitleOrder", "subBackgroundOpacity", "subShadowStyle",
-            "originalVolume", "voiceVolume", "muteOriginal"
-          ];
-          for (const key of keys) {
-            if (changes[key] !== undefined) updated[key] = changes[key].newValue;
+          for (const [key, change] of Object.entries(changes)) {
+            updated[key] = change.newValue;
           }
           if (Object.keys(updated).length > 0) {
+            settings = { ...(settings || {}), ...updated };
             captionStyle = { ...captionStyle, ...updated };
+            if (updated.targetLanguage && elements.langSelect) {
+              elements.langSelect.value = updated.targetLanguage;
+              autoPairVoiceForLanguage(updated.targetLanguage);
+            }
+            if (updated.captionTtsProvider !== undefined || updated.standardVoice !== undefined || updated.targetLanguage !== undefined) {
+              populateVoicePicker(settings.tier || "caption");
+            }
             applyCaptionStyle();
+            overlayController?.updateMenuLabels?.();
             if (lastDisplayedCue) setTargetCue(lastDisplayedCue);
           }
         }
@@ -375,20 +384,35 @@
 
   function handleVoiceChange(newVoice) {
     if (!newVoice) return;
-    if (settings?.tier === "caption") {
-      settings.captionTtsProvider = newVoice;
-      notifyBackground({ type: "UPDATE_SETTINGS", settings: { captionTtsProvider: newVoice } });
+    if (settings?.tier === "caption" || !settings?.tier) {
+      if (newVoice === "off") {
+        settings.captionTtsProvider = "off";
+      } else if (newVoice === "custom-voice-engine") {
+        settings.captionTtsProvider = "custom-voice-engine";
+      } else if (newVoice === "auto") {
+        settings.captionTtsProvider = "browser";
+        settings.standardVoice = "";
+      } else {
+        settings.captionTtsProvider = "browser";
+        settings.standardVoice = newVoice;
+      }
+      notifyBackground({ type: "UPDATE_SETTINGS", settings: { captionTtsProvider: settings.captionTtsProvider, standardVoice: settings.standardVoice } });
+      try {
+        if (typeof chrome !== "undefined" && chrome.storage?.local) {
+          chrome.storage.local.set({ captionTtsProvider: settings.captionTtsProvider, standardVoice: settings.standardVoice });
+        }
+      } catch {}
     } else if (settings?.tier === "standard") {
       settings.standardVoice = newVoice;
       notifyBackground({ type: "UPDATE_SETTINGS", settings: { standardVoice: newVoice } });
+      try {
+        if (typeof chrome !== "undefined" && chrome.storage?.local) {
+          chrome.storage.local.set({ voice: newVoice, standardVoice: newVoice });
+        }
+      } catch {}
     } else {
       LumeoSessionManager.requestHandover({ realtimeVoice: newVoice });
     }
-    try {
-      if (typeof chrome !== "undefined" && chrome.storage?.local) {
-        chrome.storage.local.set({ voice: newVoice, standardVoice: newVoice });
-      }
-    } catch {}
   }
 
   function ensureOverlayBuilt() {

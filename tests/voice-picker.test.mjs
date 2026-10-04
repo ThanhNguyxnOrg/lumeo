@@ -25,12 +25,19 @@ describe("ui/voice-picker.js", () => {
     ({ api, select } = await setup());
   });
 
-  it("renders caption TTS options with accessible copy", () => {
+  it("renders caption natural voice options with auto pairing and custom voice support", () => {
     api.populate(select, "caption", { captionTtsProvider: "browser" });
-    expect(optionValues(select)).toEqual(["off", "browser", "google-cloud", "openai-tts"]);
-    expect(select.value).toBe("browser");
-    expect(select.getAttribute("aria-label")).toBe("Caption speech (read aloud)");
-    expect(select.title).toContain("Read translated captions aloud");
+    expect(optionValues(select)).toContain("auto");
+    expect(optionValues(select)).toContain("off");
+    expect(optionLabels(select)).toContain("Auto (Recommended)");
+    expect(select.value).toBe("auto");
+    expect(select.getAttribute("aria-label")).toBe("Caption speech voice");
+
+    // When custom-voice-engine is active
+    api.populate(select, "caption", { captionTtsProvider: "custom-voice-engine", customTtsVoiceId: "21m00Tcm4TlvDq8ikWAM" });
+    expect(optionValues(select)).toEqual(["custom-voice-engine", "off"]);
+    expect(optionLabels(select)[0]).toContain("Custom Voice");
+    expect(select.value).toBe("custom-voice-engine");
   });
 
   it("renders Standard voices and defaults to Magnetic Man", () => {

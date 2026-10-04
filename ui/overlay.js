@@ -756,6 +756,18 @@
       const fontSize = captionStyle.fontSize || 22;
       const bottomOffset = captionStyle.bottomOffset || 14;
       currentFontSize = fontSize;
+      if (captionStyle.subBackgroundOpacity != null) {
+        currentBgOpacity = typeof captionStyle.subBackgroundOpacity === "number" && captionStyle.subBackgroundOpacity <= 1
+          ? Math.round(captionStyle.subBackgroundOpacity * 100)
+          : Number(captionStyle.subBackgroundOpacity);
+      }
+      if (captionStyle.subShadowStyle) {
+        currentShadowStyle = captionStyle.subShadowStyle;
+      }
+      if (captionStyle.subtitleOrder && elements.subtitleOrder) {
+        elements.subtitleOrder.value = captionStyle.subtitleOrder;
+        currentSubtitleOrder = captionStyle.subtitleOrder;
+      }
       root.style.setProperty("--lumeo-caption-font-size", `${fontSize}px`);
       root.style.setProperty("--lumeo-caption-bottom-offset", `${bottomOffset}%`);
       root.classList.toggle("ec-hide-source-line", captionStyle.showSource === false || captionStyle.layoutPreset === "translated-only");
@@ -1188,6 +1200,7 @@
       isOpen,
       ensureYouTubeControlButton,
       getYouTubeControlButton: () => ytButton,
+      updateMenuLabels,
     };
   }
 

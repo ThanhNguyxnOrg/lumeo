@@ -85,6 +85,10 @@
           targetLanguage: settings.targetLanguage || "vi",
           googleCloudKey: settings.googleCloudKey,
           openaiKey: settings.openaiKey,
+          customTtsBaseUrl: settings.customTtsBaseUrl,
+          customTtsVoiceId: settings.customTtsVoiceId,
+          customTtsApiKey: settings.customTtsApiKey,
+          voiceName: settings.standardVoice,
           rate: settings.ttsRate || 1,
           volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
         }).catch(() => { });
@@ -276,6 +280,10 @@
             targetLanguage: settings.targetLanguage || "vi",
             googleCloudKey: settings.googleCloudKey,
             openaiKey: settings.openaiKey,
+            customTtsBaseUrl: settings.customTtsBaseUrl,
+            customTtsVoiceId: settings.customTtsVoiceId,
+            customTtsApiKey: settings.customTtsApiKey,
+            voiceName: settings.standardVoice,
             rate: settings.ttsRate || 1,
             volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
           }).catch(() => { });
@@ -599,6 +607,10 @@
             targetLanguage: settings.targetLanguage || "vi",
             googleCloudKey: settings.googleCloudKey,
             openaiKey: settings.openaiKey,
+            customTtsBaseUrl: settings.customTtsBaseUrl,
+            customTtsVoiceId: settings.customTtsVoiceId,
+            customTtsApiKey: settings.customTtsApiKey,
+            voiceName: settings.standardVoice,
             rate: effectiveRate,
             volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
           }).catch(() => { });

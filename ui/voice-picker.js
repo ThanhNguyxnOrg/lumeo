@@ -43,10 +43,38 @@
     selectEl.replaceChildren();
 
     if (tier === "caption") {
-      selectEl.setAttribute("aria-label", "Caption speech (read aloud)");
-      selectEl.title = "Read translated captions aloud. Pick Browser TTS for free on-device speech.";
-      for (const [id, name] of CAPTION_TTS_OPTIONS) appendOption(selectEl, id, name);
-      selectEl.value = settings.captionTtsProvider || "off";
+      selectEl.setAttribute("aria-label", "Caption speech voice");
+      selectEl.title = "Spoken speech for translated captions.";
+
+      if (settings.captionTtsProvider === "custom-voice-engine") {
+        const voiceLabel = settings.customTtsVoiceId ? `Custom Voice (${settings.customTtsVoiceId.slice(0, 12)}...)` : "Custom Voice (Active)";
+        appendOption(selectEl, "custom-voice-engine", voiceLabel);
+        appendOption(selectEl, "off", "TTS Off");
+        selectEl.value = "custom-voice-engine";
+        return;
+      }
+
+      appendOption(selectEl, "auto", "Auto (Recommended)");
+
+      const targetLang = settings.targetLanguage || "vi";
+      const voices = (typeof window !== "undefined" && window.speechSynthesis?.getVoices?.()) || [];
+      const langPrefix = targetLang.split("-")[0].toLowerCase();
+      const matchingVoices = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith(langPrefix));
+
+      for (const v of matchingVoices.slice(0, 8)) {
+        const cleanName = v.name.replace(/Microsoft\s+|Google\s+|Online\s+/g, "").trim();
+        appendOption(selectEl, v.name, cleanName || v.name);
+      }
+
+      appendOption(selectEl, "off", "TTS Off");
+
+      if (settings.captionTtsProvider === "off") {
+        selectEl.value = "off";
+      } else if (settings.standardVoice) {
+        selectEl.value = settings.standardVoice;
+      } else {
+        selectEl.value = "auto";
+      }
       return;
     }
 
