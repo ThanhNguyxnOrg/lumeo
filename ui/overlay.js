@@ -64,6 +64,8 @@
     let currentBgOpacity = 75;
     let currentShadowStyle = "drop-shadow";
     let currentSubtitleOrder = "translation-top";
+    let currentOriginalVolume = 18;
+    let currentVoiceVolume = 100;
 
     function ensureYouTubeControlButton() {
       if (typeof doc === "undefined" || !doc.querySelector) return null;
@@ -386,6 +388,53 @@
           updateMenuLabels();
         },
       },
+      originalvolume: {
+        title: "Original Volume",
+        getItems: () => [
+          { id: "0", label: "0% (Muted / Silence)" },
+          { id: "10", label: "10%" },
+          { id: "18", label: "18% (Recommended)" },
+          { id: "30", label: "30%" },
+          { id: "50", label: "50%" },
+          { id: "75", label: "75%" },
+          { id: "100", label: "100% (Full)" },
+        ],
+        getValue: () => String(currentOriginalVolume),
+        onSelect: (val) => {
+          currentOriginalVolume = Number(val);
+          try {
+            chrome.storage?.local?.set({
+              originalVolume: currentOriginalVolume,
+              muteOriginal: currentOriginalVolume === 0,
+            });
+          } catch {}
+          if (typeof options.onOriginalVolumeChange === "function") {
+            try { options.onOriginalVolumeChange(currentOriginalVolume); } catch {}
+          }
+          updateMenuLabels();
+        },
+      },
+      voicevolume: {
+        title: "Dubbed Voice Volume",
+        getItems: () => [
+          { id: "50", label: "50%" },
+          { id: "75", label: "75%" },
+          { id: "100", label: "100% (Default)" },
+          { id: "125", label: "125% (Boosted)" },
+          { id: "150", label: "150% (Max)" },
+        ],
+        getValue: () => String(currentVoiceVolume),
+        onSelect: (val) => {
+          currentVoiceVolume = Number(val);
+          try {
+            chrome.storage?.local?.set({ voiceVolume: currentVoiceVolume });
+          } catch {}
+          if (typeof options.onVoiceVolumeChange === "function") {
+            try { options.onVoiceVolumeChange(currentVoiceVolume); } catch {}
+          }
+          updateMenuLabels();
+        },
+      },
     };
 
     function openSubmenu(subKey) {
@@ -474,6 +523,14 @@
       const orderItem = SUBMENUS.order.getItems().find((i) => i.id === orderVal);
       const orderLabelEl = root.querySelector('[data-val="order"]');
       if (orderLabelEl) orderLabelEl.textContent = orderItem ? orderItem.label : orderVal;
+
+      const origVolItem = SUBMENUS.originalvolume?.getItems().find((i) => String(i.id) === String(currentOriginalVolume));
+      const origVolLabelEl = root.querySelector('[data-val="originalvolume"]');
+      if (origVolLabelEl) origVolLabelEl.textContent = origVolItem ? origVolItem.label.split(" (")[0] : `${currentOriginalVolume}%`;
+
+      const voiceVolItem = SUBMENUS.voicevolume?.getItems().find((i) => String(i.id) === String(currentVoiceVolume));
+      const voiceVolLabelEl = root.querySelector('[data-val="voicevolume"]');
+      if (voiceVolLabelEl) voiceVolLabelEl.textContent = voiceVolItem ? voiceVolItem.label.split(" (")[0] : `${currentVoiceVolume}%`;
     }
 
     function build() {
@@ -548,6 +605,20 @@
                 <button type="button" class="ytp-lumeo-menu-item" data-open-sub="voice" data-ec-voice-row>
                   <span class="ytp-lumeo-item-label">AI Voice</span>
                   <span class="ytp-lumeo-item-val" data-val="voice">Auto</span>
+                  <span class="ytp-lumeo-item-arrow">›</span>
+                </button>
+
+                <!-- Original Volume -->
+                <button type="button" class="ytp-lumeo-menu-item" data-open-sub="originalvolume">
+                  <span class="ytp-lumeo-item-label">Original volume</span>
+                  <span class="ytp-lumeo-item-val" data-val="originalvolume">18%</span>
+                  <span class="ytp-lumeo-item-arrow">›</span>
+                </button>
+
+                <!-- Dubbed Voice Volume -->
+                <button type="button" class="ytp-lumeo-menu-item" data-open-sub="voicevolume">
+                  <span class="ytp-lumeo-item-label">Dubbed volume</span>
+                  <span class="ytp-lumeo-item-val" data-val="voicevolume">100%</span>
                   <span class="ytp-lumeo-item-arrow">›</span>
                 </button>
 
@@ -772,6 +843,12 @@
         elements.subtitleOrder.value = captionStyle.subtitleOrder;
         currentSubtitleOrder = captionStyle.subtitleOrder;
       }
+      if (captionStyle.originalVolume !== undefined) {
+        currentOriginalVolume = Number(captionStyle.originalVolume);
+      }
+      if (captionStyle.voiceVolume !== undefined) {
+        currentVoiceVolume = Number(captionStyle.voiceVolume);
+      }
       root.style.setProperty("--lumeo-caption-font-size", `${fontSize}px`);
       root.style.setProperty("--lumeo-caption-bottom-offset", `${bottomOffset}%`);
       root.classList.toggle("ec-hide-source-line", captionStyle.showSource === false || captionStyle.layoutPreset === "translated-only");
@@ -795,6 +872,12 @@
       if (captionStyle.subtitleOrder) {
         currentSubtitleOrder = captionStyle.subtitleOrder;
         if (elements.subtitleOrder) elements.subtitleOrder.value = captionStyle.subtitleOrder;
+      }
+      if (captionStyle.originalVolume !== undefined) {
+        currentOriginalVolume = Number(captionStyle.originalVolume);
+      }
+      if (captionStyle.voiceVolume !== undefined) {
+        currentVoiceVolume = Number(captionStyle.voiceVolume);
       }
       if (captionStyle.targetLanguage && elements.langSelect) {
         elements.langSelect.value = captionStyle.targetLanguage;
@@ -957,7 +1040,7 @@
       // Init settings from storage
       try {
         if (typeof chrome !== "undefined" && chrome.storage?.local) {
-          chrome.storage.local.get(["fontSize", "subtitleOrder", "subBackgroundOpacity", "subShadowStyle", "targetLanguage", "layoutPreset"], (items) => {
+          chrome.storage.local.get(["fontSize", "subtitleOrder", "subBackgroundOpacity", "subShadowStyle", "targetLanguage", "layoutPreset", "originalVolume", "voiceVolume"], (items) => {
             if (items?.fontSize) {
               currentFontSize = Number(items.fontSize);
               if (elements.fontVal) elements.fontVal.textContent = `${currentFontSize}px`;
@@ -982,6 +1065,14 @@
             }
             if (items?.layoutPreset && elements.layoutPreset) {
               elements.layoutPreset.value = items.layoutPreset;
+            }
+            if (items?.originalVolume != null) {
+              currentOriginalVolume = Number(items.originalVolume);
+              if (elements.originalVolume) elements.originalVolume.value = String(currentOriginalVolume);
+            }
+            if (items?.voiceVolume != null) {
+              currentVoiceVolume = Number(items.voiceVolume);
+              if (elements.voiceVolume) elements.voiceVolume.value = String(currentVoiceVolume);
             }
             updateMenuLabels();
             applyLiveCaptionStyle();
@@ -1017,6 +1108,14 @@
               }
               if (changes.layoutPreset?.newValue != null && elements.layoutPreset) {
                 elements.layoutPreset.value = changes.layoutPreset.newValue;
+              }
+              if (changes.originalVolume?.newValue != null) {
+                currentOriginalVolume = Number(changes.originalVolume.newValue);
+                if (elements.originalVolume) elements.originalVolume.value = String(currentOriginalVolume);
+              }
+              if (changes.voiceVolume?.newValue != null) {
+                currentVoiceVolume = Number(changes.voiceVolume.newValue);
+                if (elements.voiceVolume) elements.voiceVolume.value = String(currentVoiceVolume);
               }
               updateMenuLabels();
               applyLiveCaptionStyle();

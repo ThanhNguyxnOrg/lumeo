@@ -201,6 +201,44 @@
       saveCaptionStyle();
       applyCaptionStyle();
     },
+    onOriginalVolumeChange: (vol) => {
+      captionStyle.originalVolume = vol;
+      captionStyle.muteOriginal = vol === 0;
+      saveCaptionStyle();
+      const s = LumeoSessionManager.getSettings() || settings || {};
+      const updated = { ...s, originalVolume: vol, muteOriginal: vol === 0 };
+      settings = updated;
+      LumeoSessionManager.setSettings(updated);
+      LumeoSessionManager.applyVolumes(vol, s.voiceVolume ?? 100);
+      const vid = LumeoSessionManager.getVideoEl() || findVideo?.() || document.querySelector("video");
+      if (vid) {
+        vid.volume = Math.max(0, Math.min(1, vol / 100));
+        vid.muted = vol === 0;
+      }
+      try {
+        browserApi.sendRuntimeMessage({
+          type: "UPDATE_VOLUME",
+          originalVolume: vol,
+          voiceVolume: s.voiceVolume ?? 100,
+        }).catch(() => {});
+      } catch {}
+    },
+    onVoiceVolumeChange: (vol) => {
+      captionStyle.voiceVolume = vol;
+      saveCaptionStyle();
+      const s = LumeoSessionManager.getSettings() || settings || {};
+      const updated = { ...s, voiceVolume: vol };
+      settings = updated;
+      LumeoSessionManager.setSettings(updated);
+      LumeoSessionManager.applyVolumes(s.originalVolume ?? 18, vol);
+      try {
+        browserApi.sendRuntimeMessage({
+          type: "UPDATE_VOLUME",
+          originalVolume: s.originalVolume ?? 18,
+          voiceVolume: vol,
+        }).catch(() => {});
+      } catch {}
+    },
     onResetPosition: () => {
       subtitleOverlay?.resetPosition?.();
     },
@@ -871,15 +909,41 @@
             sendResponse({ ok: true });
             break;
           case "CONTENT_UPDATE_SETTINGS":
+            settings = { ...(settings || {}), ...(msg.settings || {}) };
             LumeoSessionManager.applySettingsLive(msg.settings || {});
+            if (msg.settings?.targetLanguage && elements.langSelect) {
+              elements.langSelect.value = msg.settings.targetLanguage;
+            }
+            overlayController?.syncCaptionControls?.(captionStyle);
+            overlayController?.updateMenuLabels?.();
             sendResponse({ ok: true });
             break;
           case "CONTENT_UPDATE_VOLUME":
-            const sManagerSettings = LumeoSessionManager.getSettings() || {};
-            const updated = { ...sManagerSettings, originalVolume: msg.originalVolume, voiceVolume: msg.voiceVolume };
-            settings = updated;
-            LumeoSessionManager.setSettings(updated);
+            const sManagerSettings = LumeoSessionManager.getSettings() || settings || {};
+            const updatedVol = {
+              ...sManagerSettings,
+              originalVolume: msg.originalVolume,
+              voiceVolume: msg.voiceVolume,
+              muteOriginal: msg.originalVolume === 0 ? true : sManagerSettings.muteOriginal,
+            };
+            settings = updatedVol;
+            if (typeof msg.originalVolume === "number") {
+              captionStyle.originalVolume = msg.originalVolume;
+              captionStyle.muteOriginal = msg.originalVolume === 0;
+            }
+            if (typeof msg.voiceVolume === "number") {
+              captionStyle.voiceVolume = msg.voiceVolume;
+            }
+            saveCaptionStyle();
+            LumeoSessionManager.setSettings(updatedVol);
             LumeoSessionManager.applyVolumes(msg.originalVolume, msg.voiceVolume);
+            const activeVid = LumeoSessionManager.getVideoEl() || findVideo?.() || document.querySelector("video");
+            if (activeVid && typeof msg.originalVolume === "number") {
+              activeVid.volume = Math.max(0, Math.min(1, msg.originalVolume / 100));
+              activeVid.muted = !!settings.muteOriginal || msg.originalVolume === 0;
+            }
+            overlayController?.syncCaptionControls?.(captionStyle);
+            overlayController?.updateMenuLabels?.();
             sendResponse({ ok: true });
             break;
           case "TOGGLE_OVERLAY":
@@ -896,6 +960,97 @@
     })();
     return true;
   });
+
+  // Live storage sync from Options page or other tabs
+  try {
+    if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== "local") return;
+        let volumeChanged = false;
+        let captionStyleChanged = false;
+        let settingsChanged = false;
+
+        const updatedSettings = { ...(settings || {}) };
+
+        for (const [key, change] of Object.entries(changes)) {
+          if (change && "newValue" in change) {
+            updatedSettings[key] = change.newValue;
+            settingsChanged = true;
+          }
+        }
+
+        if (changes.originalVolume?.newValue != null) {
+          captionStyle.originalVolume = Number(changes.originalVolume.newValue);
+          volumeChanged = true;
+          captionStyleChanged = true;
+        }
+        if (changes.voiceVolume?.newValue != null) {
+          captionStyle.voiceVolume = Number(changes.voiceVolume.newValue);
+          volumeChanged = true;
+          captionStyleChanged = true;
+        }
+        if (changes.muteOriginal?.newValue != null) {
+          captionStyle.muteOriginal = !!changes.muteOriginal.newValue;
+          volumeChanged = true;
+          captionStyleChanged = true;
+        }
+        if (changes.fontSize?.newValue != null) {
+          captionStyle.fontSize = Number(changes.fontSize.newValue);
+          captionStyleChanged = true;
+        }
+        if (changes.bottomOffset?.newValue != null) {
+          captionStyle.bottomOffset = Number(changes.bottomOffset.newValue);
+          captionStyleChanged = true;
+        }
+        if (changes.subBackgroundOpacity?.newValue != null) {
+          const raw = changes.subBackgroundOpacity.newValue;
+          captionStyle.subBackgroundOpacity = typeof raw === "number" && raw <= 1 ? Math.round(raw * 100) : Number(raw);
+          captionStyleChanged = true;
+        }
+        if (changes.subShadowStyle?.newValue != null) {
+          captionStyle.subShadowStyle = changes.subShadowStyle.newValue;
+          captionStyleChanged = true;
+        }
+        if (changes.subtitleOrder?.newValue != null) {
+          captionStyle.subtitleOrder = changes.subtitleOrder.newValue;
+          captionStyleChanged = true;
+        }
+        if (changes.layoutPreset?.newValue != null) {
+          captionStyle.layoutPreset = changes.layoutPreset.newValue;
+          captionStyleChanged = true;
+        }
+        if (changes.targetLanguage?.newValue != null) {
+          if (elements.langSelect) elements.langSelect.value = changes.targetLanguage.newValue;
+          if (captionStyle.targetLanguage !== changes.targetLanguage.newValue) {
+            captionStyle.targetLanguage = changes.targetLanguage.newValue;
+            captionStyleChanged = true;
+          }
+        }
+
+        if (settingsChanged) {
+          settings = updatedSettings;
+          LumeoSessionManager.setSettings(updatedSettings);
+          LumeoSessionManager.applySettingsLive(updatedSettings);
+        }
+
+        if (volumeChanged) {
+          LumeoSessionManager.applyVolumes(settings.originalVolume, settings.voiceVolume);
+          const vid = LumeoSessionManager.getVideoEl() || findVideo?.() || document.querySelector("video");
+          if (vid && typeof settings.originalVolume === "number") {
+            vid.volume = Math.max(0, Math.min(1, settings.originalVolume / 100));
+            vid.muted = !!settings.muteOriginal || settings.originalVolume === 0;
+          }
+        }
+
+        if (captionStyleChanged) {
+          saveCaptionStyle();
+          applyCaptionStyle();
+          overlayController?.syncCaptionControls?.(captionStyle);
+        }
+        overlayController?.updateMenuLabels?.();
+      });
+    }
+  } catch {}
 
   // Eagerly mount overlay structure so controls/listeners are active on page load
   setTimeout(() => {

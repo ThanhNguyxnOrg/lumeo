@@ -130,9 +130,13 @@
   }
 
   function applyVolumes(originalVolume, voiceVolume) {
+    if (!videoEl || !videoEl.isConnected) {
+      videoEl = window.LumeoAudioUtils?.findVideo?.() || (typeof document !== "undefined" ? document.querySelector("video") : null);
+    }
     if (videoEl) {
-      videoEl.volume = (originalVolume ?? 18) / 100;
-      videoEl.muted = (originalVolume ?? 0) === 0;
+      const isMuted = !!settings?.muteOriginal || (originalVolume ?? 0) === 0;
+      videoEl.volume = Math.max(0, Math.min(1, (originalVolume ?? 18) / 100));
+      videoEl.muted = isMuted;
     }
     if (session?.outputGain) {
       session.outputGain.gain.value = computeGain(voiceVolume ?? 100);
@@ -584,7 +588,7 @@
         void requestHandover(newSettings);
       }
     }
-    if ("originalVolume" in newSettings || "voiceVolume" in newSettings) {
+    if ("originalVolume" in newSettings || "voiceVolume" in newSettings || "muteOriginal" in newSettings) {
       applyVolumes(settings.originalVolume, settings.voiceVolume);
     }
   }

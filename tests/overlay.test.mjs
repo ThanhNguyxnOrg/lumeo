@@ -439,6 +439,46 @@ describe("ui/overlay.js native YouTube popover menu", () => {
     expect(controller.isOpen()).toBe(false);
     expect(ytBtn.classList.contains("ytp-lumeo-active")).toBe(false);
   });
+
+  it("opens originalvolume and voicevolume submenus and triggers callbacks", async () => {
+    let origVolChanged = null;
+    let voiceVolChanged = null;
+
+    const { window } = await createSandboxWindow();
+    loadService("ui/overlay.js", window);
+    const controller = window.LumeoOverlay.createOverlayController({
+      onOriginalVolumeChange: (vol) => { origVolChanged = vol; },
+      onVoiceVolumeChange: (vol) => { voiceVolChanged = vol; },
+    });
+    const root = controller.build();
+    const subContainer = root.querySelector("[data-lumeo-sub-container]");
+
+    // Verify buttons exist in menu list
+    const origVolBtn = root.querySelector('[data-open-sub="originalvolume"]');
+    const voiceVolBtn = root.querySelector('[data-open-sub="voicevolume"]');
+    expect(origVolBtn).not.toBeNull();
+    expect(voiceVolBtn).not.toBeNull();
+
+    // Open original volume submenu
+    origVolBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    const origMute = Array.from(subContainer.querySelectorAll(".ytp-lumeo-sub-item")).find(b => b.textContent.includes("0%"));
+    expect(origMute).toBeDefined();
+    origMute.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(origVolChanged).toBe(0);
+
+    const origLabel = root.querySelector('[data-val="originalvolume"]');
+    expect(origLabel.textContent).toBe("0%");
+
+    // Open dubbed voice volume submenu
+    voiceVolBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    const voiceMax = Array.from(subContainer.querySelectorAll(".ytp-lumeo-sub-item")).find(b => b.textContent.includes("150%"));
+    expect(voiceMax).toBeDefined();
+    voiceMax.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(voiceVolChanged).toBe(150);
+
+    const voiceLabel = root.querySelector('[data-val="voicevolume"]');
+    expect(voiceLabel.textContent).toBe("150%");
+  });
 });
 
 

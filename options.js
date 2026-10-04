@@ -292,6 +292,12 @@
     try {
       await STORAGE.set(currentSettings);
       showToast();
+      try {
+        chrome.runtime?.sendMessage?.({
+          type: "UPDATE_SETTINGS",
+          settings: currentSettings,
+        });
+      } catch {}
     } catch (err) {
       console.error("Failed to save settings:", err);
     }
@@ -306,6 +312,12 @@
       try {
         await STORAGE.set(currentSettings);
         showToast();
+        try {
+          chrome.runtime?.sendMessage?.({
+            type: "UPDATE_SETTINGS",
+            settings: currentSettings,
+          });
+        } catch {}
       } catch (err) {
         console.error("Failed to save settings:", err);
       }
@@ -441,6 +453,23 @@
       saveImmediately();
     });
   });
+
+  function sendLiveVolumeUpdate() {
+    const isMuted = !!muteOriginalInput?.checked;
+    const origVol = isMuted ? 0 : (originalVolumeInput ? Number(originalVolumeInput.value) : 18);
+    const voiceVol = voiceVolumeInput ? Number(voiceVolumeInput.value) : 100;
+    try {
+      chrome.runtime?.sendMessage?.({
+        type: "UPDATE_VOLUME",
+        originalVolume: origVol,
+        voiceVolume: voiceVol,
+      });
+    } catch {}
+  }
+
+  voiceVolumeInput?.addEventListener("input", sendLiveVolumeUpdate);
+  originalVolumeInput?.addEventListener("input", sendLiveVolumeUpdate);
+  muteOriginalInput?.addEventListener("change", sendLiveVolumeUpdate);
 
   // Reset Subtitle Position Button
   btnResetPosition?.addEventListener("click", async () => {
