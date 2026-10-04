@@ -38,7 +38,7 @@
           delete parsed.top;
         }
         const next = { ...DEFAULT_LAYOUT, ...parsed };
-        if (!stored && options.collapsedOnStart) next.sideCollapsed = true;
+        if (options.collapsedOnStart) next.sideCollapsed = true;
         return next;
       } catch {
         return { ...DEFAULT_LAYOUT };
@@ -479,7 +479,7 @@
     function build() {
       if (root) return root;
       root = doc.createElement("aside");
-      root.className = "ec-root ytp-lumeo-popover-host";
+      root.className = "ec-root ytp-lumeo-popover-host" + (layout.sideCollapsed ? " is-side-collapsed" : "");
       root.dataset.state = "ready";
       root.setAttribute("aria-keyshortcuts", "Escape ? h Control+Shift+L Meta+Shift+L");
       root.innerHTML = `

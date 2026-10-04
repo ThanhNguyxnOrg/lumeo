@@ -389,6 +389,57 @@ describe("ui/overlay.js native YouTube popover menu", () => {
     edgeOutline.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
     expect(shadowSelected).toBe("outline");
   });
+
+  it("remains collapsed on start when collapsedOnStart: true, even if localStorage has sideCollapsed: false", async () => {
+    const { window } = await createSandboxWindow();
+    loadService("ui/overlay.js", window);
+
+    const moviePlayer = window.document.createElement("div");
+    moviePlayer.id = "movie_player";
+    const chromeBottom = window.document.createElement("div");
+    chromeBottom.className = "ytp-chrome-bottom";
+    const rightControls = window.document.createElement("div");
+    rightControls.className = "ytp-right-controls";
+    chromeBottom.appendChild(rightControls);
+    moviePlayer.appendChild(chromeBottom);
+    window.document.body.appendChild(moviePlayer);
+
+    window.localStorage.setItem("lumeoOverlayLayout", JSON.stringify({
+      left: 100,
+      top: 100,
+      width: 320,
+      sideCollapsed: false,
+    }));
+
+    const controller = window.LumeoOverlay.createOverlayController({
+      collapsedOnStart: true,
+      onButtonClick: () => {
+        const open = controller.isOpen();
+        controller.toggleSideCollapsed(open);
+      },
+    });
+    const root = controller.build();
+
+    expect(root.classList.contains("is-side-collapsed")).toBe(true);
+    expect(controller.isOpen()).toBe(false);
+
+    const ytBtn = rightControls.querySelector(".ytp-lumeo-button");
+    expect(ytBtn).not.toBeNull();
+    expect(ytBtn.classList.contains("ytp-lumeo-active")).toBe(false);
+
+    // User clicks button to open popover
+    ytBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(root.classList.contains("is-side-collapsed")).toBe(false);
+    expect(controller.isOpen()).toBe(true);
+    expect(ytBtn.classList.contains("ytp-lumeo-active")).toBe(true);
+
+    // User clicks button again to close popover
+    ytBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(root.classList.contains("is-side-collapsed")).toBe(true);
+    expect(controller.isOpen()).toBe(false);
+    expect(ytBtn.classList.contains("ytp-lumeo-active")).toBe(false);
+  });
 });
+
 
 

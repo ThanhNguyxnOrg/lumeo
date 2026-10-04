@@ -158,7 +158,7 @@
   const overlayController = window.LumeoOverlay?.createOverlayController?.({
     layoutKey: getOverlayLayoutKey,
     languages: LANGUAGES,
-    collapsedOnStart: false,
+    collapsedOnStart: true,
     onButtonClick: () => {
       ensureOverlayBuilt();
       const open = overlayController.isOpen?.();
@@ -732,6 +732,7 @@
   const handleNavigation = () => {
     if (location.href !== lastSpaUrl) {
       lastSpaUrl = location.href;
+      overlayController?.toggleSideCollapsed?.(true);
       overlayController?.refreshLayoutKey?.();
       overlayController?.ensureYouTubeControlButton?.();
       if (LumeoSessionManager.getSession()) {
