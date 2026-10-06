@@ -4,7 +4,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-VERSION=$(node -p "require('./manifest.json').version")
+VERSION="${1:-${VERSION:-$(node -p "require('./manifest.json').version")}}"
 OUT="$HOME/lumeo-v${VERSION}.zip"
 
 rm -f "$OUT"

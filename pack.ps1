@@ -1,5 +1,6 @@
 param(
-  [string]$OutDir = $HOME
+  [string]$OutDir = $HOME,
+  [string]$Version = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -7,9 +8,11 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
 
-$manifest = Get-Content "manifest.json" -Raw | ConvertFrom-Json
-$version = $manifest.version
-$out = Join-Path $OutDir "lumeo-v$version.zip"
+if (-not $Version) {
+  $manifest = Get-Content "manifest.json" -Raw | ConvertFrom-Json
+  $Version = $manifest.version
+}
+$out = Join-Path $OutDir "lumeo-v$Version.zip"
 
 if (Test-Path $out) {
   Remove-Item $out -Force
