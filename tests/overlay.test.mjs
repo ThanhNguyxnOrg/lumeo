@@ -479,6 +479,86 @@ describe("ui/overlay.js native YouTube popover menu", () => {
     const voiceLabel = root.querySelector('[data-val="voicevolume"]');
     expect(voiceLabel.textContent).toBe("150%");
   });
+
+  it("updates loading spinner and status badge when session is loading", async () => {
+    const { window } = await createSandboxWindow();
+    loadService("ui/overlay.js", window);
+    const controller = window.LumeoOverlay.createOverlayController();
+    const root = controller.build();
+    const toggleBtn = root.querySelector("[data-lumeo-toggle-session]");
+    const statusBadge = root.querySelector("[data-lumeo-status-badge]");
+
+    controller.setSessionState({
+      isTranslating: true,
+      isLoading: true,
+      statusText: "Loading captions...",
+    });
+
+    expect(toggleBtn.classList.contains("is-loading")).toBe(true);
+    expect(toggleBtn.querySelector(".ytp-lumeo-session-spinner")).not.toBeNull();
+    expect(toggleBtn.textContent).toContain("Loading captions...");
+    expect(statusBadge.style.display).toBe("flex");
+    expect(statusBadge.textContent).toBe("Loading captions...");
+
+    // Transition to live
+    controller.setSessionState({
+      isTranslating: true,
+      isLoading: false,
+    });
+    expect(toggleBtn.classList.contains("is-loading")).toBe(false);
+    expect(toggleBtn.classList.contains("is-stop")).toBe(true);
+    expect(toggleBtn.textContent).toContain("Stop Translation");
+  });
+
+  it("toggles transcript button active class and exposes setTranscriptActive", async () => {
+    let transcriptToggled = false;
+    const { window } = await createSandboxWindow();
+    loadService("ui/overlay.js", window);
+    const controller = window.LumeoOverlay.createOverlayController({
+      onToggleTranscript: () => {
+        transcriptToggled = !transcriptToggled;
+        return transcriptToggled;
+      },
+    });
+    const root = controller.build();
+    const transcriptBtn = root.querySelector("[data-lumeo-toggle-transcript]");
+    expect(transcriptBtn).not.toBeNull();
+    expect(transcriptBtn.classList.contains("is-active")).toBe(false);
+
+    transcriptBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(transcriptToggled).toBe(true);
+    expect(transcriptBtn.classList.contains("is-active")).toBe(true);
+
+    controller.setTranscriptActive(false);
+    expect(transcriptBtn.classList.contains("is-active")).toBe(false);
+  });
+
+  it("exposes Secondary Subtitle submenu and fires onSecondaryLanguageChange callback", async () => {
+    let chosenSecondary = "";
+    const { window } = await createSandboxWindow();
+    loadService("ui/overlay.js", window);
+    const controller = window.LumeoOverlay.createOverlayController({
+      languages: [["en", "English"], ["ja", "Japanese"]],
+      onSecondaryLanguageChange: (lang) => {
+        chosenSecondary = lang;
+      },
+    });
+    const root = controller.build();
+    const secondaryRow = root.querySelector("[data-lumeo-secondary-row]");
+    const secondaryVal = root.querySelector('[data-val="secondarylanguage"]');
+    expect(secondaryRow).not.toBeNull();
+    expect(secondaryVal.textContent).toBe("Original Audio");
+
+    // Open submenu and pick Japanese
+    secondaryRow.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    const subContainer = root.querySelector("[data-lumeo-sub-container]");
+    const jaBtn = Array.from(subContainer.querySelectorAll(".ytp-lumeo-sub-item")).find(b => b.dataset.subId === "ja");
+    expect(jaBtn).not.toBeUndefined();
+
+    jaBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(chosenSecondary).toBe("ja");
+    expect(secondaryVal.textContent).toBe("Japanese");
+  });
 });
 
 

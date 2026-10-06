@@ -17,6 +17,7 @@
     "alloy", "echo", "fable", "onyx", "nova", "shimmer",
   ]);
 
+  const MAX_CACHE_ENTRIES = 100;
   const cache = new Map();
   let currentAudio = null;
 
@@ -73,6 +74,12 @@
     }
     const blob = await response.blob();
     blobUrl = URL.createObjectURL(blob);
+    if (cache.size >= MAX_CACHE_ENTRIES) {
+      const oldestKey = cache.keys().next().value;
+      const oldUrl = cache.get(oldestKey);
+      try { URL.revokeObjectURL(oldUrl); } catch {}
+      cache.delete(oldestKey);
+    }
     cache.set(cacheKey, blobUrl);
     return blobUrl;
   }

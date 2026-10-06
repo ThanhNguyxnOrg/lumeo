@@ -135,4 +135,19 @@ describe("services/translate.js", () => {
     });
     expect(out).toEqual(["xin chào"]);
   });
+
+  it("supports local Custom AI Gateway without API key and neutral model default", async () => {
+    window.fetch = vi.fn(async (url, init) => {
+      expect(url).toBe("http://localhost:11434/v1/chat/completions");
+      expect(init.headers.Authorization).toBeUndefined();
+      const body = JSON.parse(init.body);
+      expect(body.model).toBe("custom-model");
+      return fakeResponse({ choices: [{ message: { content: "[0] xin chào" } }] });
+    });
+    const out = await api.translateBatch(["hello"], "vi", {
+      provider: "custom-gateway",
+      customProxyBaseUrl: "http://localhost:11434/v1",
+    });
+    expect(out).toEqual(["xin chào"]);
+  });
 });

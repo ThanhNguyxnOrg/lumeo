@@ -244,7 +244,6 @@
         chrome.runtime.onMessage.addListener((msg) => {
           if (msg?.type === "LUMEO_STYLE_UPDATED" && msg.settings) {
             applyStyle(msg.settings);
-            if (currentCue && overlay) appendSubtitleLines(overlay, currentCue, lastCaptionStyle);
           }
         });
       }
@@ -301,6 +300,12 @@
       lastCaptionStyle = { ...lastCaptionStyle, ...captionStyle };
       applySubtitleStyle(overlay, lastCaptionStyle);
       applySubtitleStyle(pipRoot, lastCaptionStyle);
+      if (currentCue && overlay) {
+        appendSubtitleLines(overlay, currentCue, lastCaptionStyle);
+      }
+      if (currentCue && pipRoot) {
+        syncPictureInPicture();
+      }
     }
 
     function ensurePopover() {
@@ -595,9 +600,12 @@
       target.hidden = false;
       const layoutPreset = captionStyle.layoutPreset || "stacked";
       const isSourceTop = captionStyle.subtitleOrder === "source-top";
+      target.classList.toggle("lumeo-order-source-top", isSourceTop);
+      target.classList.toggle("lumeo-order-translation-top", !isSourceTop);
 
       const showTranslated = layoutPreset !== "source-only";
-      const showSource = captionStyle.showSource !== false && layoutPreset !== "translated-only" && cue.text && cue.text !== cue.translated;
+      const secondaryText = cue.secondaryTranslated || cue.text;
+      const showSource = captionStyle.showSource !== false && layoutPreset !== "translated-only" && secondaryText && secondaryText !== (cue.translated || cue.text);
 
       function createTranslatedEl() {
         const translated = target.ownerDocument.createElement("div");
@@ -609,7 +617,7 @@
       function createSourceEl() {
         const source = target.ownerDocument.createElement("div");
         source.className = "lumeo-video-sub-source";
-        appendText(source, cue.text);
+        appendText(source, secondaryText);
         return source;
       }
 
@@ -633,6 +641,14 @@
     let origVideoParent = null;
     let origVideoNext = null;
     let pipVideoEl = null;
+    let pipStream = null;
+
+    function stopPipStream() {
+      if (pipStream) {
+        try { pipStream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+        pipStream = null;
+      }
+    }
 
     async function openPictureInPicture() {
       if (!isPictureInPictureSupported()) return { ok: false, reason: "unsupported" };
@@ -673,6 +689,7 @@
           try {
             const stream = video.captureStream?.();
             if (stream && stream.getVideoTracks?.()?.length > 0) {
+              pipStream = stream;
               pipVideoEl = pipWindow.document.createElement("video");
               pipVideoEl.className = "lumeo-pip-video";
               pipVideoEl.autoplay = true;
@@ -703,6 +720,7 @@
         pipWindow.document.body.appendChild(subLayer);
 
         pipWindow.addEventListener("pagehide", () => {
+          stopPipStream();
           if (origVideoParent && video) {
             try { origVideoParent.insertBefore(video, origVideoNext); } catch (e) {}
             video.classList.remove("lumeo-pip-video");
@@ -722,6 +740,7 @@
         try { doc.dispatchEvent(new win.CustomEvent("lumeopipopened")); } catch (e) {}
         return { ok: true };
       } catch (error) {
+        stopPipStream();
         pipWindow = null;
         pipRoot = null;
         return { ok: false, reason: error?.name || "failed" };
@@ -729,6 +748,7 @@
     }
 
     function closePictureInPicture() {
+      stopPipStream();
       if (pipWindow && !pipWindow.closed) {
         try { pipWindow.close(); } catch (e) {}
         try { doc.dispatchEvent(new win.CustomEvent("lumeopipclosed")); } catch (e) {}
@@ -759,7 +779,10 @@
     }
 
     function updateCue(cue, optionsForCue = {}) {
-      if (!overlay) build();
+      if (!overlay || !overlay.isConnected) {
+        overlay = null;
+        build();
+      }
       if (!overlay) return;
       const captionStyle = { ...lastCaptionStyle, ...(optionsForCue.captionStyle || {}) };
       lastCueOptions = { ...optionsForCue, captionStyle };

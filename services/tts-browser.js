@@ -26,8 +26,10 @@
     uk: "uk-UA",
   };
 
+  const MAX_GOOGLE_AUDIO_CACHE = 100;
   const googleAudioCache = new Map();
   let currentAudio = null;
+  let lastCustomVoiceUrl = null;
   let cachedVoices = [];
 
   function populateVoices() {
@@ -78,11 +80,18 @@
     return list.find((voice) => voice.name === name) || null;
   }
 
+  let activeUtterance = null;
+
   function stop() {
     try { speechSynthesis.cancel(); } catch {}
+    activeUtterance = null;
     if (currentAudio) {
-      currentAudio.pause();
+      try { currentAudio.pause(); } catch {}
       currentAudio = null;
+    }
+    if (lastCustomVoiceUrl) {
+      try { URL.revokeObjectURL(lastCustomVoiceUrl); } catch {}
+      lastCustomVoiceUrl = null;
     }
   }
 
@@ -92,6 +101,9 @@
     const voice = getVoiceByName(options.voiceName) || getVoicesForLang(lang)[0] || null;
     stop();
     const utterance = new SpeechSynthesisUtterance(clean);
+    activeUtterance = utterance;
+    utterance.onend = () => { if (activeUtterance === utterance) activeUtterance = null; };
+    utterance.onerror = () => { if (activeUtterance === utterance) activeUtterance = null; };
     if (voice) {
       utterance.voice = voice;
       utterance.lang = voice.lang || normalizeLang(lang);
@@ -142,6 +154,12 @@
       }
       const bytes = Uint8Array.from(atob(data.audioContent || ""), (char) => char.charCodeAt(0));
       audioUrl = URL.createObjectURL(new Blob([bytes], { type: "audio/mp3" }));
+      if (googleAudioCache.size >= MAX_GOOGLE_AUDIO_CACHE) {
+        const oldestKey = googleAudioCache.keys().next().value;
+        const oldUrl = googleAudioCache.get(oldestKey);
+        try { URL.revokeObjectURL(oldUrl); } catch {}
+        googleAudioCache.delete(oldestKey);
+      }
       googleAudioCache.set(cacheKey, audioUrl);
     }
     stop();
@@ -164,12 +182,13 @@
     const headers = { "Content-Type": "application/json" };
     let body;
 
+    const modelId = String(options.customTtsModelId || "").trim();
     if (base.includes("elevenlabs")) {
       targetUrl = `${base}/text-to-speech/${encodeURIComponent(voiceId)}`;
       if (apiKey) headers["xi-api-key"] = apiKey;
       body = JSON.stringify({
         text: clean,
-        model_id: "eleven_multilingual_v2",
+        model_id: modelId || "eleven_turbo_v2_5",
         voice_settings: { stability: 0.5, similarity_boost: 0.75 },
       });
     } else {
@@ -178,7 +197,7 @@
       body = JSON.stringify({
         input: clean,
         voice: voiceId,
-        model: "tts-1",
+        model: modelId || "tts-1",
       });
     }
 
@@ -196,6 +215,7 @@
     const blob = await response.blob();
     const audioUrl = URL.createObjectURL(blob);
     stop();
+    lastCustomVoiceUrl = audioUrl;
     currentAudio = new Audio(audioUrl);
     currentAudio.volume = Number(options.volume ?? 1);
     await currentAudio.play();
@@ -205,19 +225,37 @@
   async function speak(text, lang, options = {}) {
     const provider = options.provider || "browser";
     if (provider === "custom-voice-engine") {
-      return speakCustomVoice(text, lang, options);
+      try {
+        return await speakCustomVoice(text, lang, options);
+      } catch (err) {
+        console.warn("[TTS] Custom voice failed, falling back to browser TTS:", err);
+        options.onFailover?.({ from: "custom-voice-engine", to: "browser", error: err.message });
+        return speakBrowser(text, lang, options);
+      }
     }
     if (provider === "google-cloud") {
-      return speakGoogleCloud(text, lang, options);
+      try {
+        return await speakGoogleCloud(text, lang, options);
+      } catch (err) {
+        console.warn("[TTS] Google Cloud TTS failed, falling back to browser TTS:", err);
+        options.onFailover?.({ from: "google-cloud", to: "browser", error: err.message });
+        return speakBrowser(text, lang, options);
+      }
     }
     if (provider === "openai-tts" || provider === "openai") {
       if (!window.LumeoOpenAITTS) throw new Error("OpenAI TTS service is not loaded.");
-      return window.LumeoOpenAITTS.speak(text, lang, {
-        apiKey: options.openaiKey,
-        voice: options.openaiVoice || "alloy",
-        speed: options.rate || 1,
-        volume: options.volume ?? 1,
-      });
+      try {
+        return await window.LumeoOpenAITTS.speak(text, lang, {
+          apiKey: options.openaiKey,
+          voice: options.openaiVoice || "alloy",
+          speed: options.rate || 1,
+          volume: options.volume ?? 1,
+        });
+      } catch (err) {
+        console.warn("[TTS] OpenAI TTS failed, falling back to browser TTS:", err);
+        options.onFailover?.({ from: "openai-tts", to: "browser", error: err.message });
+        return speakBrowser(text, lang, options);
+      }
     }
     return speakBrowser(text, lang, options);
   }

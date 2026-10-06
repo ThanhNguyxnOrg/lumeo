@@ -12,7 +12,8 @@
   }
 
   function cacheKey(videoId, targetLanguage, provider, sourceLanguage) {
-    return [videoId, targetLanguage, provider, sourceLanguage || "auto"].join("::");
+    const normSource = !sourceLanguage || sourceLanguage === "transcript" ? "auto" : sourceLanguage;
+    return [videoId, targetLanguage, provider, normSource].join("::");
   }
 
   function normalizeCue(cue) {

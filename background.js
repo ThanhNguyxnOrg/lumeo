@@ -60,6 +60,9 @@ const DEFAULT_SETTINGS = {
   customTtsBaseUrl: "",
   customTtsApiKey: "",
   customTtsVoiceId: "",
+  customTtsModelId: "",
+  subtitleOrder: "translation-top",
+  secondaryLanguage: "original",
   autoStart: false,
   smartSkipNative: false,
   autoPauseOnHover: false,
@@ -81,11 +84,11 @@ const state = {
   ...DEFAULT_SETTINGS,
 };
 
-// Restrict storage access so rogue page scripts on youtube.com cannot read
-// the user's Kyma key. Sticky, no retry needed.
-browserApi.setStorageAccessLevel("TRUSTED_CONTEXTS").catch(() => { });
+// Storage access level left default so Content Scripts on YouTube can read/write
+// persistent user preferences (layout, font size, subtitle styles) and receive onChanged.
 
 let lastBroadcastAt = 0;
+let broadcastTimer = null;
 const BROADCAST_DEBOUNCE_MS = 50;
 let sonioxWs = null;
 let sonioxTabId = null;
@@ -126,6 +129,7 @@ function pruneSettingsForContent(fullSettings) {
     if (safe.translateProvider === "custom-gateway") neededKeys.add("customProxyApiKey");
     if (safe.captionTtsProvider === "custom-voice-engine") neededKeys.add("customTtsApiKey");
     if (safe.captionTtsProvider === "google-cloud") neededKeys.add("googleCloudKey");
+    if (safe.sttProvider === "soniox") neededKeys.add("sonioxApiKey");
   }
 
   for (const k of SENSITIVE_KEY_FIELDS) {
@@ -140,12 +144,22 @@ globalThis.LumeoBackground = {
   pruneSettingsForContent,
 };
 
-
 function broadcastToPopup() {
-  // Debounce: 1 broadcast per 50 ms. Popup re-renders are cheap but spamming
-  // is wasteful while volume sliders drag.
   const now = Date.now();
-  if (now - lastBroadcastAt < BROADCAST_DEBOUNCE_MS) return;
+  if (now - lastBroadcastAt < BROADCAST_DEBOUNCE_MS) {
+    if (!broadcastTimer) {
+      broadcastTimer = setTimeout(() => {
+        broadcastTimer = null;
+        lastBroadcastAt = Date.now();
+        browserApi.sendRuntimeMessage({ type: "BACKGROUND_STATE_UPDATE", state: snapshot() }).catch(() => { });
+      }, BROADCAST_DEBOUNCE_MS);
+    }
+    return;
+  }
+  if (broadcastTimer) {
+    clearTimeout(broadcastTimer);
+    broadcastTimer = null;
+  }
   lastBroadcastAt = now;
   browserApi.sendRuntimeMessage({ type: "BACKGROUND_STATE_UPDATE", state: snapshot() }).catch(() => { });
 }
@@ -486,7 +500,10 @@ async function handleUpdateVolume(originalVolume, voiceVolume) {
 }
 
 // Content-side push: session live state + transient events.
-function handleContentEvent(message) {
+function handleContentEvent(message, senderTabId) {
+  if (senderTabId && state.tabId && senderTabId !== state.tabId) {
+    return; // Ignore events from other inactive YouTube tabs
+  }
   if (message.type === "UPDATE_SETTINGS" && message.settings && typeof message.settings === "object") {
     void persistSettings(message.settings).then(() => broadcastToPopup());
   }
@@ -518,14 +535,13 @@ function handleContentEvent(message) {
 function startSonioxWebSocket(apiKey, langHints) {
   closeSonioxWebSocket();
 
-  sonioxWs = new WebSocket("wss://stt-rt.soniox.com/transcribe-websocket");
+  const currentWs = new WebSocket("wss://stt-rt.soniox.com/transcribe-websocket");
+  sonioxWs = currentWs;
 
-  sonioxWs.onopen = () => {
-    sonioxWs.send(JSON.stringify({
+  currentWs.onopen = () => {
+    if (sonioxWs !== currentWs) return;
+    currentWs.send(JSON.stringify({
       api_key: apiKey,
-      // stt-rt-v4 is the current real-time model. Soniox auto-routes
-      // stt-rt-preview to v4 after 2026-02-28 but we pin the version
-      // explicitly so a future rename fails loudly instead of silent drift.
       model: "stt-rt-v4",
       audio_format: "pcm_s16le",
       sample_rate: 16000,
@@ -537,7 +553,8 @@ function startSonioxWebSocket(apiKey, langHints) {
     forwardToSonioxTab({ action: "sonioxStatus", status: "connected" });
   };
 
-  sonioxWs.onmessage = (event) => {
+  currentWs.onmessage = (event) => {
+    if (sonioxWs !== currentWs) return;
     try {
       const data = JSON.parse(event.data);
       if (data.error_code) {
@@ -545,7 +562,7 @@ function startSonioxWebSocket(apiKey, langHints) {
           action: "sonioxError",
           error: `${data.error_code}: ${data.error_message}`,
         });
-        closeSonioxWebSocket();
+        if (sonioxWs === currentWs) closeSonioxWebSocket();
         return;
       }
       forwardToSonioxTab({ action: "sonioxResult", data });
@@ -554,25 +571,27 @@ function startSonioxWebSocket(apiKey, langHints) {
     }
   };
 
-  sonioxWs.onerror = () => {
+  currentWs.onerror = () => {
+    if (sonioxWs !== currentWs) return;
     forwardToSonioxTab({ action: "sonioxError", error: "WebSocket connection failed" });
   };
 
-  sonioxWs.onclose = () => {
-    forwardToSonioxTab({ action: "sonioxResult", data: { tokens: [], finished: true } });
-    sonioxWs = null;
+  currentWs.onclose = () => {
+    if (sonioxWs === currentWs) {
+      forwardToSonioxTab({ action: "sonioxResult", data: { tokens: [], finished: true } });
+      sonioxWs = null;
+    }
   };
 }
 
 function closeSonioxWebSocket() {
   if (!sonioxWs) return;
-  try {
-    if (sonioxWs.readyState === WebSocket.OPEN) sonioxWs.send("");
-  } catch {
-    // Best-effort flush before closing.
-  }
-  try { sonioxWs.close(); } catch { }
+  const ws = sonioxWs;
   sonioxWs = null;
+  try {
+    if (ws.readyState === WebSocket.OPEN) ws.send("");
+  } catch { }
+  try { ws.close(); } catch { }
 }
 
 function forwardToSonioxTab(msg) {
@@ -641,7 +660,7 @@ async function handleExplainWordContext(message) {
 
   let provider = message?.provider;
   if (!provider) {
-    if (["gemini", "groq", "openai", "openrouter"].includes(state.translateProvider)) {
+    if (["gemini", "groq", "openai", "openrouter", "custom-gateway"].includes(state.translateProvider)) {
       provider = state.translateProvider;
     } else if (state.geminiKey) {
       provider = "gemini";
@@ -651,6 +670,8 @@ async function handleExplainWordContext(message) {
       provider = "openai";
     } else if (state.openRouterKey) {
       provider = "openrouter";
+    } else if (state.customProxyApiKey || state.customProxyBaseUrl) {
+      provider = "custom-gateway";
     } else {
       provider = "google-free";
     }
@@ -671,6 +692,9 @@ async function handleExplainWordContext(message) {
     openaiModel: state.openaiModel,
     openRouterKey: state.openRouterKey,
     openRouterModel: state.openRouterModel,
+    customProxyApiKey: state.customProxyApiKey,
+    customProxyBaseUrl: state.customProxyBaseUrl,
+    customProxyModelId: state.customProxyModelId,
   };
 
   try {
@@ -712,7 +736,7 @@ async function handleSummarizeTranscript(message) {
     else if (state.groqApiKey) provider = "groq";
     else if (state.openaiKey) provider = "openai";
     else if (state.openRouterKey) provider = "openrouter";
-    else if (state.customProxyApiKey) provider = "custom-gateway";
+    else if (state.customProxyApiKey || state.customProxyBaseUrl) provider = "custom-gateway";
   }
 
   if (provider === "google-free" || !provider) {
@@ -779,7 +803,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const isExtensionOrigin = !!(sender.url && sender.url.startsWith(chrome.runtime.getURL("")));
   if (sender.tab && !isExtensionOrigin) {
     if (!["START", "STOP", "GET_STATE", "UPDATE_SETTINGS", "UPDATE_VOLUME"].includes(message?.type)) {
-      handleContentEvent(message);
+      handleContentEvent(message, sender.tab.id);
       sendResponse?.({ ok: true });
       return false;
     }
@@ -842,13 +866,26 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
 });
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (tabId === sonioxTabId && changeInfo.url) {
+    closeSonioxWebSocket();
+    sonioxTabId = null;
+  }
   if (tabId !== state.tabId) return;
-  // Stop on any URL change so the new video starts clean.
-  void handleStop();
+  // Stop ONLY when URL actually changes (ignore audible, title, favicon, status)
+  if (changeInfo.url) {
+    void handleStop();
+  }
 });
 
 chrome.action?.onClicked?.addListener(async (tab) => {
-  if (tab?.id && tab.url && (tab.url.includes("youtube.com/watch") || tab.url.includes("youtube.com/shorts"))) {
+  if (
+    tab?.id &&
+    tab.url &&
+    (tab.url.includes("youtube.com/watch") ||
+      tab.url.includes("youtube.com/shorts") ||
+      tab.url.includes("youtube.com/live/") ||
+      tab.url.includes("youtu.be/"))
+  ) {
     try {
       await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_OVERLAY" });
       return;

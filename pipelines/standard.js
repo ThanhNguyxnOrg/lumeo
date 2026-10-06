@@ -246,26 +246,39 @@
 
     const video = typeof context.getVideo === "function" ? context.getVideo() : null;
     if (video) {
-      const originalVolume = settings.originalVolume ?? 18;
-      const endAt = startAt + duration;
-      sessionRef.duckUntil = Math.max(sessionRef.duckUntil || 0, endAt);
+      if (settings.muteOriginal) {
+        video.muted = true;
+        video.volume = 0;
+      } else {
+        const originalVolume = settings.originalVolume ?? 18;
+        const endAt = startAt + duration;
+        sessionRef.duckUntil = Math.max(sessionRef.duckUntil || 0, endAt);
 
-      const delayToStart = Math.max(0, (startAt - sessionRef.audioCtx.currentTime) * 1000);
-      const delayToEnd = Math.max(0, (endAt - sessionRef.audioCtx.currentTime) * 1000);
+        const delayToStart = Math.max(0, (startAt - sessionRef.audioCtx.currentTime) * 1000);
+        const delayToEnd = Math.max(0, (endAt - sessionRef.audioCtx.currentTime) * 1000);
 
-      setTimeout(() => {
-        if (sessionRef === context.getActiveSession?.() && sessionRef.token === context.getPageToken?.()) {
-          video.volume = (originalVolume * 0.15) / 100;
-        }
-      }, delayToStart);
-
-      setTimeout(() => {
-        if (sessionRef === context.getActiveSession?.() && sessionRef.token === context.getPageToken?.()) {
-          if (sessionRef.audioCtx.currentTime >= (sessionRef.duckUntil || 0) - 0.05) {
-            video.volume = originalVolume / 100;
+        setTimeout(() => {
+          if (sessionRef === context.getActiveSession?.() && sessionRef.token === context.getPageToken?.()) {
+            const liveSettings = context.getSettings?.() || settings;
+            if (!liveSettings.muteOriginal) {
+              const liveVol = liveSettings.originalVolume ?? originalVolume;
+              video.volume = Math.max(0, Math.min(1, (liveVol * 0.15) / 100));
+            }
           }
-        }
-      }, delayToEnd);
+        }, delayToStart);
+
+        setTimeout(() => {
+          if (sessionRef === context.getActiveSession?.() && sessionRef.token === context.getPageToken?.()) {
+            const liveSettings = context.getSettings?.() || settings;
+            if (!liveSettings.muteOriginal) {
+              if (sessionRef.audioCtx.currentTime >= (sessionRef.duckUntil || 0) - 0.05) {
+                const liveVol = liveSettings.originalVolume ?? originalVolume;
+                video.volume = Math.max(0, Math.min(1, liveVol / 100));
+              }
+            }
+          }
+        }, delayToEnd);
+      }
     }
 
     context.onChunkDone?.();

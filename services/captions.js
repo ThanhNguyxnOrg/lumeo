@@ -5,6 +5,9 @@
 
   const SNIFFER_ID = "lumeo-caption-sniffer";
   const SNIFFER_SOURCE = "yt-trans-sniffer";
+  const SNIFFER_NONCE = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const TIMEDTEXT_MIN_CHARS = 40;
   const sniffedLinks = new Map();
   const pageFetchRequests = new Map();
@@ -35,7 +38,7 @@
     try {
       const script = document.createElement("script");
       script.id = SNIFFER_ID;
-      script.src = chrome.runtime.getURL("services/sniffer.js");
+      script.src = chrome.runtime.getURL(`services/sniffer.js?nonce=${encodeURIComponent(SNIFFER_NONCE)}`);
       (document.head || document.documentElement).appendChild(script);
     } catch {}
   }
@@ -45,6 +48,7 @@
     if (event.origin !== window.location.origin) return;
     const data = event.data;
     if (!data || typeof data !== "object" || data.source !== SNIFFER_SOURCE) return;
+    if (data.nonce && data.nonce !== SNIFFER_NONCE) return;
 
     if (data.type === "subtitle-url" && typeof data.url === "string") {
       try {
@@ -145,6 +149,7 @@
       window.postMessage({
         source: SNIFFER_SOURCE,
         type: "caption-fetch-request",
+        nonce: SNIFFER_NONCE,
         id,
         url,
       }, window.location.origin);
@@ -185,19 +190,44 @@
 
   function parseSubtitleXml(xmlText) {
     const xml = new DOMParser().parseFromString(String(xmlText || ""), "application/xml");
-    return Array.from(xml.getElementsByTagName("text"))
-      .map((node) => {
-        const start = Number.parseFloat(node.getAttribute("start") || "0");
-        const dur = Number.parseFloat(node.getAttribute("dur") || "0");
-        const text = cleanSubtitleText(node.textContent);
-        return {
-          start,
-          end: start + dur,
-          text,
-          translated: "",
-        };
-      })
-      .filter((cue) => Number.isFinite(cue.start) && cue.text);
+    const textNodes = Array.from(xml.getElementsByTagName("text"));
+    if (textNodes.length) {
+      return textNodes
+        .map((node) => {
+          const start = Number.parseFloat(node.getAttribute("start") || "0");
+          const dur = Number.parseFloat(node.getAttribute("dur") || "0");
+          const text = cleanSubtitleText(node.textContent);
+          return {
+            start,
+            end: start + dur,
+            text,
+            translated: "",
+          };
+        })
+        .filter((cue) => Number.isFinite(cue.start) && cue.text);
+    }
+    const pNodes = Array.from(xml.getElementsByTagName("p"));
+    if (pNodes.length) {
+      return pNodes
+        .map((node) => {
+          const tRaw = node.getAttribute("t") || node.getAttribute("start") || "0";
+          const dRaw = node.getAttribute("d") || node.getAttribute("dur") || "0";
+          const t = Number.parseFloat(tRaw);
+          const d = Number.parseFloat(dRaw);
+          const isMs = t > 1000 || d > 1000;
+          const start = isMs ? t / 1000 : t;
+          const dur = isMs ? d / 1000 : d;
+          const text = cleanSubtitleText(node.textContent);
+          return {
+            start,
+            end: start + dur,
+            text,
+            translated: "",
+          };
+        })
+        .filter((cue) => Number.isFinite(cue.start) && cue.text);
+    }
+    return [];
   }
 
   function parseSubtitleJson3(jsonText) {
@@ -521,7 +551,7 @@
         diagnostics.transcriptPanel = `dom-${cues.length}`;
         return {
           cues,
-          sourceLanguage: "transcript",
+          sourceLanguage: "auto",
           track: null,
           tracks: [],
           transcriptPanel: true,
@@ -611,14 +641,14 @@
     }
   }
 
-  function parseTimedTextTrackList(xmlText) {
+  function parseTimedTextTrackList(xmlText, fallbackVideoId = null) {
     const xml = new DOMParser().parseFromString(String(xmlText || ""), "application/xml");
     const tracks = Array.from(xml.getElementsByTagName("track"));
+    const videoId = fallbackVideoId || getVideoId();
     return tracks.map((track) => {
       const languageCode = track.getAttribute("lang_code") || "";
       const name = track.getAttribute("name") || "";
       const kind = track.getAttribute("kind") || "";
-      const videoId = getVideoId();
       const url = new URL("https://www.youtube.com/api/timedtext");
       url.searchParams.set("v", videoId || "");
       url.searchParams.set("lang", languageCode);
@@ -639,7 +669,7 @@
     try {
       const url = `https://www.youtube.com/api/timedtext?type=list&v=${encodeURIComponent(videoId)}`;
       const xml = await fetchText(url);
-      const tracks = parseTimedTextTrackList(xml);
+      const tracks = parseTimedTextTrackList(xml, videoId);
       return tracks.length ? tracks : null;
     } catch {
       return null;
@@ -1035,6 +1065,7 @@
     parseSubtitleJson3,
     parseSubtitleText,
     mergeFragmentedCues,
+    parseTimedTextTrackList,
     readCaptionTracksFromInnertube,
     fetchSubtitles,
     fetchViaTranscriptPanel,

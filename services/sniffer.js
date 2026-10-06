@@ -20,6 +20,14 @@
   const TARGET_ORIGIN = window.location.origin;
   const TIMEDTEXT_RE = /\/api\/timedtext(?:\/|$|\?)/;
 
+  const CURRENT_SCRIPT = document.currentScript;
+  let SNIFFER_NONCE = '';
+  try {
+    if (CURRENT_SCRIPT && CURRENT_SCRIPT.src) {
+      SNIFFER_NONCE = new URL(CURRENT_SCRIPT.src, window.location.origin).searchParams.get('nonce') || '';
+    }
+  } catch {}
+
   const isTimedtextUrl = (value) => {
     if (typeof value !== 'string') return false;
     try {
@@ -34,7 +42,7 @@
   const postSnifferMessage = (type, payload) => {
     try {
       window.postMessage(
-        { source: SOURCE, type, ...payload },
+        { source: SOURCE, type, nonce: SNIFFER_NONCE, ...payload },
         TARGET_ORIGIN,
       );
     } catch {
@@ -142,6 +150,7 @@
     if (event.source !== window || event.origin !== TARGET_ORIGIN) return;
     const data = event.data;
     if (!data || data.source !== SOURCE || data.type !== 'caption-fetch-request') return;
+    if (SNIFFER_NONCE && data.nonce !== SNIFFER_NONCE) return;
     if (!data.id || typeof data.url !== 'string') return;
     void fetchCaptionInPage(String(data.id), data.url);
   });

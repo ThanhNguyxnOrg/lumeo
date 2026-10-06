@@ -57,6 +57,8 @@ describe("Phase 1: Security Pruning & Shorts URL Support", () => {
     expect(adapter.getVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
     expect(adapter.getVideoId("https://www.youtube.com/shorts/9bZkp7q19f0")).toBe("9bZkp7q19f0");
     expect(adapter.getVideoId("https://www.youtube.com/shorts/abc-123_XYZ?feature=share")).toBe("abc-123_XYZ");
+    expect(adapter.getVideoId("https://www.youtube.com/live/liveVideo123")).toBe("liveVideo123");
+    expect(adapter.getVideoId("https://youtu.be/dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
     expect(adapter.getVideoId("https://example.com/other")).toBe(null);
   });
 });

@@ -137,6 +137,42 @@ Kick off, initiate`;
       expect(res.nuance).toBe("Informal");
       expect(res.synonyms).toBe("Swift, brisk");
     });
+
+    it("queries Custom AI Gateway API and parses response", async () => {
+      const mockResponse = {
+        choices: [
+          {
+            message: {
+              content: "Meaning: Lucid and crystal clear\nNuance: Technical\nSynonyms: Clear, transparent",
+            },
+          },
+        ],
+      };
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const res = await window.LumeoTranslate.explainWordInContext(
+        "lucid",
+        "Her explanation was lucid.",
+        "en",
+        {
+          provider: "custom-gateway",
+          customProxyApiKey: "test-gateway-key",
+          customProxyBaseUrl: "https://my-gateway.example.com/v1",
+          customProxyModelId: "custom-model-1",
+        }
+      );
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      const [url, init] = fetch.mock.calls[0];
+      expect(url).toBe("https://my-gateway.example.com/v1/chat/completions");
+      expect(init.headers.Authorization).toBe("Bearer test-gateway-key");
+      expect(JSON.parse(init.body).model).toBe("custom-model-1");
+      expect(res.meaning).toBe("Lucid and crystal clear");
+    });
   });
 
   describe("UI Subtitle Overlay AI Context Button & Box", () => {

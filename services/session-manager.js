@@ -187,17 +187,7 @@
 
     setTimeout(() => {
       if (prevSession) {
-        try {
-          if (prevSession.remoteAudio) {
-            prevSession.remoteAudio.pause();
-            prevSession.remoteAudio.srcObject = null;
-            prevSession.remoteAudio.remove();
-          }
-          if (prevSession.outputGain) prevSession.outputGain.disconnect();
-          if (prevSession.audioCtx) prevSession.audioCtx.close();
-          prevSession.pc?.close();
-        } catch {}
-        void window.LumeoKyma?.endSession(prevSession.kymaSessionId, prevSession.kymaKey);
+        disposeSession(prevSession);
         prevSession = null;
       }
     }, 400);
@@ -307,7 +297,12 @@
         session.duckUntil = 0;
       }
       if (video) {
-        video.volume = (settings?.originalVolume ?? 18) / 100;
+        if (settings?.muteOriginal) {
+          video.muted = true;
+          video.volume = 0;
+        } else {
+          video.volume = (settings?.originalVolume ?? 18) / 100;
+        }
       }
     };
     onYTRateChange = () => {
@@ -360,7 +355,11 @@
 
   async function startSession(incomingSettings) {
     if (session) return { ok: false, error: "Session already running." };
-    settings = { ...incomingSettings };
+    if (incomingSettings && typeof incomingSettings === "object") {
+      settings = { ...(settings || {}), ...incomingSettings };
+    } else if (typeof incomingSettings === "string") {
+      settings = { ...(settings || {}), tier: incomingSettings };
+    }
 
     const audioUtils = window.LumeoAudioUtils;
     const initialVid = audioUtils?.findVideo();
@@ -401,8 +400,12 @@
         onUpdateSettings: (newSettings) => { callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: newSettings }); },
         onOpenPopup: (slot) => { callbacks.notifyBackground?.({ type: "OPEN_POPUP_TO_SLOT", slot }); },
         onSwitchToStandard: async (pipeline) => {
-          pipeline?.stop?.();
-          session = null;
+          if (session) {
+            disposeSession(session);
+            session = null;
+          } else {
+            pipeline?.stop?.();
+          }
           settings = { ...settings, tier: "standard" };
           callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { tier: "standard" } });
           const reply = await startStandardSession();
@@ -509,6 +512,49 @@
     return { ok: true };
   }
 
+  function disposeSession(s) {
+    if (!s) return;
+    try { s.pipeline?.stop?.(); } catch {}
+    try { s.sttLoop?.stop?.(); } catch {}
+    if (s.captionTimer) {
+      try { clearInterval(s.captionTimer); } catch {}
+      s.captionTimer = null;
+    }
+    s.stopFlag = true;
+    try { s.abortController?.abort(); } catch {}
+    try {
+      if (s.activeRecorder && s.activeRecorder.state !== "inactive") {
+        s.activeRecorder.stop();
+      }
+    } catch {}
+    try {
+      if (s.remoteAudio) {
+        s.remoteAudio.pause();
+        s.remoteAudio.srcObject = null;
+        s.remoteAudio.remove();
+        s.remoteAudio = null;
+      }
+    } catch {}
+    try { s.outputGain?.disconnect(); } catch {}
+    try {
+      if (s.audioCtx && s.audioCtx.state !== "closed") {
+        s.audioCtx.close()?.catch?.(() => {});
+      }
+    } catch {}
+    try { s.dc?.close(); } catch {}
+    try { s.pc?.close(); } catch {}
+    try {
+      if (s.stream) {
+        s.stream.getTracks().forEach((t) => {
+          try { t.stop(); } catch {}
+        });
+      }
+    } catch {}
+    if (s.kymaSessionId) {
+      void window.LumeoKyma?.endSession(s.kymaSessionId, s.kymaKey);
+    }
+  }
+
   function stopSession(reason = "stop") {
     pageToken += 1;
     clearSessionTimer();
@@ -519,58 +565,37 @@
       if (onYTPlay) videoEl.removeEventListener("play", onYTPlay);
       if (onYTSeeked) videoEl.removeEventListener("seeked", onYTSeeked);
       if (onYTRateChange) videoEl.removeEventListener("ratechange", onYTRateChange);
-      videoEl.muted = initialVideoMuted;
-      videoEl.volume = initialVideoVolume;
-      videoEl = null;
+      if (reason !== "restart") {
+        videoEl.muted = initialVideoMuted;
+        videoEl.volume = initialVideoVolume;
+        videoEl = null;
+      }
     }
-    initialVideoVolume = 1.0;
-    initialVideoMuted = false;
+    if (reason !== "restart") {
+      initialVideoVolume = 1.0;
+      initialVideoMuted = false;
+    }
     onYTPause = null;
     onYTPlay = null;
     onYTSeeked = null;
     onYTRateChange = null;
     if (session) {
-      try {
-        if (session.type === "caption") {
-          if (session.captionTimer) {
-            clearInterval(session.captionTimer);
-            session.captionTimer = null;
-          }
-          session.pipeline?.stop?.();
-          session.sttLoop?.stop?.();
-        }
-        if (session.type === "standard") {
-          session.stopFlag = true;
-          if (session.abortController) {
-            try { session.abortController.abort(); } catch {}
-          }
-          if (session.activeRecorder && session.activeRecorder.state !== "inactive") {
-            try { session.activeRecorder.stop(); } catch {}
-          }
-        }
-        if (session.remoteAudio) {
-          session.remoteAudio.pause();
-          session.remoteAudio.srcObject = null;
-          session.remoteAudio.remove();
-        }
-        if (session.outputGain) session.outputGain.disconnect();
-        if (session.audioCtx) session.audioCtx.close();
-        if (session.dc) session.dc.close();
-        if (session.pc) session.pc.close();
-        if (session.stream) session.stream.getTracks().forEach((t) => t.stop());
-      } catch {}
-      if (session.kymaSessionId) {
-        void window.LumeoKyma?.endSession(session.kymaSessionId, session.kymaKey);
-      }
+      disposeSession(session);
       session = null;
     }
     if (prevSession) {
-      try { prevSession.pc?.close(); } catch {}
-      void window.LumeoKyma?.endSession(prevSession.kymaSessionId, prevSession.kymaKey);
+      disposeSession(prevSession);
       prevSession = null;
     }
     callbacks.onSessionStopped?.();
-    callbacks.removeOverlay?.();
+    if (reason !== "restart") {
+      callbacks.removeOverlay?.();
+    }
+  }
+
+  async function restartSession(nextSettings) {
+    stopSession("restart");
+    return startSession(nextSettings || settings);
   }
 
   function applySettingsLive(newSettings) {
@@ -606,6 +631,7 @@
     incrementPageToken,
     startSession,
     stopSession,
+    restartSession,
     requestHandover,
     applySettingsLive,
     applyVolumes,

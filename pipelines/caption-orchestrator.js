@@ -42,6 +42,9 @@
         googleCloudKey: settings.googleCloudKey,
         libreTranslateUrl: settings.libreTranslateUrl,
         libreTranslateKey: settings.libreTranslateKey,
+        customProxyBaseUrl: settings.customProxyBaseUrl,
+        customProxyApiKey: settings.customProxyApiKey,
+        customProxyModelId: settings.customProxyModelId,
         context: settings.translationContext,
       });
       return translated || text;
@@ -88,9 +91,13 @@
           customTtsBaseUrl: settings.customTtsBaseUrl,
           customTtsVoiceId: settings.customTtsVoiceId,
           customTtsApiKey: settings.customTtsApiKey,
+          customTtsModelId: settings.customTtsModelId,
           voiceName: settings.standardVoice,
           rate: settings.ttsRate || 1,
           volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
+          onFailover: () => {
+            ctx.showToast("⚠️ Custom voice error. Temporarily fell back to browser speech.", 5000);
+          },
         }).catch(() => { });
       }
     },
@@ -141,7 +148,17 @@
     },
 
     async startGroqChoice(video, token, pipeline, reason, ctx) {
-      const settings = ctx.getSettings();
+      const settings = ctx.getSettings() || {};
+      if (!settings.groqApiKey && typeof chrome !== "undefined" && chrome.storage?.local) {
+        try {
+          const res = await chrome.storage.local.get(["groqApiKey"]);
+          if (res?.groqApiKey) {
+            settings.groqApiKey = res.groqApiKey;
+            settings.sttProvider = "groq-whisper";
+            ctx.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { sttProvider: "groq-whisper" } });
+          }
+        } catch {}
+      }
       if (!settings.groqApiKey) {
         ctx.showToast("Add a Groq key in the no-caption fallback card.", 7000);
         ctx.onStateChange({
@@ -163,7 +180,17 @@
     },
 
     async startSonioxChoice(video, token, pipeline, reason, ctx) {
-      const settings = ctx.getSettings();
+      const settings = ctx.getSettings() || {};
+      if (!settings.sonioxApiKey && typeof chrome !== "undefined" && chrome.storage?.local) {
+        try {
+          const res = await chrome.storage.local.get(["sonioxApiKey"]);
+          if (res?.sonioxApiKey) {
+            settings.sonioxApiKey = res.sonioxApiKey;
+            settings.sttProvider = "soniox";
+            ctx.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { sttProvider: "soniox" } });
+          }
+        } catch {}
+      }
       if (!settings.sonioxApiKey) {
         ctx.showToast("Add a Soniox key in the popup marketplace.", 7000);
         ctx.onStateChange({
@@ -233,6 +260,10 @@
         const text = ctx.readYTCaptions();
         if (!text) {
           if (!currentSession.cues.length && Date.now() - startedAt > 9000) {
+            if (currentSession.captionTimer) {
+              clearInterval(currentSession.captionTimer);
+              currentSession.captionTimer = null;
+            }
             this.renderCaptionFallbackChoice(
               video,
               token,
@@ -268,24 +299,25 @@
 
         ctx.setCurrentTexts(cue.text, cue.translated);
         ctx.setTargetCue(cue);
-        if (elements.source && settings.showSource) elements.source.textContent = cue.text.slice(-260);
+        const liveSettings = ctx.getSettings() || settings;
+        if (elements.source && liveSettings.showSource) elements.source.textContent = cue.text.slice(-260);
 
         transcript?.appendCaptionRow(cue, latestSession.cues.length - 1);
         transcript?.updateCaptionTranscriptCount(latestSession.cues.length);
         transcript?.updateCaptionTranscriptHighlight(latestSession.cues.length - 1);
 
-        if (settings.captionTtsProvider && settings.captionTtsProvider !== "off") {
+        if (liveSettings.captionTtsProvider && liveSettings.captionTtsProvider !== "off") {
           pipeline.speakCue(cue, {
-            provider: settings.captionTtsProvider,
-            targetLanguage: settings.targetLanguage || "vi",
-            googleCloudKey: settings.googleCloudKey,
-            openaiKey: settings.openaiKey,
-            customTtsBaseUrl: settings.customTtsBaseUrl,
-            customTtsVoiceId: settings.customTtsVoiceId,
-            customTtsApiKey: settings.customTtsApiKey,
-            voiceName: settings.standardVoice,
-            rate: settings.ttsRate || 1,
-            volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
+            provider: liveSettings.captionTtsProvider,
+            targetLanguage: liveSettings.targetLanguage || "vi",
+            googleCloudKey: liveSettings.googleCloudKey,
+            openaiKey: liveSettings.openaiKey,
+            customTtsBaseUrl: liveSettings.customTtsBaseUrl,
+            customTtsVoiceId: liveSettings.customTtsVoiceId,
+            customTtsApiKey: liveSettings.customTtsApiKey,
+            voiceName: liveSettings.standardVoice,
+            rate: liveSettings.ttsRate || 1,
+            volume: Math.min((liveSettings.voiceVolume ?? 100) / 100, 1),
           }).catch(() => { });
         }
         ctx.setStatusText("YouTube CC live");
@@ -296,6 +328,7 @@
       void tick();
 
       ctx.setYTPauseHandler(() => {
+        window.LumeoTTS?.stop?.();
         ctx.setStatusText("Paused");
         ctx.setOverlayState("paused");
         ctx.onStateChange({ paused: true, status: "Paused" });
@@ -395,6 +428,11 @@
         stream: null,
         pc: null,
         dc: null,
+        sttLoop: {
+          stop: () => {
+            try { window.LumeoSonioxSTT?.stop?.(); } catch {}
+          },
+        },
       };
       ctx.onSessionCreated(session);
       ctx.applyTierToolbar();
@@ -513,8 +551,17 @@
           googleCloudKey: settings.googleCloudKey,
           libreTranslateUrl: settings.libreTranslateUrl,
           libreTranslateKey: settings.libreTranslateKey,
+          customProxyBaseUrl: settings.customProxyBaseUrl,
+          customProxyApiKey: settings.customProxyApiKey,
+          customProxyModelId: settings.customProxyModelId,
+          secondaryLanguage: settings.secondaryLanguage || "original",
           context: settings.translationContext,
+          currentTime: video?.currentTime || 0,
           onProgress: (p) => this.updateCaptionProgress(p, ctx),
+          onFailover: ({ from, to }) => {
+            const label = from === "custom-gateway" ? "Custom AI Gateway" : (from ? from.charAt(0).toUpperCase() + from.slice(1) : "AI Translation");
+            ctx.showToast(`⚠️ ${label} error or quota reached. Temporarily switched to Google Free.`, 6000);
+          },
         });
       } catch (err) {
         ctx.removeOverlay();
@@ -564,6 +611,7 @@
         const currentSession = ctx.getSession();
         if (currentSession?.type !== "caption" || currentSession.token !== token) return;
         if (video.paused) return;
+        const liveSettings = ctx.getSettings() || settings;
         const current = pipeline.cueAt(video.currentTime);
         if (current.index === currentSession.lastCueIndex) return;
         currentSession.lastCueIndex = current.index;
@@ -581,14 +629,14 @@
         ctx.setCurrentTexts(sourceText, targetText);
         ctx.setTargetCue(current.cue);
 
-        if (elements.source && settings.showSource) {
+        if (elements.source && liveSettings.showSource) {
           elements.source.textContent = sourceText.slice(-260);
         }
         ctx.getTranscriptController()?.updateCaptionTranscriptHighlight(current.index);
 
-        if (settings.captionTtsProvider && settings.captionTtsProvider !== "off") {
+        if (liveSettings.captionTtsProvider && liveSettings.captionTtsProvider !== "off") {
           const cue = current.cue;
-          const duration = (cue.end && cue.start && cue.end > cue.start)
+          const duration = (cue.end != null && cue.start != null && cue.end > cue.start)
             ? (cue.end - cue.start)
             : 3.0;
           const textToSpeak = (cue.translated || cue.text || "").trim();
@@ -600,19 +648,23 @@
               calculatedRate = Math.min(1.4, Math.max(1.15, 1.15 + (wordsPerSec - 2.8) * 0.08));
             }
           }
-          const effectiveRate = settings.ttsRate || calculatedRate;
+          const effectiveRate = liveSettings.ttsRate || calculatedRate;
 
           pipeline.speakCue(cue, {
-            provider: settings.captionTtsProvider,
-            targetLanguage: settings.targetLanguage || "vi",
-            googleCloudKey: settings.googleCloudKey,
-            openaiKey: settings.openaiKey,
-            customTtsBaseUrl: settings.customTtsBaseUrl,
-            customTtsVoiceId: settings.customTtsVoiceId,
-            customTtsApiKey: settings.customTtsApiKey,
-            voiceName: settings.standardVoice,
+            provider: liveSettings.captionTtsProvider,
+            targetLanguage: liveSettings.targetLanguage || "vi",
+            googleCloudKey: liveSettings.googleCloudKey,
+            openaiKey: liveSettings.openaiKey,
+            customTtsBaseUrl: liveSettings.customTtsBaseUrl,
+            customTtsVoiceId: liveSettings.customTtsVoiceId,
+            customTtsApiKey: liveSettings.customTtsApiKey,
+            customTtsModelId: liveSettings.customTtsModelId,
+            voiceName: liveSettings.standardVoice,
             rate: effectiveRate,
-            volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
+            volume: Math.min((liveSettings.voiceVolume ?? 100) / 100, 1),
+            onFailover: () => {
+              ctx.showToast("⚠️ Custom voice error. Temporarily fell back to browser speech.", 5000);
+            },
           }).catch(() => { });
         }
       };

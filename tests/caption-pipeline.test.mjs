@@ -230,4 +230,71 @@ describe("pipelines/caption.js", () => {
     expect(window.LumeoTTS.stop).toHaveBeenCalled();
     expect(window.LumeoSonioxSTT.stop).toHaveBeenCalled();
   });
+
+  it("smart failover to google-free when paid translation provider fails", async () => {
+    const { window, api } = await setup({
+      subtitles: { videoId: "failover-test", sourceLanguage: "en", nativeTarget: false, cues: cues() },
+    });
+    const pipeline = api.create();
+    const onFailover = vi.fn();
+
+    // Mock translateBatch: first call fails (e.g. 429 quota exhaustion on openrouter), fallback call succeeds with google-free
+    window.LumeoTranslate.translateBatch = vi.fn()
+      .mockRejectedValueOnce(new Error("429 Quota Exceeded"))
+      .mockResolvedValueOnce(["hello-gf", "world-gf"]);
+
+    const result = await pipeline.start({
+      videoId: "failover-test",
+      targetLanguage: "vi",
+      translateProvider: "openrouter",
+      onFailover,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(onFailover).toHaveBeenCalledWith({
+      from: "openrouter",
+      to: "google-free",
+      error: "429 Quota Exceeded",
+    });
+    expect(result.cues.map((c) => c.translated)).toEqual(["hello-gf", "world-gf"]);
+    expect(window.LumeoTranslate.translateBatch).toHaveBeenNthCalledWith(
+      1,
+      ["hello", "world"],
+      "vi",
+      expect.objectContaining({ provider: "openrouter" }),
+    );
+    expect(window.LumeoTranslate.translateBatch).toHaveBeenNthCalledWith(
+      2,
+      ["hello", "world"],
+      "vi",
+      expect.objectContaining({ provider: "google-free" }),
+    );
+  });
+
+  it("translates secondaryLanguage when different from source and stores isolated cache", async () => {
+    const { window, api, getCache } = await setup({
+      subtitles: { videoId: "bilingual-test", sourceLanguage: "en", nativeTarget: false, cues: cues() },
+    });
+    const pipeline = api.create();
+
+    window.LumeoTranslate.translateBatch = vi.fn()
+      .mockResolvedValueOnce(["hello-vi", "world-vi"])
+      .mockResolvedValueOnce(["konnichiwa", "sekai"]);
+
+    const result = await pipeline.start({
+      videoId: "bilingual-test",
+      targetLanguage: "vi",
+      secondaryLanguage: "ja",
+      translateProvider: "google-free",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.cues[0].translated).toBe("hello-vi");
+    expect(result.cues[0].secondaryTranslated).toBe("konnichiwa");
+    expect(result.cues[1].secondaryTranslated).toBe("sekai");
+
+    const expectedKey = "bilingual-test::vi::google-free::en::ja";
+    expect(Object.keys(getCache().entries)).toEqual([expectedKey]);
+  });
 });
+

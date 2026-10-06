@@ -95,8 +95,29 @@
       body.append(summaryEl, listEl);
 
       root.append(header, body);
-      (doc.body || doc.documentElement).appendChild(root);
+      const container = doc.fullscreenElement || doc.webkitFullscreenElement || doc.body || doc.documentElement;
+      try { container.appendChild(root); } catch {}
+
+      doc.addEventListener("fullscreenchange", handleFullscreenChange);
+      doc.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+
+      renderCaptionTranscript(cues);
       return root;
+    }
+
+    function handleFullscreenChange() {
+      if (!root) return;
+      const fsEl = doc.fullscreenElement || doc.webkitFullscreenElement;
+      if (fsEl) {
+        if (!fsEl.contains(root)) {
+          try { fsEl.appendChild(root); } catch {}
+        }
+      } else {
+        const defaultContainer = doc.body || doc.documentElement;
+        if (root.parentElement !== defaultContainer) {
+          try { defaultContainer.appendChild(root); } catch {}
+        }
+      }
     }
 
     function createCueItem(cue, index) {
@@ -155,6 +176,18 @@
       if (!listEl) return;
       listEl.replaceChildren();
 
+      if (cues.length === 0) {
+        const empty = doc.createElement("div");
+        empty.className = "lumeo-transcript-empty";
+        empty.innerHTML = `
+          <div class="lumeo-transcript-empty-icon">📝</div>
+          <div class="lumeo-transcript-empty-title">No subtitles yet</div>
+          <div class="lumeo-transcript-empty-hint">Click "Start Translation" to view real-time bilingual transcripts</div>
+        `;
+        listEl.appendChild(empty);
+        return;
+      }
+
       cues.forEach((cue, index) => {
         listEl.appendChild(createCueItem(cue, index));
       });
@@ -178,10 +211,17 @@
 
     function toggle(open) {
       if (!root) build();
+      handleFullscreenChange();
       isOpen = typeof open === "boolean" ? open : root.hidden;
       root.hidden = !isOpen;
+      if (isOpen && cues.length === 0) {
+        renderCaptionTranscript([]);
+      }
       if (isOpen && activeCueIndex >= 0) {
         updateCaptionTranscriptHighlight(activeCueIndex);
+      }
+      if (typeof options.onToggle === "function") {
+        try { options.onToggle(isOpen); } catch {}
       }
       return isOpen;
     }
@@ -234,10 +274,19 @@
     function setSummaryError(errMsg) {
       if (!summaryEl) build();
       summaryEl.hidden = false;
-      summaryEl.innerHTML = `<div class="lumeo-summary-error" style="padding: 10px; font-size: 12px; color: #f87171;">${errMsg}</div>`;
+      summaryEl.replaceChildren();
+      const errDiv = doc.createElement("div");
+      errDiv.className = "lumeo-summary-error";
+      errDiv.style.cssText = "padding: 10px; font-size: 12px; color: #f87171;";
+      errDiv.textContent = String(errMsg || "Summary generation failed.");
+      summaryEl.appendChild(errDiv);
     }
 
     function remove() {
+      try {
+        doc.removeEventListener("fullscreenchange", handleFullscreenChange);
+        doc.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      } catch {}
       root?.remove();
       root = null;
       listEl = null;

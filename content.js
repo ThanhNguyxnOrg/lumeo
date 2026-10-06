@@ -129,6 +129,9 @@
   const LumeoSessionManager = window.LumeoSessionManager;
   const subtitleOverlay = window.LumeoSubtitleOverlay?.createSubtitleOverlayController?.();
   const transcriptController = window.LumeoTranscript?.createTranscriptController?.({
+    onToggle: (isOpen) => {
+      overlayController?.setTranscriptActive?.(isOpen);
+    },
     onSeek: (seconds) => {
       const v = findVideo ? findVideo() : document.querySelector("video");
       if (v) v.currentTime = seconds;
@@ -200,6 +203,27 @@
       captionStyle.subtitleOrder = order;
       saveCaptionStyle();
       applyCaptionStyle();
+      if (lastDisplayedCue) setTargetCue(lastDisplayedCue);
+    },
+    onSecondaryLanguageChange: (secondaryLang) => {
+      captionStyle.secondaryLanguage = secondaryLang;
+      settings = settings || {};
+      settings.secondaryLanguage = secondaryLang;
+      saveCaptionStyle();
+      applyCaptionStyle();
+      if (lastDisplayedCue) setTargetCue(lastDisplayedCue);
+
+      const activeSession = LumeoSessionManager.getSession();
+      if (activeSession && (settings.tier === "caption" || !settings.tier)) {
+        overlayController?.setSessionState?.({
+          isTranslating: true,
+          isLoading: true,
+          statusText: "Switching secondary subtitle to " + (LANG_NAME[secondaryLang] || secondaryLang) + "...",
+        });
+        LumeoSessionManager.restartSession({ ...settings, secondaryLanguage: secondaryLang }).catch(() => {
+          overlayController?.setSessionState?.({ isTranslating: false, isLoading: false, statusText: "Language switch failed" });
+        });
+      }
     },
     onOriginalVolumeChange: (vol) => {
       captionStyle.originalVolume = vol;
@@ -243,7 +267,9 @@
       subtitleOverlay?.resetPosition?.();
     },
     onToggleTranscript: () => {
-      transcriptController?.toggle();
+      const isOpen = transcriptController?.toggle();
+      overlayController?.setTranscriptActive?.(isOpen);
+      return isOpen;
     },
   });
   overlayController?.ensureYouTubeControlButton?.();
@@ -274,6 +300,7 @@
       showSourceSub: true,
       layoutPreset: "stacked",
       subtitleOrder: "translation-top",
+      secondaryLanguage: "original",
       subBackgroundOpacity: 75,
       subShadowStyle: "drop-shadow",
     };
@@ -295,11 +322,15 @@
     } catch {}
   }
 
+  const IGNORED_STORAGE_KEYS = new Set(["lumeoCaptionCacheV1", "lumeoSubPosition"]);
+
   // Load from chrome.storage.local on startup
   try {
     if (typeof chrome !== "undefined" && chrome.storage?.local) {
       chrome.storage.local.get(null, (res) => {
         if (res) {
+          delete res.lumeoCaptionCacheV1;
+          delete res.lumeoSubPosition;
           settings = { ...(settings || {}), ...res };
           captionStyle = { ...captionStyle, ...res };
           if (elements.langSelect && res.targetLanguage) {
@@ -319,7 +350,9 @@
         if (area === "local") {
           const updated = {};
           for (const [key, change] of Object.entries(changes)) {
-            updated[key] = change.newValue;
+            if (!IGNORED_STORAGE_KEYS.has(key)) {
+              updated[key] = change.newValue;
+            }
           }
           if (Object.keys(updated).length > 0) {
             settings = { ...(settings || {}), ...updated };
@@ -350,6 +383,7 @@
           highContrast: captionStyle.highContrast,
           layoutPreset: captionStyle.layoutPreset,
           subtitleOrder: captionStyle.subtitleOrder,
+          secondaryLanguage: captionStyle.secondaryLanguage || "original",
           subBackgroundOpacity: captionStyle.subBackgroundOpacity,
           subShadowStyle: captionStyle.subShadowStyle,
           originalVolume: captionStyle.originalVolume,
@@ -380,24 +414,24 @@
   function applyCaptionStyle() {
     overlayController?.applyCaptionStyle(captionStyle);
     subtitleOverlay?.applyStyle(captionStyle);
-    const video = LumeoSessionManager.getVideoEl() || findVideo?.();
-    if (video) video.muted = !!captionStyle.muteOriginal;
+    if (LumeoSessionManager.getSession()) {
+      const video = LumeoSessionManager.getVideoEl() || findVideo?.();
+      if (video) video.muted = !!captionStyle.muteOriginal;
+    }
   }
 
   async function handleStartSession() {
-    overlayController?.setSessionState?.({ isTranslating: true });
+    overlayController?.setSessionState?.({ isTranslating: true, isLoading: true, statusText: "Loading captions..." });
     const stored = await browserApi.sendRuntimeMessage({ type: "GET_STATE" }).catch(() => null);
     const currentSettings = stored?.state || settings || { tier: "caption", targetLanguage: "vi", translateProvider: "google-free" };
     settings = currentSettings;
     LumeoSessionManager.setSettings(currentSettings);
-    if (!LumeoSessionManager.getSession()) {
-      await LumeoSessionManager.startSession(currentSettings).catch(() => {});
-    }
+    // Delegate START to background service worker which will ensureContentScript and send CONTENT_START
     browserApi.sendRuntimeMessage({ type: "START", settings: currentSettings }).catch(() => {});
   }
 
   function handleStopSession() {
-    overlayController?.setSessionState?.({ isTranslating: false });
+    overlayController?.setSessionState?.({ isTranslating: false, isLoading: false, statusText: "" });
     LumeoSessionManager.stopSession("user-stop");
     notifyBackground({ type: "CONTENT_STATE", running: false, status: "Stopped" });
     emitEnded("Stopped");
@@ -423,14 +457,17 @@
     overlayController?.updateMenuLabels?.();
 
     // In-place reactive handover without stopping active video playback (Decision 14)
-    if (settings.tier === "caption" && lastDisplayedCue && lastDisplayedCue.text) {
+    if (settings.tier === "caption" || !settings.tier) {
       const activeSession = LumeoSessionManager.getSession();
-      if (activeSession && typeof activeSession.translateText === "function") {
-        activeSession.translateText(lastDisplayedCue.text, newLang).then((translated) => {
-          if (translated) {
-            setTargetCue({ ...lastDisplayedCue, translated });
-          }
-        }).catch(() => {});
+      if (activeSession) {
+        overlayController?.setSessionState?.({
+          isTranslating: true,
+          isLoading: true,
+          statusText: "Switching to " + (LANG_NAME[newLang] || newLang) + "...",
+        });
+        LumeoSessionManager.restartSession({ ...settings, targetLanguage: newLang }).catch(() => {
+          overlayController?.setSessionState?.({ isTranslating: false, isLoading: false, statusText: "Language switch failed" });
+        });
       }
     } else if (settings.tier === "standard") {
       setStatusText("Switching to " + (LANG_NAME[newLang] || newLang));
@@ -442,6 +479,7 @@
 
   function handleVoiceChange(newVoice) {
     if (!newVoice) return;
+    settings = settings || {};
     if (settings?.tier === "caption" || !settings?.tier) {
       if (newVoice === "off") {
         settings.captionTtsProvider = "off";
@@ -529,10 +567,6 @@
     });
     document.addEventListener("lumeopipclosed", () => {
       elements.pipBtn?.classList.remove("is-active");
-    });
-
-    elements.transcriptBtn?.addEventListener("click", () => {
-      transcriptController?.toggle();
     });
 
     elements.originalVolume?.addEventListener("input", () => {
@@ -631,6 +665,11 @@
 
   function setOverlayState(state) {
     overlayController?.setState(state);
+    if (state === "live") {
+      overlayController?.setSessionState?.({ isTranslating: true, isLoading: false });
+    } else if (state === "ready" || state === "stopped" || state === "error") {
+      overlayController?.setSessionState?.({ isLoading: false });
+    }
   }
 
   function setStatusText(text) {
@@ -714,18 +753,33 @@
     if (elements.target) {
       elements.target.textContent = "";
       if (cue) {
-        if (captionStyle.layoutPreset !== "source-only") {
+        const isSourceTop = captionStyle.subtitleOrder === "source-top";
+        const secondaryText = cue.secondaryTranslated || cue.text;
+        const showTranslated = captionStyle.layoutPreset !== "source-only";
+        const showSource = captionStyle.showSource !== false && captionStyle.layoutPreset !== "translated-only" && secondaryText && secondaryText !== (cue.translated || cue.text);
+
+        const createTranslatedNode = () => {
           const translated = document.createElement("div");
-          translated.className = "ec-target-translated";
+          translated.className = "ec-target-translated" + (isSourceTop ? " is-secondary" : " is-primary");
           translated.textContent = cue.translated || cue.text || "";
-          elements.target.appendChild(translated);
-        }
-        if (captionStyle.showSource !== false && captionStyle.layoutPreset !== "translated-only" && cue.text && cue.text !== cue.translated) {
+          return translated;
+        };
+
+        const createSourceNode = () => {
           const source = document.createElement("div");
-          source.className = "ec-target-source";
-          source.textContent = cue.text;
-          elements.target.appendChild(source);
+          source.className = "ec-target-source" + (isSourceTop ? " is-primary" : " is-secondary");
+          source.textContent = secondaryText;
+          return source;
+        };
+
+        if (isSourceTop) {
+          if (showSource) elements.target.appendChild(createSourceNode());
+          if (showTranslated) elements.target.appendChild(createTranslatedNode());
+        } else {
+          if (showTranslated) elements.target.appendChild(createTranslatedNode());
+          if (showSource) elements.target.appendChild(createSourceNode());
         }
+
         const lang = settings?.targetLanguage;
         elements.target.dir = RTL_LANGS.has(lang) ? "rtl" : "ltr";
       }
@@ -852,6 +906,9 @@
     if (s && s.kymaSessionId) {
       void window.LumeoKyma?.endSession(s.kymaSessionId, s.kymaKey);
     }
+    try {
+      LumeoSessionManager.stopSession("unload");
+    } catch {}
   };
   window.addEventListener("beforeunload", handleUnload);
   window.addEventListener("pagehide", handleUnload);

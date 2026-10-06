@@ -110,13 +110,15 @@
           }
         }
       };
+      this.cycleTimer = null;
       // Cycle recorder per chunk: each blob becomes a self-contained file so
       // Whisper does not need to reassemble container fragments.
       const cycle = () => {
         if (this.stopped || !this.recorder) return;
         try {
           this.recorder.start();
-          setTimeout(() => {
+          this.cycleTimer = setTimeout(() => {
+            this.cycleTimer = null;
             if (this.stopped || !this.recorder) return;
             try {
               if (this.recorder.state === "recording") this.recorder.stop();
@@ -134,6 +136,10 @@
 
     stop() {
       this.stopped = true;
+      if (this.cycleTimer) {
+        clearTimeout(this.cycleTimer);
+        this.cycleTimer = null;
+      }
       try {
         this.abortController.abort();
       } catch {

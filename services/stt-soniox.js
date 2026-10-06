@@ -18,9 +18,9 @@
     const out = new Array(float32.length);
     for (let i = 0; i < float32.length; i += 1) {
       const sample = Math.max(-1, Math.min(1, float32[i]));
-      out[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+      out[i] = (sample < 0 ? sample * 0x8000 : sample * 0x7fff) | 0;
     }
-    return out.map((value) => value | 0);
+    return out;
   }
 
   function detectLangHints() {
@@ -67,10 +67,13 @@
     processor = new AudioWorkletNode(audioCtx, "pcm-processor");
     processor.port.onmessage = (event) => {
       if (!active) return;
-      chrome.runtime.sendMessage({
-        action: "sonioxAudio",
-        samples: floatToPCM16(event.data),
-      });
+      try {
+        const p = chrome.runtime.sendMessage({
+          action: "sonioxAudio",
+          samples: floatToPCM16(event.data),
+        });
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      } catch {}
     };
     source.connect(processor);
     // Keep the worklet alive. Gain is zero so the captured audio is not doubled.

@@ -86,6 +86,32 @@ describe("ui/subtitle-overlay.js", () => {
     const overlay = controller.getElement();
     const children = Array.from(overlay.children).map(c => c.className);
     expect(children.indexOf("lumeo-video-sub-source")).toBeLessThan(children.indexOf("lumeo-video-sub-translated"));
+    expect(overlay.classList.contains("lumeo-order-source-top")).toBe(true);
+  });
+
+  it("dynamically re-orders active cues immediately on applyStyle", () => {
+    controller.updateCue(
+      { text: "hello", translated: "xin chào" },
+      { captionStyle: { layoutPreset: "stacked", subtitleOrder: "translation-top" }, targetLanguage: "vi" },
+    );
+    const overlay = controller.getElement();
+    let children = Array.from(overlay.children).map(c => c.className);
+    expect(children.indexOf("lumeo-video-sub-translated")).toBeLessThan(children.indexOf("lumeo-video-sub-source"));
+
+    // Call applyStyle dynamically
+    controller.applyStyle({ subtitleOrder: "source-top" });
+    children = Array.from(overlay.children).map(c => c.className);
+    expect(children.indexOf("lumeo-video-sub-source")).toBeLessThan(children.indexOf("lumeo-video-sub-translated"));
+    expect(overlay.classList.contains("lumeo-order-source-top")).toBe(true);
+  });
+
+  it("renders secondaryTranslated text when present", () => {
+    controller.updateCue(
+      { text: "original audio", translated: "translated main", secondaryTranslated: "secondary text" },
+      { captionStyle: { layoutPreset: "stacked" }, targetLanguage: "vi" },
+    );
+    const overlay = controller.getElement();
+    expect(overlay.querySelector(".lumeo-video-sub-source").textContent).toBe("secondary text");
   });
 
   it("applies style flags and RTL direction", () => {
@@ -390,4 +416,53 @@ describe("ui/subtitle-overlay.js", () => {
     expect(overlay.style.top).toBe("auto");
     expect(overlay.style.transform).toBe("translateX(-50%)");
   });
+
+  it("renders source on top when subtitleOrder is source-top", () => {
+    controller.updateCue(
+      { text: "hello", translated: "xin chào" },
+      { captionStyle: { showSource: true, subtitleOrder: "source-top" } },
+    );
+    const overlay = controller.getElement();
+    expect(overlay.classList.contains("lumeo-order-source-top")).toBe(true);
+    expect(overlay.classList.contains("lumeo-order-translation-top")).toBe(false);
+    expect(overlay.children[0].className).toBe("lumeo-video-sub-source");
+    expect(overlay.children[1].className).toBe("lumeo-video-sub-translated");
+  });
+
+  it("renders translation on top by default or when subtitleOrder is translation-top", () => {
+    controller.updateCue(
+      { text: "hello", translated: "xin chào" },
+      { captionStyle: { showSource: true, subtitleOrder: "translation-top" } },
+    );
+    const overlay = controller.getElement();
+    expect(overlay.classList.contains("lumeo-order-translation-top")).toBe(true);
+    expect(overlay.classList.contains("lumeo-order-source-top")).toBe(false);
+    expect(overlay.children[0].className).toBe("lumeo-video-sub-translated");
+    expect(overlay.children[1].className).toBe("lumeo-video-sub-source");
+  });
+
+  it("renders custom secondaryTranslated text when present on cue", () => {
+    controller.updateCue(
+      { text: "hello", translated: "xin chào", secondaryTranslated: "konnichiwa" },
+      { captionStyle: { showSource: true } },
+    );
+    const overlay = controller.getElement();
+    const sourceEl = overlay.querySelector(".lumeo-video-sub-source");
+    expect(sourceEl.textContent).toBe("konnichiwa");
+  });
+
+  it("dynamically updates subtitle order and re-renders active cue on applyStyle", () => {
+    controller.updateCue(
+      { text: "hello", translated: "xin chào" },
+      { captionStyle: { showSource: true, subtitleOrder: "translation-top" } },
+    );
+    const overlay = controller.getElement();
+    expect(overlay.children[0].className).toBe("lumeo-video-sub-translated");
+
+    controller.applyStyle({ subtitleOrder: "source-top" });
+    expect(overlay.classList.contains("lumeo-order-source-top")).toBe(true);
+    expect(overlay.children[0].className).toBe("lumeo-video-sub-source");
+    expect(overlay.children[1].className).toBe("lumeo-video-sub-translated");
+  });
 });
+

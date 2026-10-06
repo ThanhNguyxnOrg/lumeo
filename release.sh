@@ -30,12 +30,16 @@ esac
 
 echo "Bumping $CUR → $NEW"
 
-# Update both manifest.json and content.js LUMEO_VERSION in lock-step
+# Update manifest.json, package.json, and content.js LUMEO_VERSION in lock-step
 node -e "
 const fs = require('fs');
 const m = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
 m.version = '$NEW';
+m.version_name = '$NEW';
 fs.writeFileSync('manifest.json', JSON.stringify(m, null, 2) + '\n');
+const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+p.version = '$NEW';
+fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
 let c = fs.readFileSync('content.js', 'utf8');
 c = c.replace(/const LUMEO_VERSION = \"[^\"]+\";/, 'const LUMEO_VERSION = \"$NEW\";');
 fs.writeFileSync('content.js', c);
@@ -46,12 +50,12 @@ fs.writeFileSync('content.js', c);
 
 # Show the diff and ask for confirmation before pushing
 echo
-git diff --stat manifest.json content.js
+git diff --stat manifest.json package.json content.js
 echo
 read -r -p "Looks right? Commit + tag + push + create GitHub release? [y/N] " ans
-[ "$ans" = "y" ] || { echo "aborted; manifest + content.js were updated locally but not committed"; exit 1; }
+[ "$ans" = "y" ] || { echo "aborted; files were updated locally but not committed"; exit 1; }
 
-git add manifest.json content.js
+git add manifest.json package.json content.js CHANGELOG.md
 git commit -m "chore: release v$NEW"
 git tag -a "v$NEW" -m "v$NEW"
 git push

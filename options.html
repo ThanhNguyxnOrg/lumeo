@@ -78,8 +78,7 @@
               <option value="gemini">Google Gemini (Requires API Key, Context-Aware)</option>
               <option value="openai">OpenAI GPT-4o-mini (Requires API Key, Highly Accurate)</option>
               <option value="groq">Groq Llama (Requires API Key, Ultra-Fast)</option>
-              <option value="openrouter">OpenRouter (Multi-model aggregator)</option>
-              <option value="custom-gateway">Custom AI Gateway (OpenRouter / Compatible)</option>
+              <option value="custom-gateway">Custom AI Gateway (OpenAI-Compatible: OpenRouter, DeepSeek, Ollama, Proxy)</option>
             </select>
           </div>
         </div>
@@ -140,17 +139,17 @@
 
           <div class="key-field">
             <div class="key-label-row">
-              <label for="customProxyApiKey">Custom AI Gateway (OpenRouter / Compatible)</label>
+              <label for="customProxyApiKey">Custom AI Gateway (OpenAI-Compatible / OpenRouter / Local LLM)</label>
               <span class="badge badge-neutral">Vendor-Neutral</span>
             </div>
             <div class="custom-gateway-grid">
               <div class="key-sub-options">
-                <label for="customProxyBaseUrl">Base URL (Required, e.g. OpenRouter, DeepSeek, or custom endpoint):</label>
-                <input type="text" id="customProxyBaseUrl" class="form-input mono" placeholder="https://openrouter.ai/api/v1 or custom URL" />
+                <label for="customProxyBaseUrl">Base URL (OpenAI-compatible endpoint: OpenRouter, DeepSeek, Ollama, LM Studio, vLLM):</label>
+                <input type="text" id="customProxyBaseUrl" class="form-input mono" placeholder="https://openrouter.ai/api/v1, https://api.deepseek.com/v1, or proxy URL" />
               </div>
               <div class="key-sub-options">
                 <label for="customProxyModelId">Model ID:</label>
-                <input type="text" id="customProxyModelId" class="form-input mono" placeholder="openrouter/free, anthropic/claude-3.5-sonnet..." />
+                <input type="text" id="customProxyModelId" class="form-input mono" placeholder="deepseek-chat, google/gemini-2.5-flash, llama3:8b, mistral..." />
               </div>
             </div>
             <div class="key-input-wrap">
@@ -171,11 +170,23 @@
                 <input type="text" id="customTtsBaseUrl" class="form-input mono" placeholder="https://api.elevenlabs.io/v1 or custom URL" />
               </div>
               <div class="key-sub-options">
-                <label for="customTtsVoiceId">Voice ID:</label>
-                <input type="text" id="customTtsVoiceId" class="form-input mono" placeholder="Voice ID (e.g. 21m00Tcm4TlvDq8ikWAM or custom ID)" />
+                <label for="customTtsModelId">Voice Model ID (Optional, freeform text):</label>
+                <input type="text" id="customTtsModelId" class="form-input mono" placeholder="eleven_turbo_v2_5, eleven_flash_v2_5, tts-1, or custom model..." />
               </div>
             </div>
-            <div class="key-input-wrap">
+            <div class="custom-gateway-grid" style="margin-top: 8px;">
+              <div class="key-sub-options" style="width: 100%;">
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 4px;">
+                  <label for="customTtsVoiceId" style="margin-bottom: 0;">Voice ID:</label>
+                  <button type="button" class="btn-fetch-voices" id="btnFetchCustomTtsVoices" style="background: rgba(249, 115, 22, 0.15); border: 1px solid rgba(249, 115, 22, 0.4); color: #f97316; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 6px; cursor: pointer; transition: all 0.15s ease;">📋 Fetch Voices</button>
+                </div>
+                <input type="text" id="customTtsVoiceId" class="form-input mono" placeholder="Voice ID (e.g. 21m00Tcm4TlvDq8ikWAM, custom ID, or select from fetched list)" />
+                <select id="customTtsVoiceSelect" class="form-select select-compact" style="display: none; margin-top: 6px;">
+                  <option value="">-- Choose from your fetched ElevenLabs voices --</option>
+                </select>
+              </div>
+            </div>
+            <div class="key-input-wrap" style="margin-top: 8px;">
               <input type="password" id="customTtsApiKey" class="form-input mono" placeholder="API Key / Token (xi-api-key or Bearer)..." autocomplete="off" />
               <button type="button" class="btn-eye" data-target="customTtsApiKey" title="Toggle visibility">👁</button>
               <button type="button" class="btn-test" id="btnTestCustomTts" data-test="custom-tts">🔊 Test Voice</button>

@@ -92,12 +92,13 @@ const STANDARD_VOICES = [
   { id: "Chinese (Mandarin)_News_Anchor", name: "News Anchor" },
 ];
 
-const KEY_FIELDS = [
-  "kymaKey", "geminiKey", "openRouterKey", "groqApiKey",
-  "huggingFaceToken", "openaiKey", "googleCloudKey", "libreTranslateUrl",
-  "libreTranslateKey", "sonioxApiKey", "elevenLabsKey", "minimaxKey",
-  "replicateKey",
-];
+const KEY_FIELDS = Object.keys(providerRegistry?.keyFields || {
+  kymaKey: 1, geminiKey: 1, openRouterKey: 1, groqApiKey: 1,
+  huggingFaceToken: 1, openaiKey: 1, googleCloudKey: 1, libreTranslateUrl: 1,
+  libreTranslateKey: 1, sonioxApiKey: 1, elevenLabsKey: 1, minimaxKey: 1,
+  replicateKey: 1, customProxyApiKey: 1, customProxyBaseUrl: 1,
+  customProxyModelId: 1, customTtsApiKey: 1, customTtsBaseUrl: 1, customTtsVoiceId: 1,
+});
 
 let activeTabInfo = null;
 let providerSaveTimer = null;
@@ -128,6 +129,12 @@ let state = {
   elevenLabsKey: "",
   minimaxKey: "",
   replicateKey: "",
+  customProxyApiKey: "",
+  customProxyBaseUrl: "",
+  customProxyModelId: "",
+  customTtsApiKey: "",
+  customTtsBaseUrl: "",
+  customTtsVoiceId: "",
   realtimeVoice: "marin",
   standardVoice: "English_magnetic_voiced_man",
   originalVolume: 18,
@@ -611,8 +618,16 @@ function applyState(s) {
 function getVideoIdFromUrl(url) {
   try {
     const parsed = new URL(url || "");
-    if (!parsed.hostname.includes("youtube.com")) return null;
-    return parsed.searchParams.get("v") || parsed.pathname.match(/\/shorts\/([a-zA-Z0-9_-]+)/)?.[1] || null;
+    const host = parsed.hostname;
+    if (host === "youtu.be" || host.endsWith(".youtu.be")) {
+      return parsed.pathname.replace(/^\/+/, "").split("/")[0] || null;
+    }
+    if (!host.includes("youtube.com")) return null;
+    return (
+      parsed.searchParams.get("v") ||
+      parsed.pathname.match(/\/(shorts|live)\/([a-zA-Z0-9_-]+)/)?.[2] ||
+      null
+    );
   } catch {
     return null;
   }
@@ -633,7 +648,7 @@ async function loadActiveTabContext() {
     }
     if (!videoId) {
       try {
-        const ytTabs = await browserApi.queryTabs({ url: ["*://*.youtube.com/*", "*://youtube.com/*"] });
+        const ytTabs = await browserApi.queryTabs({ url: ["*://*.youtube.com/*", "*://youtube.com/*", "*://*.youtu.be/*", "*://youtu.be/*"] });
         const match = ytTabs.find((t) => getVideoIdFromUrl(t.url)) || ytTabs[0];
         if (match) {
           tab = match;
@@ -707,7 +722,10 @@ function downloadJson(value, filename) {
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
+  link.style.display = "none";
+  (document.body || document.documentElement).appendChild(link);
   link.click();
+  link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 500);
 }
 

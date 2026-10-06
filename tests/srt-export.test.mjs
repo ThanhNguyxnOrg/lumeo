@@ -84,4 +84,8 @@ describe("services/srt-export.js", () => {
     expect(text).toContain("Lumeo Demo_bilingual.txt");
     expect(text).toContain("Lumeo Demo_bundle.json");
   });
+
+  it("exports downloadText method for transcript drawer export", () => {
+    expect(typeof api.downloadText).toBe("function");
+  });
 });

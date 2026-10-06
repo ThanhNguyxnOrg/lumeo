@@ -17,6 +17,7 @@ if (Test-Path $out) {
 
 $excludeNames = @(
   ".git",
+  ".github",
   "node_modules",
   "_design_reference",
   "_echoly_extracted",
@@ -25,13 +26,21 @@ $excludeNames = @(
   ".vscode",
   ".idea",
   ".DS_Store",
-  "Thumbs.db"
+  "Thumbs.db",
+  "source",
+  "tests",
+  "docs",
+  "store-assets",
+  "scripts"
 )
 
 $excludeFiles = @(
   "pack.sh",
   "pack.ps1",
-  "release.sh"
+  "release.sh",
+  "vitest.config.mjs",
+  "package.json",
+  "package-lock.json"
 )
 
 $temp = Join-Path ([System.IO.Path]::GetTempPath()) ("lumeo-pack-" + [System.Guid]::NewGuid().ToString("N"))

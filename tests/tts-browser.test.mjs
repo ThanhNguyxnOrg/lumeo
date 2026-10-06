@@ -46,4 +46,51 @@ describe("services/tts-browser.js", () => {
     await expect(api.speak("hello", "en", { provider: "openai-tts" }))
       .rejects.toThrow("OpenAI TTS service is not loaded");
   });
+
+  it("uses eleven_turbo_v2_5 as default model for ElevenLabs custom voice", async () => {
+    let capturedUrl = null;
+    let capturedBody = null;
+    window.fetch = vi.fn(async (url, init) => {
+      capturedUrl = url;
+      capturedBody = JSON.parse(init.body);
+      return {
+        ok: true,
+        blob: async () => ({}),
+      };
+    });
+    window.URL = { createObjectURL: () => "blob:test", revokeObjectURL: () => {} };
+    window.Audio = class {
+      constructor(src) { this.src = src; }
+      play() { return Promise.resolve(); }
+    };
+
+    await api.speak("hello world", "vi", {
+      provider: "custom-voice-engine",
+      customTtsBaseUrl: "https://api.elevenlabs.io/v1",
+      customTtsVoiceId: "21m00Tcm4TlvDq8ikWAM",
+      customTtsApiKey: "eleven-key",
+    });
+
+    expect(capturedUrl).toBe("https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM");
+    expect(capturedBody.model_id).toBe("eleven_turbo_v2_5");
+  });
+
+  it("fails-soft to browser speech when custom voice engine fails", async () => {
+    window.fetch = vi.fn().mockRejectedValueOnce(new Error("Network failed"));
+    const onFailover = vi.fn();
+
+    const result = await api.speak("fallback text", "en", {
+      provider: "custom-voice-engine",
+      customTtsBaseUrl: "https://api.elevenlabs.io/v1",
+      customTtsVoiceId: "v123",
+      onFailover,
+    });
+
+    expect(result).toBe(true);
+    expect(onFailover).toHaveBeenCalledWith(expect.objectContaining({
+      from: "custom-voice-engine",
+      to: "browser",
+    }));
+    expect(window.speechSynthesis.speak).toHaveBeenCalled();
+  });
 });

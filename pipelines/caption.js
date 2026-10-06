@@ -17,8 +17,13 @@
     return Date.now();
   }
 
-  function cacheKey(videoId, targetLanguage, provider, sourceLanguage) {
-    return [videoId, targetLanguage, provider, sourceLanguage || "auto"].join("::");
+  function cacheKey(videoId, targetLanguage, provider, sourceLanguage, secondaryLanguage) {
+    const normSource = !sourceLanguage || sourceLanguage === "transcript" ? "auto" : sourceLanguage;
+    const base = [videoId, targetLanguage, provider, normSource].join("::");
+    if (secondaryLanguage && secondaryLanguage !== "original" && secondaryLanguage !== normSource) {
+      return `${base}::${secondaryLanguage}`;
+    }
+    return base;
   }
 
   async function readCache() {
@@ -180,18 +185,38 @@
     return preferredEnd;
   }
 
+  function findInitialSlidingWindowLimit(cues, currentTime, lookaheadSeconds = 180, minCues = 25) {
+    const targetTime = currentTime + lookaheadSeconds;
+    let limit = 0;
+    while (limit < cues.length) {
+      if (cues[limit].start > targetTime && limit >= minCues) {
+        break;
+      }
+      limit += 1;
+    }
+    return Math.max(Math.min(minCues, cues.length), limit);
+  }
+
   class CaptionPipeline {
     constructor() {
       this.token = 0;
       this.abortController = null;
       this.cues = [];
       this.meta = null;
+      this.activeProvider = null;
+      this.targetLanguage = null;
+      this.key = null;
+      this.subtitles = null;
+      this.options = {};
+      this.isTranslatingAhead = false;
+      this.isPaidProvider = false;
     }
 
     stop() {
       this.token += 1;
       this.abortController?.abort();
       this.abortController = null;
+      this.isTranslatingAhead = false;
       window.LumeoTTS?.stop?.();
       window.LumeoSonioxSTT?.stop?.();
     }
@@ -220,7 +245,7 @@
         };
       }
 
-      const key = cacheKey(subtitles.videoId, targetLanguage, provider, subtitles.sourceLanguage);
+      const key = cacheKey(subtitles.videoId, targetLanguage, provider, subtitles.sourceLanguage, options.secondaryLanguage);
       const cache = await readCache();
       const cached = cache.entries?.[key] || null;
       if (isFreshCacheEntry(cached)) {
@@ -231,16 +256,31 @@
       }
 
       let cues = subtitles.cues;
+      let activeProvider = provider;
+      const isPaidProvider = activeProvider !== "google-free";
+      this.isPaidProvider = isPaidProvider;
+      this.activeProvider = activeProvider;
+      this.targetLanguage = targetLanguage;
+      this.key = key;
+      this.subtitles = subtitles;
+      this.options = options;
+
       if (!subtitles.nativeTarget) {
         const total = cues.length;
         const resumable = isResumableCacheEntry(cached, total);
         cues = resumable ? mergeCachedCues(cues, cached.cues) : cues;
         let completed = resumable ? countTranslated(cues) : 0;
         options.onProgress?.({ phase: resumable ? "resuming" : "translating", completed, total });
-        const batchSize = Math.max(1, Number(options.batchSize || 40));
+        const batchSize = Math.max(1, Number(options.batchSize || (isPaidProvider ? 20 : 40)));
+
+        const currentTime = Number(options.currentTime || 0);
+        const maxInitialCues = (isPaidProvider && !options.eagerTranslateAll && total > 35)
+          ? findInitialSlidingWindowLimit(cues, currentTime, 180, 25)
+          : total;
+
         let start = 0;
-        while (start < cues.length) {
-          const nextEnd = findBatchEndIndex(cues, start, batchSize);
+        while (start < maxInitialCues) {
+          const nextEnd = Math.min(maxInitialCues, findBatchEndIndex(cues, start, batchSize));
           const batchIndexes = [];
           const sourceTexts = [];
           for (let index = start; index < nextEnd; index += 1) {
@@ -250,28 +290,77 @@
           }
           start = nextEnd;
           if (!sourceTexts.length) continue;
-          const translated = await window.LumeoTranslate.translateBatch(
-            sourceTexts,
-            targetLanguage,
-            {
-              ...options,
-              provider,
-              signal,
-              targetLanguageName: options.targetLanguageName || targetLanguage,
-            },
-          );
+
+          let translated;
+          try {
+            translated = await window.LumeoTranslate.translateBatch(
+              sourceTexts,
+              targetLanguage,
+              {
+                ...options,
+                provider: activeProvider,
+                signal,
+                targetLanguageName: options.targetLanguageName || targetLanguage,
+              },
+            );
+          } catch (batchErr) {
+            if (activeProvider !== "google-free" && !signal.aborted) {
+              console.warn(`[CaptionPipeline] ${activeProvider} failed, falling back to google-free:`, batchErr);
+              options.onFailover?.({ from: activeProvider, to: "google-free", error: batchErr?.message || String(batchErr) });
+              activeProvider = "google-free";
+              this.activeProvider = "google-free";
+              this.isPaidProvider = false;
+              translated = await window.LumeoTranslate.translateBatch(
+                sourceTexts,
+                targetLanguage,
+                {
+                  ...options,
+                  provider: "google-free",
+                  signal,
+                  targetLanguageName: options.targetLanguageName || targetLanguage,
+                },
+              );
+            } else {
+              throw batchErr;
+            }
+          }
+
           withAbortError(signal);
           if (token !== this.token) return { ok: false, error: "stale" };
+
+          let secTranslated = null;
+          if (options.secondaryLanguage && options.secondaryLanguage !== "original" && options.secondaryLanguage !== subtitles.sourceLanguage) {
+            try {
+              secTranslated = await window.LumeoTranslate.translateBatch(
+                sourceTexts,
+                options.secondaryLanguage,
+                {
+                  ...options,
+                  provider: activeProvider,
+                  signal,
+                  targetLanguageName: options.secondaryLanguage,
+                },
+              );
+            } catch (e) {
+              console.warn("[CaptionPipeline] Secondary translation error:", e);
+            }
+          }
+
           cues = cues.map((cue, index) => {
             const translatedIndex = batchIndexes.indexOf(index);
-            return translatedIndex >= 0
-              ? { ...cue, translated: translated[translatedIndex] || cue.text }
-              : cue;
+            if (translatedIndex >= 0) {
+              const updated = { ...cue, translated: translated[translatedIndex] || cue.text };
+              if (secTranslated && secTranslated[translatedIndex]) {
+                updated.secondaryTranslated = secTranslated[translatedIndex];
+              }
+              return updated;
+            }
+            return cue;
           });
           completed = countTranslated(cues);
           await setCachedResult(key, {
             cues,
-            meta: progressMeta({ ...subtitles, provider, cached: false }, completed, total),
+            meta: progressMeta({ ...subtitles, provider: activeProvider, cached: false }, completed, total),
           });
           options.onProgress?.({ phase: completed === total ? "translated" : "translating", completed, total });
         }
@@ -281,19 +370,141 @@
         options.onProgress?.({ phase: "native", completed: cues.length, total: cues.length });
       }
       this.cues = cues;
+      const completedCues = countTranslated(cues);
       this.meta = {
         ...subtitles,
-        provider,
+        provider: activeProvider,
         cached: false,
-        progress: { completed: cues.length, total: cues.length },
-        resume: false,
+        progress: { completed: completedCues, total: cues.length },
+        resume: completedCues < cues.length,
       };
       await setCachedResult(key, { cues, meta: this.meta });
       return { ok: true, cues, meta: this.meta };
     }
 
+    async checkAndTranslateAhead(currentTime) {
+      if (this.isTranslatingAhead || !this.abortController) return;
+      const lookahead = currentTime + 120;
+      const needsTranslation = this.cues.findIndex(
+        (cue) => cue.start >= currentTime && cue.start <= lookahead && !cue.translated,
+      );
+      if (needsTranslation === -1) return;
+
+      this.isTranslatingAhead = true;
+      const signal = this.abortController.signal;
+      const token = this.token;
+      const targetLanguage = this.targetLanguage || DEFAULT_TARGET_LANGUAGE;
+      let activeProvider = this.activeProvider || DEFAULT_TRANSLATE_PROVIDER;
+      const batchSize = Math.max(1, Number(this.options.batchSize || 20));
+
+      try {
+        const nextEnd = Math.min(this.cues.length, findBatchEndIndex(this.cues, needsTranslation, batchSize));
+        const batchIndexes = [];
+        const sourceTexts = [];
+        for (let i = needsTranslation; i < nextEnd; i++) {
+          if (!this.cues[i]?.translated) {
+            batchIndexes.push(i);
+            sourceTexts.push(this.cues[i].text);
+          }
+        }
+        if (!sourceTexts.length) {
+          this.isTranslatingAhead = false;
+          return;
+        }
+
+        let translated;
+        try {
+          translated = await window.LumeoTranslate.translateBatch(
+            sourceTexts,
+            targetLanguage,
+            {
+              ...this.options,
+              provider: activeProvider,
+              signal,
+              targetLanguageName: this.options.targetLanguageName || targetLanguage,
+            },
+          );
+        } catch (batchErr) {
+          if (activeProvider !== "google-free" && !signal.aborted) {
+            console.warn(`[CaptionPipeline] ${activeProvider} ahead failed, falling back to google-free:`, batchErr);
+            this.options.onFailover?.({ from: activeProvider, to: "google-free", error: batchErr?.message || String(batchErr) });
+            activeProvider = "google-free";
+            this.activeProvider = "google-free";
+            this.isPaidProvider = false;
+            translated = await window.LumeoTranslate.translateBatch(
+              sourceTexts,
+              targetLanguage,
+              {
+                ...this.options,
+                provider: "google-free",
+                signal,
+                targetLanguageName: this.options.targetLanguageName || targetLanguage,
+              },
+            );
+          } else {
+            throw batchErr;
+          }
+        }
+
+        withAbortError(signal);
+        if (token !== this.token) return;
+
+        let secTranslated = null;
+        if (this.options.secondaryLanguage && this.options.secondaryLanguage !== "original" && this.options.secondaryLanguage !== this.subtitles?.sourceLanguage) {
+          try {
+            secTranslated = await window.LumeoTranslate.translateBatch(
+              sourceTexts,
+              this.options.secondaryLanguage,
+              {
+                ...this.options,
+                provider: activeProvider,
+                signal,
+                targetLanguageName: this.options.secondaryLanguage,
+              },
+            );
+          } catch (e) {
+            console.warn("[CaptionPipeline] Secondary lookahead translation error:", e);
+          }
+        }
+
+        withAbortError(signal);
+        if (token !== this.token) return;
+
+        this.cues = this.cues.map((cue, index) => {
+          const matchIdx = batchIndexes.indexOf(index);
+          if (matchIdx >= 0) {
+            const updated = { ...cue, translated: translated[matchIdx] || cue.text };
+            if (secTranslated && secTranslated[matchIdx]) {
+              updated.secondaryTranslated = secTranslated[matchIdx];
+            }
+            return updated;
+          }
+          return cue;
+        });
+
+        const completed = countTranslated(this.cues);
+        const total = this.cues.length;
+        if (this.key && this.subtitles) {
+          await setCachedResult(this.key, {
+            cues: this.cues,
+            meta: progressMeta({ ...this.subtitles, provider: activeProvider, cached: false }, completed, total),
+          });
+        }
+        this.options.onProgress?.({ phase: completed === total ? "translated" : "translating", completed, total });
+      } catch (err) {
+        if (!signal.aborted) {
+          console.warn("[CaptionPipeline] Error in checkAndTranslateAhead:", err);
+        }
+      } finally {
+        this.isTranslatingAhead = false;
+      }
+    }
+
     cueAt(timeSeconds) {
       const t = Number(timeSeconds || 0);
+      if (this.isPaidProvider && !this.isTranslatingAhead && this.abortController) {
+        this.checkAndTranslateAhead(t);
+      }
       let lo = 0;
       let hi = this.cues.length - 1;
       let best = -1;

@@ -202,8 +202,16 @@
     const link = document.createElement("a");
     link.href = url;
     link.download = filename;
+    link.style.display = "none";
+    (document.body || document.documentElement).appendChild(link);
     link.click();
+    link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 500);
+  }
+
+  function downloadText(text, filename, type = "text/plain;charset=utf-8") {
+    const blob = new Blob([String(text || "")], { type });
+    downloadBlob(blob, filename);
   }
 
   window.LumeoSrtExport = {
@@ -218,5 +226,6 @@
     makeZip,
     makeSubtitleZip,
     downloadBlob,
+    downloadText,
   };
 })();

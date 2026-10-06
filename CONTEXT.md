@@ -54,6 +54,31 @@
     - **Tier 2 (Custom Neural Voice Engine)**: Labeled as `Custom Neural Voice Engine` in settings. When selected, the standard voice dropdown list is **completely hidden/removed** because voice synthesis is 100% determined by the user's configured Voice ID.
 33. **Custom Gateway & Neural Voice Requirements & Zero Pre-filled Defaults**:
     - **Strict Vendor Neutrality & Zero Fallback Bias**: Leaving Base URL blank is strictly invalid and disables the gateway with a required validation error — there is NO hidden fallback to OpenRouter or ElevenLabs. Users must explicitly supply their desired endpoint Base URL.
-    - **AI Translation Custom Gateway**: Labeled as `Custom AI Gateway (OpenRouter / Compatible)` in provider selection. Features required Base URL (`customProxyBaseUrl`, default: `""`), API Key, and Model ID input.
+    - **AI Translation Custom Gateway**: Labeled as `Custom AI Gateway (OpenAI-Compatible, DeepSeek, Ollama, Proxy)` in provider selection, separate from the dedicated OpenRouter option. Features required Base URL (`customProxyBaseUrl`, default: `""`), API Key, and Model ID input.
     - **Custom Neural Voice Engine**: Configured directly in Key Vault. Features required Base URL (`customTtsBaseUrl`, strictly empty `""` by default, no pre-filled URLs; supports ElevenLabs, Cloud TTS, or Local Kokoro/Piper models), API Key (optional for local endpoints), Voice ID/Name (required text input with auto-clean regex), and `🔊 Test Voice` action.
     - If `Custom Neural Voice Engine` is active, the in-player popover replaces the standard voice picker with a clean `Custom Voice (Active)` status indicator.
+34. **Dynamic Voice Discovery & Hybrid ID Input (`Fetch Voices`)**:
+    - For ElevenLabs or supported voice endpoints, a `Fetch Voices` action queries the provider API in real-time using the user's API Key and populates a dynamic dropdown of all account voices (pre-made, community library, and personal voice clones).
+    - Maintains a seamless text fallback (`Custom Voice ID...`) allowing users to input any voice identifier directly for local models (Kokoro, Piper) or custom proxies.
+    - Zero maintenance overhead: extension code never needs updates when providers add new voices.
+35. **Freeform Model ID for Voice Gateway (`customTtsModelId`)**:
+    - Introduces a freeform Model ID input for Custom Voice Gateway (defaulting to `eleven_turbo_v2_5` for ElevenLabs or `tts-1` for OpenAI-compatible audio).
+    - Eliminates hardcoded model constraints, granting immediate access to high-speed/cheaper models (`eleven_flash_v2_5`, local TTS checkpoints) without code changes.
+36. **Smart Failover & Fail-Soft Resilience**:
+    - Automatic non-blocking failover to `google-free` (for translation) and `browser` natural speech (for TTS) when external AI providers encounter rate limits (429), authentication errors (401), server errors, or timeouts.
+    - Preserves continuous video playback with an informative, non-disruptive warning toast.
+37. **Sliding-Window Token Conservation (Chunk-on-Demand)**:
+    - For paid BYOK translation providers (OpenRouter, OpenAI, Custom AI Gateway), cues are translated in progressive sliding windows (2–3 minutes ahead of `currentTime`) rather than eagerly batch-translating the entire video upfront.
+    - Conserves 80–90% of token expenses on partially watched videos.
+38. **Instant Reactive Subtitle Ordering & Symmetrical Typography Hierarchy**:
+    - Toggling "Subtitle order" (`translation-top` vs `source-top`) immediately re-renders the active DOM cue in real-time (`applyStyle()` re-executes `appendSubtitleLines()`).
+    - Typography strictly enforces visual hierarchy: whichever line is on top is styled as primary (100% font size, weight 700, margin-top 0), while the line below is styled as secondary (72% font size, weight 400, margin-top 4px, 0.75 opacity).
+39. **Hybrid Bilingual Subtitles & Secondary Subtitle Selection**:
+    - In bilingual mode, line 2 defaults to the video's original audio/speech (`Original Audio (Auto)`), requiring zero extra API tokens.
+    - A dedicated drill-down menu (`Secondary Subtitle`) in the popover enables users to either keep the original spoken audio or select any secondary target language for true dual-language learning.
+40. **Single-Flight Transcript Drawer Invocation**:
+    - The in-player transcript toggle button (`[data-lumeo-toggle-transcript]`) is exclusively wired through `overlayController`'s `options.onToggleTranscript` callback, preventing duplicate event listener collisions that previously caused instantaneous double-toggle cancellation.
+41. **Unified Custom AI Gateway (Consolidating OpenRouter)**:
+    - OpenRouter natively uses the OpenAI-compatible endpoint format (`/chat/completions`) with standard Bearer auth and any model ID.
+    - Rather than displaying a duplicate standalone OpenRouter card and redundant dropdown item, OpenRouter is unified under `Custom AI Gateway (OpenAI-Compatible: OpenRouter, DeepSeek, Ollama, Proxy)` with `https://openrouter.ai/api/v1` as the Base URL.
+    - Existing stored `openRouterKey` configurations automatically migrate to `customProxyApiKey`.

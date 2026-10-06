@@ -16,6 +16,8 @@
     geminiModel: "gemini-2.5-flash-lite",
     openaiKey: "",
     openaiModel: "gpt-4o-mini",
+    openRouterKey: "",
+    openRouterModel: "google/gemini-2.0-flash-001",
     groqApiKey: "",
     kymaKey: "",
     customProxyBaseUrl: "",
@@ -26,6 +28,7 @@
     customTtsBaseUrl: "",
     customTtsApiKey: "",
     customTtsVoiceId: "",
+    customTtsModelId: "",
     autoStart: false,
     smartSkipNative: false,
     autoPauseOnHover: false,
@@ -38,6 +41,7 @@
     highContrast: false,
     layoutPreset: "stacked",
     subtitleOrder: "translation-top",
+    secondaryLanguage: "original",
     subShadowStyle: "drop-shadow",
     subBackgroundOpacity: 75,
   };
@@ -73,6 +77,9 @@
   const customTtsBaseUrlInput = document.getElementById("customTtsBaseUrl");
   const customTtsVoiceIdInput = document.getElementById("customTtsVoiceId");
   const customTtsApiKeyInput = document.getElementById("customTtsApiKey");
+  const customTtsModelIdInput = document.getElementById("customTtsModelId");
+  const btnFetchCustomTtsVoices = document.getElementById("btnFetchCustomTtsVoices");
+  const customTtsVoiceSelect = document.getElementById("customTtsVoiceSelect");
   const voiceVolumeInput = document.getElementById("voiceVolume");
   const voiceVolumeVal = document.getElementById("voiceVolumeVal");
   const originalVolumeInput = document.getElementById("originalVolume");
@@ -212,7 +219,7 @@
   // 4. Load Settings from Storage
   async function loadSettings() {
     try {
-      const stored = await STORAGE.get(null);
+      const stored = await STORAGE.get(DEFAULT_SETTINGS);
       currentSettings = { ...DEFAULT_SETTINGS, ...stored };
 
       // Also read caption style from localStorage if present
@@ -220,6 +227,16 @@
         const style = JSON.parse(localStorage.getItem("lumeoCaptionStyle") || "{}");
         currentSettings = { ...currentSettings, ...style };
       } catch {}
+
+      // Seamless migration of openRouterKey to Custom AI Gateway
+      if (currentSettings.openRouterKey && !currentSettings.customProxyApiKey) {
+        currentSettings.customProxyApiKey = currentSettings.openRouterKey;
+        currentSettings.customProxyBaseUrl = currentSettings.customProxyBaseUrl || "https://openrouter.ai/api/v1";
+        currentSettings.customProxyModelId = currentSettings.customProxyModelId || currentSettings.openRouterModel || "google/gemini-2.0-flash-001";
+      }
+      if (currentSettings.translateProvider === "openrouter") {
+        currentSettings.translateProvider = "custom-gateway";
+      }
 
       populateInputs();
       updatePreview();
@@ -247,6 +264,7 @@
     if (browserVoiceInput && currentSettings.standardVoice) browserVoiceInput.value = currentSettings.standardVoice;
     if (customTtsBaseUrlInput) customTtsBaseUrlInput.value = currentSettings.customTtsBaseUrl || "";
     if (customTtsVoiceIdInput) customTtsVoiceIdInput.value = currentSettings.customTtsVoiceId || "";
+    if (customTtsModelIdInput) customTtsModelIdInput.value = currentSettings.customTtsModelId || "";
     if (customTtsApiKeyInput) customTtsApiKeyInput.value = currentSettings.customTtsApiKey || "";
 
     if (autoStartInput) autoStartInput.checked = !!currentSettings.autoStart;
@@ -341,6 +359,7 @@
     if (browserVoiceInput) currentSettings.standardVoice = browserVoiceInput.value;
     if (customTtsBaseUrlInput) currentSettings.customTtsBaseUrl = customTtsBaseUrlInput.value.trim();
     if (customTtsVoiceIdInput) currentSettings.customTtsVoiceId = customTtsVoiceIdInput.value.trim();
+    if (customTtsModelIdInput) currentSettings.customTtsModelId = customTtsModelIdInput.value.trim();
     if (customTtsApiKeyInput) currentSettings.customTtsApiKey = customTtsApiKeyInput.value.trim();
 
     if (autoStartInput) currentSettings.autoStart = autoStartInput.checked;
@@ -435,7 +454,7 @@
     groqApiKeyInput, kymaKeyInput,
     customProxyBaseUrlInput, customProxyApiKeyInput, customProxyModelIdInput,
     captionTtsProviderInput, browserVoiceInput,
-    customTtsBaseUrlInput, customTtsVoiceIdInput, customTtsApiKeyInput,
+    customTtsBaseUrlInput, customTtsVoiceIdInput, customTtsApiKeyInput, customTtsModelIdInput,
     voiceVolumeInput, originalVolumeInput, muteOriginalInput,
     fontSizeInput, bottomOffsetInput, layoutPresetInput, highContrastInput,
     subtitleOrderInput, subShadowStyleInput, subBackgroundOpacityInput,
@@ -550,10 +569,11 @@
           if (base.includes("elevenlabs")) {
             if (!key) throw new Error("Please enter your ElevenLabs API Key");
             const url = `${base}/text-to-speech/${encodeURIComponent(voiceId)}`;
+            const voiceModelId = customTtsModelIdInput?.value?.trim() || "eleven_turbo_v2_5";
             const res = await fetch(url, {
               method: "POST",
               headers: { "xi-api-key": key, "Content-Type": "application/json" },
-              body: JSON.stringify({ text: "Hello! This is a test of your custom voice in Lumeo.", model_id: "eleven_multilingual_v2" }),
+              body: JSON.stringify({ text: "Hello! This is a test of your custom voice in Lumeo.", model_id: voiceModelId }),
             });
             if (res.ok) {
               const blob = await res.blob();
@@ -590,11 +610,79 @@
     });
   });
 
+  // Fetch Voices from ElevenLabs / Custom TTS
+  btnFetchCustomTtsVoices?.addEventListener("click", async () => {
+    const key = customTtsApiKeyInput?.value?.trim();
+    if (!key) {
+      alert("Please enter your ElevenLabs API Key first to fetch voices.");
+      return;
+    }
+    const origText = btnFetchCustomTtsVoices.textContent;
+    btnFetchCustomTtsVoices.textContent = "⏳ Fetching...";
+    btnFetchCustomTtsVoices.disabled = true;
+    try {
+      const base = (customTtsBaseUrlInput?.value?.trim() || "https://api.elevenlabs.io/v1").replace(/\/+$/, "");
+      const res = await fetch(`${base}/voices`, {
+        headers: { "xi-api-key": key },
+      });
+      if (!res.ok) {
+        throw new Error(`ElevenLabs error ${res.status}: Check API Key or endpoint.`);
+      }
+      const data = await res.json();
+      const voices = data?.voices || [];
+      if (!voices.length) {
+        alert("No voices found in your ElevenLabs account.");
+        return;
+      }
+      if (customTtsVoiceSelect) {
+        customTtsVoiceSelect.replaceChildren();
+        const defOpt = document.createElement("option");
+        defOpt.value = "";
+        defOpt.textContent = `-- Choose from ${voices.length} voices in your account --`;
+        customTtsVoiceSelect.appendChild(defOpt);
+
+        voices.forEach((v) => {
+          const opt = document.createElement("option");
+          opt.value = v.voice_id;
+          const desc = v.category ? ` [${v.category}]` : "";
+          opt.textContent = `${v.name}${desc} (${v.voice_id.slice(0, 8)}...)`;
+          customTtsVoiceSelect.appendChild(opt);
+        });
+
+        const manualOpt = document.createElement("option");
+        manualOpt.value = "__manual__";
+        manualOpt.textContent = "✏️ Enter custom Voice ID manually...";
+        customTtsVoiceSelect.appendChild(manualOpt);
+
+        customTtsVoiceSelect.style.display = "block";
+      }
+      alert(`Successfully loaded ${voices.length} voices from your account! Select a voice from the dropdown.`);
+    } catch (err) {
+      alert(err.message || "Failed to fetch voices.");
+    } finally {
+      btnFetchCustomTtsVoices.textContent = origText;
+      btnFetchCustomTtsVoices.disabled = false;
+    }
+  });
+
+  customTtsVoiceSelect?.addEventListener("change", () => {
+    const selected = customTtsVoiceSelect.value;
+    if (selected && selected !== "__manual__") {
+      if (customTtsVoiceIdInput) {
+        customTtsVoiceIdInput.value = selected;
+        scheduleSave();
+      }
+    }
+  });
+
   // 10. Cache & Export Tools
   btnClearCache?.addEventListener("click", async () => {
     try {
       localStorage.removeItem("lumeoCaptionCacheV1");
       await STORAGE.remove("lumeoCaptionCacheV1");
+      if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({ action: "captionCacheClear" }, () => {});
+      }
       cacheStatusMsg.textContent = "Subtitle cache cleared successfully!";
       setTimeout(() => cacheStatusMsg.textContent = "", 3000);
     } catch {
@@ -626,12 +714,15 @@
       for (const k of keys) {
         const entry = entries[k];
         if (!entry) continue;
-        const text = entry.translated || entry.text || "";
-        if (!text) continue;
-        const start = entry.start != null ? entry.start : (index - 1) * 3;
-        const end = entry.end != null ? entry.end : (index * 3);
-        srtContent += `${index}\n${formatTime(start)} --> ${formatTime(end)}\n${text}\n\n`;
-        index++;
+        const cuesList = Array.isArray(entry.cues) ? entry.cues : (entry.text ? [entry] : []);
+        for (const cue of cuesList) {
+          const text = cue.translated || cue.text || "";
+          if (!text) continue;
+          const start = cue.start != null ? cue.start : (index - 1) * 3;
+          const end = cue.end != null ? cue.end : (index * 3);
+          srtContent += `${index}\n${formatTime(start)} --> ${formatTime(end)}\n${text}\n\n`;
+          index++;
+        }
       }
       const blob = new Blob([srtContent], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
@@ -687,7 +778,7 @@
       if (areaName !== "local") return;
       let hasChanges = false;
       for (const [key, change] of Object.entries(changes)) {
-        if (currentSettings[key] !== change.newValue) {
+        if (key in DEFAULT_SETTINGS && currentSettings[key] !== change.newValue) {
           currentSettings[key] = change.newValue;
           hasChanges = true;
         }

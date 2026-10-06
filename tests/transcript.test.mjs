@@ -102,4 +102,25 @@ describe("LumeoTranscriptDrawer", () => {
     expect(summaryBox.hidden).toBe(false);
     expect(ctrl.getElement().querySelector(".lumeo-summary-content").textContent).toContain("Point 1");
   });
+
+  it("renders empty state placeholder when no cues are available", () => {
+    const root = controller.build();
+    controller.renderCaptionTranscript([]);
+    const emptyEl = root.querySelector(".lumeo-transcript-empty");
+    expect(emptyEl).not.toBeNull();
+    expect(emptyEl.querySelector(".lumeo-transcript-empty-title").textContent).toBe("No subtitles yet");
+  });
+
+  it("fires onToggle callback when drawer visibility changes", () => {
+    const onToggle = vi.fn();
+    const ctrl = window.LumeoTranscript.createTranscriptController({
+      doc: document,
+      win: window,
+      onToggle,
+    });
+    expect(ctrl.toggle()).toBe(true);
+    expect(onToggle).toHaveBeenCalledWith(true);
+    expect(ctrl.toggle(false)).toBe(false);
+    expect(onToggle).toHaveBeenCalledWith(false);
+  });
 });

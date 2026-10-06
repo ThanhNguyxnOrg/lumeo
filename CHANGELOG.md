@@ -4,6 +4,49 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.0] - 2026-10-06 — Production Release: Three-Tier Dub & Captions, Unified AI Gateway, and YouTube-Native UI
+
+This major milestone completes the full merger of Lumen and Echoly into **Lumeo 2.0.0**, delivering YouTube-native bilingual subtitles, live AI dubbing across three tiers, and a vendor-neutral AI Gateway.
+
+### Added
+
+- **YouTube-Native Popover & Controls:**
+  - Integrated 24x24 YouTube player toolbar control button and sleek native popover menu (`Alt+L`).
+  - Interactive drill-down navigation for Subtitle Style, Audio & Voice, Subtitle Order, and Secondary Subtitle language selection.
+  - Picture-in-Picture (PiP) window for subtitles and video with aspect-ratio clamping for YouTube Shorts.
+  - Bounded draggable subtitle overlay with position persistence and instant center-reset button.
+- **Unified Custom AI Gateway & Complete Key Vault:**
+  - Consolidated OpenAI-compatible Custom AI Gateway supporting OpenRouter, DeepSeek, Ollama, LM Studio, vLLM, and custom local proxies.
+  - Full vendor neutrality: required Base URL validation without hardcoded vendor fallback bias, plus first-class support for keyless local endpoints (`http://localhost:11434/v1`).
+  - Freeform model ID entry across translation and voice engines with dynamic voice discovery and automatic fallback.
+- **Hybrid Bilingual Subtitles & Customizable Subtitle Order:**
+  - Real-time toggle between "Translation on top" and "Original / Secondary on top" with dynamic symmetrical typography.
+  - Secondary subtitle language selection allowing viewers to pair the primary translation with original audio or any of 30+ supported translated languages.
+  - In-place reactive session restart during language handover without pausing video playback or resetting player elements.
+- **AI Transcript Drawer & Video Summarizer:**
+  - Collapsible transcript drawer with active cue synchronization and seek navigation.
+  - Structured bullet-point AI Video Summarizer powered by configured AI providers with BYOK gating.
+- **Smart Failover & Storage Resilience:**
+  - Automatic smart failover to Google Free translation upon paid provider 429 quota exhaustion or network disruption.
+  - High-performance 5 MB subtitle cache with LRU eviction and isolated bilingual cache keys preserving 100% backward compatibility.
+  - Sliding-window lookahead translation for paid AI models to dramatically minimize API token spend.
+
+### Changed
+
+- Replaced standalone OpenRouter settings card with unified Custom AI Gateway dashboard with seamless automatic migration.
+- Redesigned Options page into an Obsidian Cinema dashboard with real-time 16:9 subtitle preview and debounced auto-save.
+- Standardized character edge styling, high-contrast mode, and opacity controls mapped to single-source-of-truth Chrome storage.
+
+### Fixed
+
+- Fixed double-toggle conflict on the header Transcript Drawer button.
+- Fixed background service worker persistence sync dropping `customTtsModelId`, `subtitleOrder`, and `secondaryLanguage`.
+- Fixed local keyless AI Gateway rejection in background Word Context and Transcript Summarizer.
+- Fixed in-place language handover and string tier argument mangling in `session-manager.js`.
+- Fixed options page subtitle cache reset synchronization broadcast.
+
+---
+
 ## [2.0.0-beta.12] - 2026-05-11 — Compact toolbar + in-video overlay
 
 ### Changed

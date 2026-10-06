@@ -58,12 +58,15 @@
     let ytObserver = null;
     let ytPollTimer = null;
     let isTranslating = false;
+    let isLoading = false;
+    let currentStatusText = "";
 
     // Subtitle visual state variables
     let currentFontSize = 22;
     let currentBgOpacity = 75;
     let currentShadowStyle = "drop-shadow";
     let currentSubtitleOrder = "translation-top";
+    let currentSecondaryLanguage = "original";
     let currentOriginalVolume = 18;
     let currentVoiceVolume = 100;
 
@@ -388,6 +391,22 @@
           updateMenuLabels();
         },
       },
+      secondarylanguage: {
+        title: "Secondary Subtitle",
+        getItems: () => [
+          { id: "original", label: "Original Audio (Auto)" },
+          ...languages.map(([code, name]) => ({ id: code, label: name })),
+        ],
+        getValue: () => currentSecondaryLanguage || "original",
+        onSelect: (val) => {
+          currentSecondaryLanguage = val;
+          try { chrome.storage?.local?.set({ secondaryLanguage: val }); } catch {}
+          if (typeof options.onSecondaryLanguageChange === "function") {
+            try { options.onSecondaryLanguageChange(val); } catch {}
+          }
+          updateMenuLabels();
+        },
+      },
       originalvolume: {
         title: "Original Volume",
         getItems: () => [
@@ -502,6 +521,15 @@
       const langLabelEl = root.querySelector('[data-val="language"]');
       if (langLabelEl) langLabelEl.textContent = langItem ? langItem.label.split(" (")[0] : langVal;
 
+      const secRowEl = root.querySelector('[data-lumeo-secondary-row]');
+      if (secRowEl) {
+        secRowEl.style.display = (subVal === "stacked") ? "flex" : "none";
+      }
+      const secVal = currentSecondaryLanguage || "original";
+      const secItem = SUBMENUS.secondarylanguage.getItems().find((i) => i.id === secVal);
+      const secLabelEl = root.querySelector('[data-val="secondarylanguage"]');
+      if (secLabelEl) secLabelEl.textContent = secItem ? secItem.label.split(" (")[0] : "Original Audio";
+
       const voiceVal = elements.voiceSelect?.value || "auto";
       const voiceItem = SUBMENUS.voice.getItems().find((i) => i.id === voiceVal);
       const voiceLabelEl = root.querySelector('[data-val="voice"]');
@@ -584,6 +612,7 @@
                   <span class="ytp-lumeo-session-icon">▶</span>
                   <span class="ytp-lumeo-session-text">Start Translation</span>
                 </button>
+                <div class="ytp-lumeo-status-badge" data-lumeo-status-badge style="display: none;"></div>
               </div>
 
               <div class="ytp-lumeo-menu-list">
@@ -598,6 +627,13 @@
                 <button type="button" class="ytp-lumeo-menu-item" data-open-sub="language">
                   <span class="ytp-lumeo-item-label">Target Language</span>
                   <span class="ytp-lumeo-item-val" data-val="language">Vietnamese</span>
+                  <span class="ytp-lumeo-item-arrow">›</span>
+                </button>
+
+                <!-- Secondary Subtitle (Bilingual mode) -->
+                <button type="button" class="ytp-lumeo-menu-item" data-open-sub="secondarylanguage" data-lumeo-secondary-row>
+                  <span class="ytp-lumeo-item-label">Secondary subtitle</span>
+                  <span class="ytp-lumeo-item-val" data-val="secondarylanguage">Original Audio</span>
                   <span class="ytp-lumeo-item-arrow">›</span>
                 </button>
 
@@ -789,6 +825,7 @@
         brand: root.querySelector("[data-lumeo-brand]"),
         rootView: root.querySelector("[data-lumeo-root-view]"),
         subContainer: root.querySelector("[data-lumeo-sub-container]"),
+        statusBadge: root.querySelector("[data-lumeo-status-badge]"),
         source: null,
         history: null,
       };
@@ -843,6 +880,9 @@
         elements.subtitleOrder.value = captionStyle.subtitleOrder;
         currentSubtitleOrder = captionStyle.subtitleOrder;
       }
+      if (captionStyle.secondaryLanguage) {
+        currentSecondaryLanguage = captionStyle.secondaryLanguage;
+      }
       if (captionStyle.originalVolume !== undefined) {
         currentOriginalVolume = Number(captionStyle.originalVolume);
       }
@@ -872,6 +912,9 @@
       if (captionStyle.subtitleOrder) {
         currentSubtitleOrder = captionStyle.subtitleOrder;
         if (elements.subtitleOrder) elements.subtitleOrder.value = captionStyle.subtitleOrder;
+      }
+      if (captionStyle.secondaryLanguage) {
+        currentSecondaryLanguage = captionStyle.secondaryLanguage;
       }
       if (captionStyle.originalVolume !== undefined) {
         currentOriginalVolume = Number(captionStyle.originalVolume);
@@ -903,8 +946,21 @@
       if (root) root.dataset.state = state;
     }
 
-    function setStatusText(/* text */) {
-      // Status text intentionally not shown on toolbar
+    function setStatusText(text) {
+      currentStatusText = String(text || "").trim();
+      if (elements.statusBadge) {
+        if (currentStatusText) {
+          elements.statusBadge.textContent = currentStatusText;
+          elements.statusBadge.style.display = "flex";
+          elements.statusBadge.title = currentStatusText;
+        } else {
+          elements.statusBadge.textContent = "";
+          elements.statusBadge.style.display = "none";
+        }
+      }
+      if (elements.status) {
+        elements.status.title = currentStatusText ? `Lumeo: ${currentStatusText}` : "Lumeo: Ready";
+      }
     }
 
     function showToast(text, opts, durationMs) {
@@ -973,7 +1029,12 @@
       elements.transcriptBtn?.addEventListener("click", (e) => {
         e.stopPropagation();
         if (typeof options.onToggleTranscript === "function") {
-          options.onToggleTranscript();
+          const res = options.onToggleTranscript();
+          if (typeof res === "boolean") {
+            setTranscriptActive(res);
+          } else {
+            elements.transcriptBtn?.classList.toggle("is-active");
+          }
         }
       });
 
@@ -1057,11 +1118,7 @@
               if (elements.subtitleOrder) elements.subtitleOrder.value = items.subtitleOrder;
             }
             if (items?.targetLanguage && elements.langSelect) {
-              const prev = elements.langSelect.value;
               elements.langSelect.value = items.targetLanguage;
-              if (prev !== items.targetLanguage && typeof options.onLanguageChange === "function") {
-                try { options.onLanguageChange(items.targetLanguage); } catch {}
-              }
             }
             if (items?.layoutPreset && elements.layoutPreset) {
               elements.layoutPreset.value = items.layoutPreset;
@@ -1100,11 +1157,7 @@
                 if (elements.subtitleOrder) elements.subtitleOrder.value = currentSubtitleOrder;
               }
               if (changes.targetLanguage?.newValue != null && elements.langSelect) {
-                const prev = elements.langSelect.value;
                 elements.langSelect.value = changes.targetLanguage.newValue;
-                if (prev !== changes.targetLanguage.newValue && typeof options.onLanguageChange === "function") {
-                  try { options.onLanguageChange(changes.targetLanguage.newValue); } catch {}
-                }
               }
               if (changes.layoutPreset?.newValue != null && elements.layoutPreset) {
                 elements.layoutPreset.value = changes.layoutPreset.newValue;
@@ -1149,10 +1202,25 @@
       return root;
     }
 
+    function setTranscriptActive(active) {
+      if (elements.transcriptBtn) {
+        elements.transcriptBtn.classList.toggle("is-active", !!active);
+      }
+    }
+
     function updateSessionControls() {
       if (!elements.toggleSessionBtn) return;
-      if (isTranslating) {
-        elements.toggleSessionBtn.classList.remove("is-start");
+      if (isLoading) {
+        elements.toggleSessionBtn.classList.remove("is-start", "is-stop");
+        elements.toggleSessionBtn.classList.add("is-loading");
+        elements.toggleSessionBtn.title = "Loading translation...";
+        elements.toggleSessionBtn.setAttribute("aria-label", "Loading Translation");
+        elements.toggleSessionBtn.innerHTML = `
+          <span class="ytp-lumeo-session-spinner"></span>
+          <span class="ytp-lumeo-session-text">${currentStatusText || "Loading & translating..."}</span>
+        `;
+      } else if (isTranslating) {
+        elements.toggleSessionBtn.classList.remove("is-start", "is-loading");
         elements.toggleSessionBtn.classList.add("is-stop");
         elements.toggleSessionBtn.title = "Stop active translation";
         elements.toggleSessionBtn.setAttribute("aria-label", "Stop Translation");
@@ -1161,7 +1229,7 @@
           <span class="ytp-lumeo-session-text">Stop Translation</span>
         `;
       } else {
-        elements.toggleSessionBtn.classList.remove("is-stop");
+        elements.toggleSessionBtn.classList.remove("is-stop", "is-loading");
         elements.toggleSessionBtn.classList.add("is-start");
         elements.toggleSessionBtn.title = "Start real-time translation";
         elements.toggleSessionBtn.setAttribute("aria-label", "Start Translation");
@@ -1175,6 +1243,13 @@
     function setSessionState(sessionState = {}) {
       if (typeof sessionState.isTranslating === "boolean") {
         isTranslating = sessionState.isTranslating;
+      }
+      if (typeof sessionState.isLoading === "boolean") {
+        isLoading = sessionState.isLoading;
+      }
+      if (typeof sessionState.statusText === "string") {
+        currentStatusText = sessionState.statusText;
+        setStatusText(currentStatusText);
       }
       updateSessionControls();
       updateYouTubeControlButton();
@@ -1359,6 +1434,7 @@
       ensureYouTubeControlButton,
       getYouTubeControlButton: () => ytButton,
       updateMenuLabels,
+      setTranscriptActive,
     };
   }
 

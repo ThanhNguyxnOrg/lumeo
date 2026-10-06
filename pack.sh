@@ -9,8 +9,9 @@ OUT="$HOME/lumeo-v${VERSION}.zip"
 
 rm -f "$OUT"
 zip -rq "$OUT" . \
-  -x "*.DS_Store" "node_modules/*" ".git/*" "*.swp" "Thumbs.db" "pack.sh" \
-     "release.sh" "echoly-main.zip" "_echoly_extracted/*" "*.zip"
+  -x "*.DS_Store" "node_modules/*" ".git/*" ".github/*" "*.swp" "Thumbs.db" "pack.sh" \
+     "pack.ps1" "release.sh" "echoly-main.zip" "_echoly_extracted/*" "*.zip" "source/*" \
+     "tests/*" "docs/*" "store-assets/*" "scripts/*" "vitest.config.mjs" "package.json" "package-lock.json"
 
 SIZE=$(du -h "$OUT" | cut -f1)
 COUNT=$(unzip -l "$OUT" | tail -1 | awk '{print $2}')

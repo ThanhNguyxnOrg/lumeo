@@ -25,6 +25,20 @@ describe("services/captions.js — pure parser surface", () => {
     expect(cues[1]).toMatchObject({ start: 1.5, end: 3.5, text: "world" });
   });
 
+  it("parseSubtitleXml produces cues from YouTube srv3 <p> nodes", () => {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<timedtext format="3">
+  <body>
+    <p t="1000" d="2000"><s>modern</s> <s>caption</s></p>
+    <p t="3500" d="1500">second line</p>
+  </body>
+</timedtext>`;
+    const cues = api.parseSubtitleXml(xml);
+    expect(cues).toHaveLength(2);
+    expect(cues[0]).toMatchObject({ start: 1, end: 3, text: "modern caption" });
+    expect(cues[1]).toMatchObject({ start: 3.5, end: 5, text: "second line" });
+  });
+
   it("parseSubtitleJson3 decodes YouTube's event-based transcript", () => {
     const json = JSON.stringify({
       events: [
@@ -86,5 +100,22 @@ describe("services/captions.js — pure parser surface", () => {
     expect(merged[0].start).toBe(0.0);
     expect(merged[0].end).toBeGreaterThanOrEqual(2.0);
     expect(merged[1].text).toBe("Next sentence.");
+  });
+
+  it("parseTimedTextTrackList binds fallbackVideoId into generated timedtext URLs", () => {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<transcript_list>
+  <track id="0" name="English" lang_code="en" kind="asr"/>
+  <track id="1" name="Tiếng Việt" lang_code="vi"/>
+</transcript_list>`;
+    const tracks = api.parseTimedTextTrackList(xml, "explicitVid456");
+    expect(tracks).toHaveLength(2);
+    expect(tracks[0].languageCode).toBe("en");
+    expect(tracks[0].kind).toBe("asr");
+    expect(tracks[0].baseUrl).toContain("v=explicitVid456");
+    expect(tracks[0].baseUrl).toContain("lang=en");
+    expect(tracks[1].languageCode).toBe("vi");
+    expect(tracks[1].baseUrl).toContain("v=explicitVid456");
+    expect(tracks[1].baseUrl).toContain("lang=vi");
   });
 });

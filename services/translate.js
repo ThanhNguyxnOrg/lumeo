@@ -88,10 +88,13 @@
   async function requestJSON(url, options = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs || DEFAULT_TIMEOUT_MS);
+    const signal = typeof AbortSignal.any === "function" && options.signal
+      ? AbortSignal.any([options.signal, controller.signal])
+      : (options.signal || controller.signal);
     try {
       const response = await fetch(url, {
         ...options,
-        signal: options.signal || controller.signal,
+        signal,
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -132,10 +135,10 @@
           ? data[0].map((part) => part?.[0] || "").join("").trim()
           : "";
         const result = translated || text;
-        cache.set(trimmed, result);
+        if (translated) cache.set(trimmed, result);
         return result;
-      } catch {
-        return text;
+      } catch (err) {
+        throw new Error(`Google Free translation failed: ${err?.message || err}`);
       }
     });
   }
@@ -205,18 +208,18 @@
     const isOpenRouter = provider === PROVIDERS.OPENROUTER;
     const isCustomGateway = provider === PROVIDERS.CUSTOM_GATEWAY;
     const isGroq = provider === PROVIDERS.GROQ;
-    const key = assertKey(
-      isCustomGateway
-        ? options.customProxyApiKey || options.apiKey
-        : isOpenRouter
-          ? options.openRouterKey || options.apiKey
-          : isGroq
-            ? options.groqApiKey || options.apiKey
-            : options.openaiKey || options.apiKey,
-      isCustomGateway ? "Custom AI Gateway" : isOpenRouter ? "OpenRouter" : isGroq ? "Groq" : "OpenAI",
-    );
+    const key = isCustomGateway
+      ? String(options.customProxyApiKey || options.apiKey || "").trim()
+      : assertKey(
+          isOpenRouter
+            ? options.openRouterKey || options.apiKey
+            : isGroq
+              ? options.groqApiKey || options.apiKey
+              : options.openaiKey || options.apiKey,
+          isOpenRouter ? "OpenRouter" : isGroq ? "Groq" : "OpenAI",
+        );
     const model = isCustomGateway
-      ? options.customProxyModelId || "openrouter/free"
+      ? options.customProxyModelId || "custom-model"
       : isOpenRouter
         ? options.openRouterModel || "openrouter/free"
         : isGroq
@@ -243,7 +246,7 @@
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
+        ...(key ? { Authorization: `Bearer ${key}` } : {}),
         ...(isOpenRouter || isCustomGateway ? {
           "HTTP-Referer": "https://github.com/ThanhNguyxnOrg/lumeo",
           "X-Title": "Lumeo",
@@ -376,34 +379,46 @@
       return parseExplanation(raw);
     }
 
-    if ([PROVIDERS.OPENAI, PROVIDERS.GROQ, PROVIDERS.OPENROUTER].includes(provider)) {
+    if ([PROVIDERS.OPENAI, PROVIDERS.GROQ, PROVIDERS.OPENROUTER, PROVIDERS.CUSTOM_GATEWAY].includes(provider)) {
       const isOpenRouter = provider === PROVIDERS.OPENROUTER;
+      const isCustomGateway = provider === PROVIDERS.CUSTOM_GATEWAY;
       const isGroq = provider === PROVIDERS.GROQ;
-      const key = assertKey(
-        isOpenRouter
-          ? options.openRouterKey || options.apiKey
+      const key = isCustomGateway
+        ? String(options.customProxyApiKey || options.apiKey || "").trim()
+        : assertKey(
+            isOpenRouter
+              ? options.openRouterKey || options.apiKey
+              : isGroq
+                ? options.groqApiKey || options.apiKey
+                : options.openaiKey || options.apiKey,
+            isOpenRouter ? "OpenRouter" : isGroq ? "Groq" : "OpenAI",
+          );
+      const model = isCustomGateway
+        ? options.customProxyModelId || "custom-model"
+        : isOpenRouter
+          ? options.openRouterModel || "openrouter/free"
           : isGroq
-            ? options.groqApiKey || options.apiKey
-            : options.openaiKey || options.apiKey,
-        isOpenRouter ? "OpenRouter" : isGroq ? "Groq" : "OpenAI",
-      );
-      const model = isOpenRouter
-        ? options.openRouterModel || "openrouter/free"
-        : isGroq
-          ? options.groqModel || "llama-3.3-70b-versatile"
-          : options.openaiModel || "gpt-4o-mini";
-      const url = isOpenRouter
-        ? "https://openrouter.ai/api/v1/chat/completions"
-        : isGroq
-          ? "https://api.groq.com/openai/v1/chat/completions"
-          : "https://api.openai.com/v1/chat/completions";
+            ? options.groqModel || "llama-3.3-70b-versatile"
+            : options.openaiModel || "gpt-4o-mini";
+      let url;
+      if (isCustomGateway) {
+        const base = String(options.customProxyBaseUrl || "").trim().replace(/\/+$/, "");
+        if (!base) throw new Error("Custom AI Gateway Base URL is required.");
+        url = base.endsWith("/chat/completions") ? base : `${base}/chat/completions`;
+      } else if (isOpenRouter) {
+        url = "https://openrouter.ai/api/v1/chat/completions";
+      } else if (isGroq) {
+        url = "https://api.groq.com/openai/v1/chat/completions";
+      } else {
+        url = "https://api.openai.com/v1/chat/completions";
+      }
 
       const data = await requestJSON(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${key}`,
-          ...(isOpenRouter ? {
+          ...(key ? { Authorization: `Bearer ${key}` } : {}),
+          ...(isOpenRouter || isCustomGateway ? {
             "HTTP-Referer": "https://github.com/ThanhNguyxnOrg/lumeo",
             "X-Title": "Lumeo",
           } : {}),

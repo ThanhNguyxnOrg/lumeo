@@ -196,6 +196,10 @@
   color: #ffffff;
   background: rgba(255, 255, 255, 0.1);
 }
+.ytp-lumeo-icon-btn.is-active {
+  color: #f97316 !important;
+  background: rgba(249, 115, 22, 0.2) !important;
+}
 
 .ytp-lumeo-body {
   padding: 12px 14px;
@@ -213,6 +217,8 @@
 
 .ytp-lumeo-session-row {
   margin-bottom: 2px;
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .ytp-lumeo-toggle-session-btn {
@@ -254,6 +260,40 @@
   border-color: #ef4444;
   color: #ffffff;
   box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
+}
+.ytp-lumeo-toggle-session-btn.is-loading {
+  background: rgba(249, 115, 22, 0.15);
+  border: 1px solid rgba(249, 115, 22, 0.45);
+  color: #fdba74;
+  cursor: wait;
+}
+.ytp-lumeo-session-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(253, 186, 116, 0.3);
+  border-top-color: #f97316;
+  border-radius: 50%;
+  animation: lumeo-spin 0.7s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+@keyframes lumeo-spin {
+  to { transform: rotate(360deg); }
+}
+.ytp-lumeo-status-badge {
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.1);
+  border: 1px solid rgba(249, 115, 22, 0.25);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  word-break: break-word;
 }
 .ytp-lumeo-session-icon {
   font-size: 11px;
@@ -1157,6 +1197,34 @@
   margin-top: 0;
 }
 
+/* Symmetrical Subtitle Order Hierarchy (Original on Top) */
+.lumeo-video-sub.lumeo-order-source-top .lumeo-video-sub-source {
+  color: #ffffff;
+  font-size: var(--lumeo-caption-font-size, 20px);
+  font-weight: 700;
+  line-height: 1.35;
+  margin-top: 0;
+  text-shadow: 0 1px 2px #000, 0 2px 6px rgba(0, 0, 0, 0.9), 0 0 1px #000;
+}
+.lumeo-video-sub.lumeo-order-source-top .lumeo-video-sub-translated {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: calc(var(--lumeo-caption-font-size, 20px) * 0.72);
+  font-weight: 400;
+  line-height: 1.3;
+  margin-top: 4px;
+  text-shadow: 0 1px 2px #000, 0 2px 4px rgba(0, 0, 0, 0.85);
+}
+.lumeo-video-sub.lumeo-order-source-top.lumeo-layout-compact .lumeo-video-sub-source {
+  font-size: calc(var(--lumeo-caption-font-size, 20px) * 0.86);
+  line-height: 1.18;
+  margin-top: 0;
+}
+.lumeo-video-sub.lumeo-order-source-top.lumeo-layout-compact .lumeo-video-sub-translated {
+  font-size: calc(var(--lumeo-caption-font-size, 20px) * 0.58);
+  line-height: 1.12;
+  margin-top: 1px;
+}
+
 /* ─── Word Lookup inside Subtitle ─── */
 .lumeo-lookup-word {
   appearance: none;
@@ -1538,4 +1606,32 @@ kbd {
   border-radius: 8px;
   max-height: 200px;
   overflow-y: auto;
+}
+
+.lumeo-transcript-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  color: #94a3b8;
+  user-select: none;
+}
+.lumeo-transcript-empty-icon {
+  font-size: 28px;
+  margin-bottom: 10px;
+  opacity: 0.85;
+}
+.lumeo-transcript-empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-bottom: 6px;
+}
+.lumeo-transcript-empty-hint {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #64748b;
+  max-width: 240px;
 }
