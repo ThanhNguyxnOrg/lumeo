@@ -27,6 +27,17 @@ Accepted
 4. **Zero-Key Chrome Live Caption Fallback**:
    - When no API keys exist or `sttProvider` is `none`, the in-player fallback card offers a 1-click button to open `chrome://settings/accessibility` via `background.js` and provides concise instructions to enable Chrome Live Caption.
 
+5. **International Default Target Language (`"en"`)**:
+   - The default target language is standardized to English (`"en"`) across all extension interfaces.
+
+6. **Preserve Original Audio Track for Bilingual Subtitles**:
+   - `chooseCaptionTrack()` prioritizes the video's original spoken track (ASR or matching native track) as `sourceTrack` when `targetLanguage` differs.
+   - `fetchNativeTargetTrack()` fetches or auto-translates target language cues, preserving distinct `cue.text` (source) and `cue.translated` (target) for bilingual (`stacked`) rendering.
+
+7. **In-Player Popover Anchoring & Click Isolation**:
+   - The popover container is strictly anchored within `#movie_player` / `.html5-video-player` (or active fullscreen element).
+   - Added `mousedown` event propagation stoppage to `.ytp-lumeo-button` to prevent YouTube player pause/play event interference.
+
 ## Consequences
-- **Positive**: Seamless UX; zero cost for Gemini users when captions are missing; voice dropdowns always show high-quality voices matching the target language; 0-key users have a clear free path via Chrome Live Caption.
+- **Positive**: Seamless UX; zero cost for Gemini users when captions are missing; voice dropdowns always show high-quality voices matching the target language; 0-key users have a clear free path via Chrome Live Caption; bilingual subtitles always retain the original language; in-player button reliably toggles popover.
 - **Negative / Trade-offs**: Gemini Audio STT requires sending 15s WAV chunks via base64, which adds a slight payload overhead (~300KB/chunk) compared to streaming WebSockets.

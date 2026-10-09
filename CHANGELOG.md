@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.4] - 2026-10-09 — Smart Voice Sync, Multi-STT Fallback & Player UI Fixes
+
+### Added & Improved
+
+- **Smart Voice Selection Synchronization:**
+  - Unified `LumeoVoicePicker` across Popup, Options, and Overlay, dynamically filtering to top natural voices for the selected target language.
+- **Multi-STT Fallback & 0-Key Chrome Live Caption:**
+  - Added `gemini-stt` (Gemini Multimodal Audio transcription) and `openai-whisper` (Whisper-1) providers.
+  - Added 1-click Chrome Live Caption guidance and in-video contextual buttons when no subtitle tracks exist, strictly using `captureStream()` from the video element without microphone prompts.
+- **International Default Target Language:**
+  - Standardized default `targetLanguage` to English (`"en"`) across background, popup, options, and content scripts.
+- **In-Player Button Responsiveness & Popover Anchoring:**
+  - Fixed popover DOM container anchoring to `#movie_player` to prevent popovers from dropping to the bottom of the page when exiting fullscreen.
+  - Added `mousedown` event propagation isolation to `.ytp-lumeo-button` to prevent YouTube player pause/play conflicts.
+- **Bilingual Subtitle Track Preservation:**
+  - Fixed `chooseCaptionTrack()` to preserve the video's original spoken track as source when target language differs, ensuring both original and translated lines display simultaneously in bilingual mode.
+
 ## [2.0.3] - 2026-10-09 — Two-Way Realtime Settings Sync & Bilingual Subtitle Fix
 
 ### Fixed & Improved

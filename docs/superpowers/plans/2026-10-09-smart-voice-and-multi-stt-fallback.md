@@ -41,7 +41,7 @@
 - Consumes: `LumeoVoicePicker.getTopVoicesForLanguage(targetLang, voices)`, `LumeoVoicePicker.cleanVoiceLabel(name)`
 - Produces: Dynamic reactive voice options in Popup and Options pages based on `targetLanguage`.
 
-- [ ] **Step 1: Write test for reactive voice list generation by target language**
+- [x] **Step 1: Write test for reactive voice list generation by target language**
 ```javascript
 // In tests/voice-picker.test.mjs
 it("returns prioritized natural voices for Vietnamese", () => {
@@ -56,21 +56,21 @@ it("returns prioritized natural voices for Vietnamese", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify behavior**
+- [x] **Step 2: Run test to verify behavior**
 Run: `npx vitest run tests/voice-picker.test.mjs`
 Expected: PASS
 
-- [ ] **Step 3: Update `popup.js` to populate voices via `LumeoVoicePicker`**
+- [x] **Step 3: Update `popup.js` to populate voices via `LumeoVoicePicker`**
 Replace hardcoded `CAPTION_VOICES` in `popup.js` with dynamic generation using `window.speechSynthesis.getVoices()`, filtered by `langSelect.value`, and add change listener to `langSelect` to refresh voices.
 
-- [ ] **Step 4: Update `options.js` to refresh voices when `targetLanguage` changes**
+- [x] **Step 4: Update `options.js` to refresh voices when `targetLanguage` changes**
 Bind `change` event on `targetLanguage` in `options.js` to call `populateBrowserVoices()` with prioritized order.
 
-- [ ] **Step 5: Run unit tests**
+- [x] **Step 5: Run unit tests**
 Run: `npm test`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 ```bash
 git commit -m "feat(tts): synchronize smart voice selector across popup and options"
 ```
@@ -87,7 +87,7 @@ git commit -m "feat(tts): synchronize smart voice selector across popup and opti
 - Consumes: `geminiKey`, `openaiKey`, `groqApiKey`
 - Produces: `gemini-stt` and `openai-whisper` provider definitions under slot `stt`.
 
-- [ ] **Step 1: Write failing test in `tests/providers.test.mjs` for new STT providers**
+- [x] **Step 1: Write failing test in `tests/providers.test.mjs` for new STT providers**
 ```javascript
 it("registers gemini-stt and openai-whisper as valid STT fallback providers", () => {
   const providers = LumeoProviders.listForSlot("stt", "caption");
@@ -97,18 +97,18 @@ it("registers gemini-stt and openai-whisper as valid STT fallback providers", ()
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `npx vitest run tests/providers.test.mjs`
 Expected: FAIL
 
-- [ ] **Step 3: Update `services/providers.js`**
+- [x] **Step 3: Update `services/providers.js`**
 Add `geminiStt` (`id: "gemini-stt"`, `label: "Gemini Audio STT (Free Tier)"`, `keyFields: ["geminiKey"]`) and `openaiWhisper` (`id: "openai-whisper"`, `label: "OpenAI Whisper"`, `keyFields: ["openaiKey"]`). Update slot definition and helper functions.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `npx vitest run tests/providers.test.mjs`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git commit -m "feat(providers): register gemini-stt and openai-whisper providers"
 ```
@@ -127,24 +127,24 @@ git commit -m "feat(providers): register gemini-stt and openai-whisper providers
 - Consumes: `MediaStream`, `geminiKey`, `targetLanguage`
 - Produces: `LumeoGeminiSTT.transcribeBlob(wavBlob, options)` and `LumeoGeminiSTT.create(options)`
 
-- [ ] **Step 1: Write failing test for `services/stt-gemini.js`**
+- [x] **Step 1: Write failing test for `services/stt-gemini.js`**
 ```javascript
 // tests/stt-gemini.test.mjs
 it("encodes wav blob to base64 and formats Gemini generateContent payload", async () => { ... });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `npx vitest run tests/stt-gemini.test.mjs`
 Expected: FAIL
 
-- [ ] **Step 3: Implement `services/stt-gemini.js`**
+- [x] **Step 3: Implement `services/stt-gemini.js`**
 Implement continuous chunk loop sending 15s audio chunks to Gemini Flash endpoint with temperature 0.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `npx vitest run tests/stt-gemini.test.mjs`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git commit -m "feat(stt): add Gemini Multimodal Audio STT service"
 ```
@@ -161,19 +161,19 @@ git commit -m "feat(stt): add Gemini Multimodal Audio STT service"
 - Consumes: `apiKey`, `provider: "groq" | "openai"`, `model`, `stream`
 - Produces: `LumeoWhisperSTT` (backward compatible with `LumeoGroqSTT`).
 
-- [ ] **Step 1: Write test for OpenAI endpoint routing**
+- [x] **Step 1: Write test for OpenAI endpoint routing**
 Verify that when `provider: "openai"` or `openaiKey` is supplied, requests target `https://api.openai.com/v1/audio/transcriptions` with model `whisper-1`.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `npx vitest run tests/stt-groq.test.mjs`
 
-- [ ] **Step 3: Implement endpoint and model parameterization in `services/stt-groq.js`**
+- [x] **Step 3: Implement endpoint and model parameterization in `services/stt-groq.js`**
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `npx vitest run tests/stt-groq.test.mjs`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git commit -m "feat(stt): support OpenAI Whisper endpoint alongside Groq"
 ```
@@ -192,7 +192,7 @@ git commit -m "feat(stt): support OpenAI Whisper endpoint alongside Groq"
 - Consumes: User's stored keys (`geminiKey`, `groqApiKey`, `openaiKey`, `sttProvider`)
 - Produces: Smart contextual action buttons in the in-player fallback card and background handler to open `chrome://settings/accessibility`.
 
-- [ ] **Step 1: Write test for dynamic fallback button generation**
+- [x] **Step 1: Write test for dynamic fallback button generation**
 ```javascript
 it("renders Chrome Live Caption and available key buttons", () => {
   const card = LumeoCaptionFallbackChoice.create({
@@ -206,13 +206,13 @@ it("renders Chrome Live Caption and available key buttons", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `npx vitest run tests/caption-fallback-choice.test.mjs`
 
-- [ ] **Step 3: Implement dynamic card rendering in `ui/caption-fallback-choice.js`**
+- [x] **Step 3: Implement dynamic card rendering in `ui/caption-fallback-choice.js`**
 Add 1-click button for Chrome Live Caption (`0-Key · 100% Free`) and contextual buttons for configured keys.
 
-- [ ] **Step 4: Add `OPEN_CHROME_SETTINGS` message handler in `background.js`**
+- [x] **Step 4: Add `OPEN_CHROME_SETTINGS` message handler in `background.js`**
 ```javascript
 if (msg.type === "OPEN_CHROME_SETTINGS") {
   chrome.tabs.create({ url: "chrome://settings/accessibility" });
@@ -220,30 +220,31 @@ if (msg.type === "OPEN_CHROME_SETTINGS") {
 }
 ```
 
-- [ ] **Step 5: Wire handlers in `pipelines/caption-orchestrator.js`**
+- [x] **Step 5: Wire handlers in `pipelines/caption-orchestrator.js`**
 
-- [ ] **Step 6: Run test suite**
+- [x] **Step 6: Run test suite**
 Run: `npm test`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 ```bash
 git commit -m "feat(fallback): add 1-click Chrome Live Caption and contextual multi-STT buttons"
 ```
 
 ---
 
-### Task 6: Comprehensive Verification
+### Task 6: International Default Language, Popover Anchoring & Bilingual Preserving
 
-- [ ] **Step 1: Run all syntax checks**
-Run: `npm run check:all`
-Expected: 32+ JS files pass syntax checks.
+- [x] **Step 1: Standardize default `targetLanguage` to `"en"` across all 11 files**
+- [x] **Step 2: Fix in-player button popover container anchoring & prevent player mousedown interference**
+- [x] **Step 3: Update `chooseCaptionTrack()` to preserve original spoken track for bilingual cues**
+- [x] **Step 4: Add unit test in `tests/captions-parsers.test.mjs` verifying ASR original track selection**
+- [x] **Step 5: Run tests and commit**
 
-- [ ] **Step 2: Run all Vitest suites**
-Run: `npm test`
-Expected: All suites pass (205+ tests).
+---
 
-- [ ] **Step 3: Final commit & status check**
-```bash
-git status
-```
+### Task 7: Comprehensive Verification
+
+- [x] **Step 1: Run all syntax checks** (`npm run check:all` - 32 JS files passed)
+- [x] **Step 2: Run all Vitest suites** (`npm test` - 29 files, 208 tests passed)
+- [x] **Step 3: Final commit & status check**

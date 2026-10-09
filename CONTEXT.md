@@ -34,3 +34,10 @@
 - **Provider Slot (`slot`)**: Functional role in a pipeline (`translator`, `stt`, `tts`, `dubPipeline`, `realtimeBridge`).
 - **Key Vault**: Secure, client-only `chrome.storage.local` store for user API keys (`geminiKey`, `groqApiKey`, `openaiKey`, `customProxyApiKey`, etc.).
 - **Zero-Key Mode (0-Key)**: Free mode operating without user API keys. Supported for translation via `google-free`, TTS via `browser`, and no-caption fallback via Chrome Live Caption.
+
+---
+
+### 5. Internationalization & Bilingual Track Strategy
+- **Default Target Language (`targetLanguage: "en"`)**: English is the international default target language across all extension surfaces.
+- **Bilingual Subtitle Preservation (`layoutPreset: "stacked"`)**: The system prioritizes the video's original spoken track (ASR or matching native track) for `cue.text` to guarantee that both original and translated lines display simultaneously in bilingual mode.
+- **In-Player Popover Anchoring**: Controls and settings popovers remain attached to the player container (`#movie_player`) to guarantee click responsiveness and prevent UI misalignment.
