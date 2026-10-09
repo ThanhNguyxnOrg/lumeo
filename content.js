@@ -458,7 +458,7 @@
 
     // In-place reactive handover without stopping active video playback (Decision 14)
     if (settings.tier === "caption" || !settings.tier) {
-      const activeSession = LumeoSessionManager.getSession();
+      const activeSession = LumeoSessionManager.getSession() || (LumeoSessionManager.isStarting?.() ? true : null);
       if (activeSession) {
         overlayController?.setSessionState?.({
           isTranslating: true,

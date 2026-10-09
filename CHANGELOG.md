@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.1] - 2026-10-08 — Performance & Cache Resilience Patch
+
+### Fixed & Optimized
+
+- **Instant Subtitles on Long Videos (Sliding-Window Translation):**
+  - Activated sliding-window translation for Google Free caption mode (180s lookahead, 25 cues initial window).
+  - Long videos (20-60+ mins) now display translated subtitles almost instantly (1-2s) instead of blocking until hundreds of cues finish translating.
+  - Subsequent video chunks are seamlessly pre-translated in the background as playback advances.
+- **Instant Abort & Zero-Leak Cancellation:**
+  - Added native `AbortSignal` pass-through to `translateGoogleFree`.
+  - Stopping the session or skipping forward immediately halts pending translation requests, eliminating network resource contention.
+- **Race Condition & Language Switch Fix:**
+  - Tracked active starting pipeline (`activeStartingPipeline`) to ensure stopping or switching languages mid-initialization safely aborts prior pipelines.
+  - Added reactive in-place session restart when switching `targetLanguage` or `secondaryLanguage` during active captioning.
+- **Cleaned internal planning documents:**
+  - Removed outdated design specifications (`DESIGN_BRIEF.md`, `TODO_ROADMAP.md`).
+
+---
+
 ## [2.0.0] - 2026-10-06 — Production Release: Three-Tier Dub & Captions, Unified AI Gateway, and YouTube-Native UI
 
 This major milestone completes the full merger of Lumen and Echoly into **Lumeo 2.0.0**, delivering YouTube-native bilingual subtitles, live AI dubbing across three tiers, and a vendor-neutral AI Gateway.

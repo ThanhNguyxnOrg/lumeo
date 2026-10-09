@@ -119,9 +119,10 @@
     return results;
   }
 
-  async function translateGoogleFree(texts, targetLanguage) {
+  async function translateGoogleFree(texts, targetLanguage, options = {}) {
     const cache = new Map();
     return mapConcurrent(texts, 5, async (text) => {
+      if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
       const trimmed = String(text ?? "").trim();
       if (!trimmed) return "";
       if (cache.has(trimmed)) return cache.get(trimmed);
@@ -130,7 +131,7 @@
         `?client=gtx&sl=auto&tl=${encodeURIComponent(targetLanguage)}` +
         `&dt=t&q=${encodeURIComponent(trimmed)}`;
       try {
-        const data = await requestJSON(url);
+        const data = await requestJSON(url, { signal: options.signal });
         const translated = Array.isArray(data?.[0])
           ? data[0].map((part) => part?.[0] || "").join("").trim()
           : "";
@@ -138,6 +139,9 @@
         if (translated) cache.set(trimmed, result);
         return result;
       } catch (err) {
+        if (options.signal?.aborted || err?.name === "AbortError") {
+          throw new DOMException("Aborted", "AbortError");
+        }
         throw new Error(`Google Free translation failed: ${err?.message || err}`);
       }
     });

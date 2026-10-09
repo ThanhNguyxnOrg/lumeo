@@ -532,6 +532,7 @@
       }
 
       const pipeline = window.LumeoCaptionPipeline.create();
+      ctx.setActivePipeline?.(pipeline);
       const settings = ctx.getSettings();
 
       let result;
@@ -564,8 +565,15 @@
           },
         });
       } catch (err) {
+        ctx.setActivePipeline?.(null);
+        if (token !== ctx.getPageToken()) {
+          pipeline.stop();
+          return { ok: false, error: "Cancelled before captions loaded." };
+        }
         ctx.removeOverlay();
         return { ok: false, error: err?.message || String(err) };
+      } finally {
+        ctx.setActivePipeline?.(null);
       }
 
       if (token !== ctx.getPageToken()) {

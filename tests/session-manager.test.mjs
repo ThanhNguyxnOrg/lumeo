@@ -38,11 +38,12 @@ async function setup() {
 }
 
 describe("services/session-manager.js", () => {
+  let window;
   let manager;
   let callbacks;
 
   beforeEach(async () => {
-    ({ manager, callbacks } = await setup());
+    ({ window, manager, callbacks } = await setup());
   });
 
   it("handles startSession with a string tier without mangling settings", async () => {
@@ -85,4 +86,39 @@ describe("services/session-manager.js", () => {
     expect(manager.getSession()).toBeTruthy();
     expect(manager.getSettings().targetLanguage).toBe("ja");
   });
+
+  it("aborts active starting pipeline when stopSession is called while starting", async () => {
+    let capturedCtx = null;
+    const fakePipeline = { stop: vi.fn() };
+    window.LumeoCaptionOrchestrator.start = vi.fn(async (ctx) => {
+      capturedCtx = ctx;
+      ctx.setActivePipeline(fakePipeline);
+      // Simulate delay while translating
+      await new Promise((r) => setTimeout(r, 200));
+      return { ok: true };
+    });
+
+    // Start session without awaiting completion
+    const startPromise = manager.startSession({ tier: "caption", targetLanguage: "vi" });
+    expect(manager.isStarting()).toBe(true);
+
+    // Stop while starting
+    manager.stopSession("user-stop");
+
+    expect(fakePipeline.stop).toHaveBeenCalled();
+    expect(manager.isStarting()).toBe(false);
+    await startPromise;
+  });
+
+  it("automatically restarts caption session when targetLanguage changes live", async () => {
+    await manager.startSession({ tier: "caption", targetLanguage: "vi" });
+    expect(manager.getSettings().targetLanguage).toBe("vi");
+
+    manager.applySettingsLive({ targetLanguage: "ja" });
+    // Let async restart run
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(manager.getSettings().targetLanguage).toBe("ja");
+  });
 });
+

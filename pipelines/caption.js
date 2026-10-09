@@ -274,7 +274,7 @@
         const batchSize = Math.max(1, Number(options.batchSize || (isPaidProvider ? 20 : 40)));
 
         const currentTime = Number(options.currentTime || 0);
-        const maxInitialCues = (isPaidProvider && !options.eagerTranslateAll && total > 35)
+        const maxInitialCues = (!options.eagerTranslateAll && total > 35)
           ? findInitialSlidingWindowLimit(cues, currentTime, 180, 25)
           : total;
 
@@ -502,7 +502,7 @@
 
     cueAt(timeSeconds) {
       const t = Number(timeSeconds || 0);
-      if (this.isPaidProvider && !this.isTranslatingAhead && this.abortController) {
+      if (!this.isTranslatingAhead && this.abortController) {
         this.checkAndTranslateAhead(t);
       }
       let lo = 0;

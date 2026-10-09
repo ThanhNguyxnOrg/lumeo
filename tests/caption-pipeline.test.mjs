@@ -296,5 +296,41 @@ describe("pipelines/caption.js", () => {
     const expectedKey = "bilingual-test::vi::google-free::en::ja";
     expect(Object.keys(getCache().entries)).toEqual([expectedKey]);
   });
+
+  it("applies sliding-window lookahead for google-free when total cues exceed 35", async () => {
+    const longCues = Array.from({ length: 60 }, (_, i) => ({
+      start: i * 5,
+      end: (i + 1) * 5,
+      text: `cue ${i}`,
+    }));
+    const { window, api } = await setup({
+      subtitles: { videoId: "long-video", sourceLanguage: "en", nativeTarget: false, cues: longCues },
+    });
+    const pipeline = api.create();
+
+    window.LumeoTranslate.translateBatch = vi.fn((texts) => texts.map((t) => `${t}-vi`));
+
+    const result = await pipeline.start({
+      videoId: "long-video",
+      targetLanguage: "vi",
+      translateProvider: "google-free",
+      currentTime: 0,
+    });
+
+    expect(result.ok).toBe(true);
+    // Initial batch translates only sliding window (~25 to 40 cues), not all 60 cues
+    const translatedCount = result.cues.filter((c) => c.translated).length;
+    expect(translatedCount).toBeLessThan(60);
+    expect(translatedCount).toBeGreaterThanOrEqual(25);
+
+    // Later cue is untranslated initially
+    expect(result.cues[55].translated).toBeFalsy();
+
+    // Advancing playback triggers checkAndTranslateAhead
+    pipeline.cueAt(260); // near cue 52 (52 * 5 = 260s)
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(window.LumeoTranslate.translateBatch).toHaveBeenCalled();
+  });
 });
 

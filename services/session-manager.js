@@ -20,6 +20,7 @@
 
   let session = null;
   let prevSession = null;
+  let activeStartingPipeline = null;
   let pageToken = 0;
   let settings = null;
   let videoEl = null;
@@ -377,6 +378,7 @@
       pageToken++;
       return window.LumeoCaptionOrchestrator.start({
         getSession: () => session,
+        setActivePipeline: (p) => { activeStartingPipeline = p; },
         getSettings: () => settings,
         getPageToken: () => pageToken,
         getVideo: () => videoEl,
@@ -579,6 +581,10 @@
     onYTPlay = null;
     onYTSeeked = null;
     onYTRateChange = null;
+    if (activeStartingPipeline) {
+      try { activeStartingPipeline.stop(); } catch {}
+      activeStartingPipeline = null;
+    }
     if (session) {
       disposeSession(session);
       session = null;
@@ -605,7 +611,14 @@
       callbacks.showToast?.("Stop and Start to switch tiers", 5000);
     }
     callbacks.onSettingsUpdated?.(newSettings, prev);
-    if (session?.type !== "standard" && session?.type !== "caption") {
+    if (session?.type === "caption") {
+      if (
+        ("targetLanguage" in newSettings && newSettings.targetLanguage !== prev.targetLanguage) ||
+        ("secondaryLanguage" in newSettings && newSettings.secondaryLanguage !== prev.secondaryLanguage)
+      ) {
+        void restartSession({ ...settings, ...newSettings });
+      }
+    } else if (session?.type !== "standard") {
       if (
         ("targetLanguage" in newSettings && newSettings.targetLanguage !== prev.targetLanguage) ||
         ("realtimeVoice" in newSettings && newSettings.realtimeVoice !== prev.realtimeVoice)
@@ -634,6 +647,7 @@
     restartSession,
     requestHandover,
     applySettingsLive,
+    isStarting: () => !!activeStartingPipeline,
     applyVolumes,
     computeGain,
   };
