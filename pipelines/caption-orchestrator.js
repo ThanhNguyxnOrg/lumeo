@@ -28,9 +28,9 @@
 
     async translateLiveCaptionLine(text, ctx) {
       const settings = ctx.getSettings();
-      const [translated] = await window.LumeoTranslate.translateBatch([text], settings.targetLanguage || "vi", {
+      const [translated] = await window.LumeoTranslate.translateBatch([text], settings.targetLanguage || "en", {
         provider: settings.translateProvider || "google-free",
-        targetLanguageName: ctx.getLangName(settings.targetLanguage) || settings.targetLanguage || "Vietnamese",
+        targetLanguageName: ctx.getLangName(settings.targetLanguage) || settings.targetLanguage || "English",
         openaiKey: settings.openaiKey,
         openaiModel: settings.openaiModel,
         geminiKey: settings.geminiKey,
@@ -85,7 +85,7 @@
       if (settings.captionTtsProvider && settings.captionTtsProvider !== "off") {
         pipeline.speakCue(cue, {
           provider: settings.captionTtsProvider,
-          targetLanguage: settings.targetLanguage || "vi",
+          targetLanguage: settings.targetLanguage || "en",
           googleCloudKey: settings.googleCloudKey,
           openaiKey: settings.openaiKey,
           customTtsBaseUrl: settings.customTtsBaseUrl,
@@ -382,7 +382,7 @@
         if (liveSettings.captionTtsProvider && liveSettings.captionTtsProvider !== "off") {
           pipeline.speakCue(cue, {
             provider: liveSettings.captionTtsProvider,
-            targetLanguage: liveSettings.targetLanguage || "vi",
+            targetLanguage: liveSettings.targetLanguage || "en",
             googleCloudKey: liveSettings.googleCloudKey,
             openaiKey: liveSettings.openaiKey,
             customTtsBaseUrl: liveSettings.customTtsBaseUrl,
@@ -740,8 +740,8 @@
       let result;
       try {
         result = await pipeline.start({
-          targetLanguage: settings.targetLanguage || "vi",
-          targetLanguageName: ctx.getLangName(settings.targetLanguage) || settings.targetLanguage || "Vietnamese",
+          targetLanguage: settings.targetLanguage || "en",
+          targetLanguageName: ctx.getLangName(settings.targetLanguage) || settings.targetLanguage || "English",
           translateProvider: settings.translateProvider || "google-free",
           openaiKey: settings.openaiKey,
           openaiModel: settings.openaiModel,
@@ -862,7 +862,7 @@
 
           pipeline.speakCue(cue, {
             provider: liveSettings.captionTtsProvider,
-            targetLanguage: liveSettings.targetLanguage || "vi",
+            targetLanguage: liveSettings.targetLanguage || "en",
             googleCloudKey: liveSettings.googleCloudKey,
             openaiKey: liveSettings.openaiKey,
             customTtsBaseUrl: liveSettings.customTtsBaseUrl,

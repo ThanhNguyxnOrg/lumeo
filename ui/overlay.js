@@ -103,6 +103,9 @@
             toggleSideCollapsed();
           }
         });
+        btn.addEventListener("mousedown", (e) => {
+          e.stopPropagation();
+        });
 
         const settingsBtn = rightControls.querySelector(".ytp-settings-button");
         try {
@@ -173,7 +176,7 @@
     function applyLayout() {
       if (!root) return;
       const moviePlayer = typeof doc !== "undefined" ? doc.querySelector("#movie_player, .html5-video-player") : null;
-      const inPlayer = Boolean(moviePlayer && (root.parentElement === moviePlayer || moviePlayer.contains(root) || (doc.body && doc.body.contains(moviePlayer))));
+      const inPlayer = Boolean(moviePlayer && (root.parentElement === moviePlayer || moviePlayer.contains(root)));
 
       if (inPlayer) {
         if (layout.customPosition && typeof layout.left === "number" && typeof layout.top === "number") {
@@ -276,7 +279,7 @@
             { id: "de", label: "German (Deutsch)" },
           ];
         },
-        getValue: () => elements.langSelect?.value || "vi",
+        getValue: () => elements.langSelect?.value || "en",
         onSelect: (val) => {
           if (elements.langSelect) {
             elements.langSelect.value = val;
@@ -525,7 +528,7 @@
       const subLabelEl = root.querySelector('[data-val="subtitles"]');
       if (subLabelEl) subLabelEl.textContent = subItem ? subItem.label.split(" ")[0] : "Bilingual";
 
-      const langVal = elements.langSelect?.value || "vi";
+      const langVal = elements.langSelect?.value || "en";
       const langItem = SUBMENUS.language.getItems().find((i) => i.id === langVal);
       const langLabelEl = root.querySelector('[data-val="language"]');
       if (langLabelEl) langLabelEl.textContent = langItem ? langItem.label.split(" (")[0] : langVal;
@@ -763,7 +766,7 @@
         (doc.body || doc.documentElement).appendChild(root);
       }
       elements = mapElements();
-      const initialLang = options.targetLanguage || "vi";
+      const initialLang = options.targetLanguage || "en";
       populateLanguages(initialLang);
       bindShortcuts();
       bindDragResize();
@@ -785,7 +788,8 @@
           try { fsEl.appendChild(root); } catch {}
         }
       } else {
-        const defaultContainer = doc.body || doc.documentElement;
+        const moviePlayer = doc.querySelector("#movie_player, .html5-video-player");
+        const defaultContainer = moviePlayer || doc.body || doc.documentElement;
         if (root.parentElement !== defaultContainer) {
           try { defaultContainer.appendChild(root); } catch {}
         }
@@ -863,6 +867,8 @@
       }
       if (layout.sideCollapsed) {
         closeSubmenu();
+      } else if (root) {
+        root.hidden = false;
       }
       saveLayout();
       applyLayout();

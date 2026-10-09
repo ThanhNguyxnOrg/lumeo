@@ -128,4 +128,14 @@ describe("services/captions.js — pure parser surface", () => {
     expect(chosen.languageCode).toBe("vi");
     expect(chosen.kind).toBe("asr");
   });
+
+  it("chooseCaptionTrack prioritizes original audio track (ASR) as source when targetLanguage differs", () => {
+    const tracks = [
+      { languageCode: "en", kind: undefined, baseUrl: "http://example.com/en" },
+      { languageCode: "vi", kind: "asr", baseUrl: "http://example.com/vi-asr" },
+    ];
+    const chosen = api.chooseCaptionTrack(tracks, "en");
+    expect(chosen.languageCode).toBe("vi");
+    expect(chosen.kind).toBe("asr");
+  });
 });

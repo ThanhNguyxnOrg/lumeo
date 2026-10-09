@@ -145,7 +145,7 @@
       const res = await browserApi.sendRuntimeMessage({
         type: "SUMMARIZE_TRANSCRIPT",
         cues,
-        targetLanguage: settings?.targetLanguage || "vi",
+        targetLanguage: settings?.targetLanguage || "en",
       }).catch((e) => ({ ok: false, error: e?.message }));
 
       if (res?.ok) {
@@ -431,7 +431,7 @@
   async function handleStartSession() {
     overlayController?.setSessionState?.({ isTranslating: true, isLoading: true, statusText: "Loading captions..." });
     const stored = await browserApi.sendRuntimeMessage({ type: "GET_STATE" }).catch(() => null);
-    const currentSettings = stored?.state || settings || { tier: "caption", targetLanguage: "vi", translateProvider: "google-free" };
+    const currentSettings = stored?.state || settings || { tier: "caption", targetLanguage: "en", translateProvider: "google-free" };
     settings = currentSettings;
     LumeoSessionManager.setSettings(currentSettings);
     // Delegate START to background service worker which will ensureContentScript and send CONTENT_START

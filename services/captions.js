@@ -681,18 +681,27 @@
     const targetBase = String(targetLanguage || "").split("-")[0];
     const manual = (track) => track.kind !== "asr";
 
-    // 1. Prioritize exact or base match for targetLanguage (manual first, then asr)
+    // 1. Identify video's original spoken track.
+    // YouTube's ASR track is guaranteed to match the video's actual spoken audio.
+    const asrOriginal = tracks.find((track) => track.kind === "asr" || track.vssId?.startsWith("a."));
+    const manualTrack = tracks.find((track) => manual(track));
+
+    // If an original spoken ASR track exists and its language is different from targetLanguage,
+    // we MUST use the original track (or matching manual track in that language) as source
+    // to preserve the original audio language for bilingual subtitles!
+    if (asrOriginal && asrOriginal.languageCode?.split("-")[0] !== targetBase) {
+      const asrLangBase = asrOriginal.languageCode?.split("-")[0];
+      const matchingManual = tracks.find((t) => manual(t) && t.languageCode?.split("-")[0] === asrLangBase);
+      return matchingManual || asrOriginal;
+    }
+
+    // 2. If targetLanguage matches original audio or no ASR track exists, pick targetLanguage track if present
     const targetMatch =
       tracks.find((track) => manual(track) && track.languageCode === targetLanguage) ||
       tracks.find((track) => manual(track) && track.languageCode?.split("-")[0] === targetBase) ||
       tracks.find((track) => track.languageCode === targetLanguage) ||
       tracks.find((track) => track.languageCode?.split("-")[0] === targetBase);
     if (targetMatch) return targetMatch;
-
-    // 2. If targetLanguage is not in tracks, pick the video's original spoken track to translate from.
-    // YouTube's ASR track is guaranteed to match the video's actual spoken audio.
-    const asrOriginal = tracks.find((track) => track.kind === "asr" || track.vssId?.startsWith("a."));
-    const manualTrack = tracks.find((track) => manual(track));
 
     return (
       manualTrack ||
@@ -901,7 +910,17 @@
       track.languageCode === targetLanguage ||
       track.languageCode?.split("-")[0] === targetBase
     );
-    if (!nativeTrack || nativeTrack === sourceTrack) return null;
+    if (!nativeTrack || nativeTrack === sourceTrack) {
+      if (sourceTrack.baseUrl && targetLanguage) {
+        try {
+          const autoUrl = buildTimedTextUrl(sourceTrack, { translateTo: targetLanguage });
+          const xml = await fetchText(autoUrl);
+          const cues = xml && xml.length > TIMEDTEXT_MIN_CHARS ? parseSubtitleText(xml) : [];
+          if (cues.length) return cues;
+        } catch {}
+      }
+      return null;
+    }
     const xml = await fetchText(buildTimedTextUrl(nativeTrack));
     const cues = xml && xml.length > TIMEDTEXT_MIN_CHARS ? parseSubtitleText(xml) : [];
     return cues.length ? cues : null;
@@ -956,7 +975,7 @@
 
   async function fetchSubtitles(options = {}) {
     injectSniffer();
-    const targetLanguage = options.targetLanguage || "vi";
+    const targetLanguage = options.targetLanguage || "en";
     const adapter = window.LumeoPlatformAdapters?.getAdapter();
     const videoId = options.videoId || adapter?.getVideoId() || getVideoId();
     const diagnostics = options.diagnostics || {};

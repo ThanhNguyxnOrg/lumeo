@@ -88,7 +88,7 @@
       token: token,
       audioStream: audioStream,
       kymaKey: opts.kymaKey,
-      targetLanguage: opts.targetLanguage || "vi",
+      targetLanguage: opts.targetLanguage || "en",
       realtimeVoice: opts.realtimeVoice || "",
       kyma: window.LumeoKyma,
       isFresh: () => token === pageToken,

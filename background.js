@@ -20,7 +20,7 @@ const browserApi = globalThis.LumeoBrowserApi;
 
 const DEFAULT_SETTINGS = {
   tier: "caption",
-  targetLanguage: "vi",
+  targetLanguage: "en",
   translateProvider: "google-free",
   sttProvider: "none",
   captionTtsProvider: "off",
@@ -741,7 +741,7 @@ async function handleExplainWordContext(message) {
 async function handleSummarizeTranscript(message) {
   await loadSettings();
   const cues = message?.cues || [];
-  const targetLanguage = message?.targetLanguage || state.targetLanguage || "vi";
+  const targetLanguage = message?.targetLanguage || state.targetLanguage || "en";
 
   let provider = state.translateProvider;
   if (provider === "google-free" || !provider) {

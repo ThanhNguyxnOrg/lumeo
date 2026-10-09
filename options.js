@@ -12,7 +12,7 @@
   const DEFAULT_SETTINGS = {
     tier: "caption",
     translateProvider: "google-free",
-    targetLanguage: "vi",
+    targetLanguage: "en",
     sttProvider: "none",
     dubProvider: "kyma",
     realtimeProvider: "kyma-realtime",
@@ -196,7 +196,7 @@
     if (typeof window === "undefined" || !("speechSynthesis" in window) || !browserVoiceInput) return;
     const voices = window.speechSynthesis.getVoices() || [];
     const prev = browserVoiceInput.value || currentSettings.standardVoice || "";
-    const targetLang = currentSettings.targetLanguage || "vi";
+    const targetLang = currentSettings.targetLanguage || "en";
     const picker = window.LumeoVoicePicker;
 
     browserVoiceInput.innerHTML = '<option value="">Auto-pair best natural voice for language</option>';
@@ -299,7 +299,7 @@
     const shouldUpdate = (el) => el && el.id !== skipElementId;
 
     if (shouldUpdate(translateProviderInput)) translateProviderInput.value = currentSettings.translateProvider || "google-free";
-    if (shouldUpdate(targetLanguageInput)) targetLanguageInput.value = currentSettings.targetLanguage || "vi";
+    if (shouldUpdate(targetLanguageInput)) targetLanguageInput.value = currentSettings.targetLanguage || "en";
     if (shouldUpdate(geminiKeyInput)) geminiKeyInput.value = currentSettings.geminiKey || "";
     if (shouldUpdate(geminiModelInput)) geminiModelInput.value = currentSettings.geminiModel || "gemini-2.5-flash-lite";
     if (shouldUpdate(openaiKeyInput)) openaiKeyInput.value = currentSettings.openaiKey || "";

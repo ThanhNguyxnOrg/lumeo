@@ -126,7 +126,7 @@
         return;
       }
 
-      const targetLang = settings.targetLanguage || "vi";
+      const targetLang = settings.targetLanguage || "en";
       const voices = (typeof window !== "undefined" && window.speechSynthesis?.getVoices?.()) || [];
       const pairedVoice = autoPairVoice(targetLang, voices);
       const pairedClean = pairedVoice ? cleanVoiceLabel(pairedVoice.name) : "";

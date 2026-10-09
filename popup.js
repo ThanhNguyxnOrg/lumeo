@@ -110,7 +110,7 @@ let state = {
   connecting: false,
   paused: false,
   tier: "caption",
-  targetLanguage: "vi",
+  targetLanguage: "en",
   translateProvider: "google-free",
   sttProvider: "none",
   captionTtsProvider: "off",
@@ -220,7 +220,7 @@ function repopulateVoices(tier, preferredVoiceId) {
   if (globalThis.LumeoVoicePicker) {
     const settings = {
       ...state,
-      targetLanguage: langSelect?.value || state.targetLanguage || "vi",
+      targetLanguage: langSelect?.value || state.targetLanguage || "en",
       standardVoice: preferredVoiceId !== undefined ? preferredVoiceId : state.standardVoice,
       realtimeVoice: preferredVoiceId !== undefined ? preferredVoiceId : state.realtimeVoice,
       captionTtsProvider: state.captionTtsProvider,
@@ -530,7 +530,7 @@ function readSettings() {
     ...state,
     ...allKeyValues(),
     tier,
-    targetLanguage: langSelect.value || "vi",
+    targetLanguage: langSelect.value || "en",
     translateProvider: state.translateProvider || "google-free",
     sttProvider: state.sttProvider || "none",
     captionTtsProvider: state.captionTtsProvider || "off",

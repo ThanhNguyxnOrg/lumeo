@@ -93,7 +93,7 @@
     const settings = context.getSettings?.() || {};
     const token = sessionRef.token;
     const kymaKey = sessionRef.kymaKey;
-    const language = settings.targetLanguage || "vi";
+    const language = settings.targetLanguage || "en";
     const languageName = context.langNameByCode?.[language] || language;
     const voiceId = settings.standardVoice || context.standardDefaultVoice || "English_magnetic_voiced_man";
     const kymaBase = context.kymaBase || "https://api.kymaapi.com/v1";
