@@ -53,6 +53,14 @@ jobs:
           chmod +x pack.sh
           ./pack.sh "${{ steps.plan.outputs.version }}"
 
+      - name: Generate GitHub App Token
+        if: steps.plan.outputs.should_release == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+
       - name: Publish GitHub Release
         if: steps.plan.outputs.should_release == 'true'
         run: |
@@ -71,4 +79,5 @@ jobs:
               --notes-file RELEASE_NOTES.md
           fi
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
