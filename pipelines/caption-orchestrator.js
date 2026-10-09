@@ -128,7 +128,16 @@
       const wrap = window.LumeoCaptionFallbackChoice.create({
         reason,
         diagnostics,
+        onChromeLiveCaption: () => {
+          try {
+            chrome.runtime?.sendMessage?.({ type: "OPEN_CHROME_ACCESSIBILITY_SETTINGS" });
+          } catch {}
+          ctx.showToast("⚡ Opened Chrome Settings. Turn on 'Live Caption' for free offline speech recognition.", 8000);
+          ctx.onSessionEnded("chrome-live-caption", "Using Chrome Live Caption");
+        },
+        onGemini: () => this.startGeminiChoice(video, token, pipeline, reason, ctx),
         onGroq: () => this.startGroqChoice(video, token, pipeline, reason, ctx),
+        onOpenAI: () => this.startOpenAIChoice(video, token, pipeline, reason, ctx),
         onSoniox: () => this.startSonioxChoice(video, token, pipeline, reason, ctx),
         onStandard: () => ctx.onSwitchToStandard(pipeline),
         onRetry: () => this.retryCaptionChoice(pipeline, ctx),
@@ -145,6 +154,70 @@
         missingProviders: ["soniox", "kyma"],
         slotsMissingKeys: [],
       });
+    },
+
+    async startGeminiChoice(video, token, pipeline, reason, ctx) {
+      const settings = ctx.getSettings() || {};
+      if (!settings.geminiKey && typeof chrome !== "undefined" && chrome.storage?.local) {
+        try {
+          const res = await chrome.storage.local.get(["geminiKey"]);
+          if (res?.geminiKey) {
+            settings.geminiKey = res.geminiKey;
+            settings.sttProvider = "gemini-stt";
+            ctx.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { sttProvider: "gemini-stt" } });
+          }
+        } catch {}
+      }
+      if (!settings.geminiKey) {
+        ctx.showToast("Add a Gemini key in the no-caption fallback card.", 7000);
+        ctx.onStateChange({
+          running: true,
+          status: "Add Gemini key",
+          errorMessage: "",
+          errorCode: "missing-caption-track",
+          missingProviders: ["gemini-stt"],
+          slotsMissingKeys: ["stt"],
+        });
+        ctx.onOpenPopup("stt");
+        return;
+      }
+      const reply = await this.startCaptionGeminiFallback(video, token, pipeline, reason, ctx);
+      if (!reply?.ok) {
+        ctx.showToast(reply?.error || "Could not start Gemini STT fallback.", 7000);
+        ctx.onStateChange({ running: false, status: "Gemini error", errorMessage: reply?.error || "Gemini error" });
+      }
+    },
+
+    async startOpenAIChoice(video, token, pipeline, reason, ctx) {
+      const settings = ctx.getSettings() || {};
+      if (!settings.openaiKey && typeof chrome !== "undefined" && chrome.storage?.local) {
+        try {
+          const res = await chrome.storage.local.get(["openaiKey"]);
+          if (res?.openaiKey) {
+            settings.openaiKey = res.openaiKey;
+            settings.sttProvider = "openai-whisper";
+            ctx.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { sttProvider: "openai-whisper" } });
+          }
+        } catch {}
+      }
+      if (!settings.openaiKey) {
+        ctx.showToast("Add an OpenAI key in the no-caption fallback card.", 7000);
+        ctx.onStateChange({
+          running: true,
+          status: "Add OpenAI key",
+          errorMessage: "",
+          errorCode: "missing-caption-track",
+          missingProviders: ["openai-whisper"],
+          slotsMissingKeys: ["stt"],
+        });
+        ctx.onOpenPopup("stt");
+        return;
+      }
+      const reply = await this.startCaptionOpenAIFallback(video, token, pipeline, reason, ctx);
+      if (!reply?.ok) {
+        ctx.showToast(reply?.error || "Could not start OpenAI Whisper fallback.", 7000);
+        ctx.onStateChange({ running: false, status: "OpenAI error", errorMessage: reply?.error || "OpenAI error" });
+      }
     },
 
     async startGroqChoice(video, token, pipeline, reason, ctx) {
@@ -339,6 +412,135 @@
         ctx.onStateChange({ paused: false, status: "Captioning (YouTube CC)" });
       });
 
+      return { ok: true };
+    },
+
+    async startCaptionGeminiFallback(video, token, pipeline, reason, ctx) {
+      if (!window.LumeoGeminiSTT) {
+        ctx.removeOverlay();
+        return { ok: false, error: "Gemini STT service not loaded." };
+      }
+      ctx.setStatusText("Gemini STT");
+      ctx.setOverlayState("connecting");
+      ctx.showToast(reason ? `${reason} Starting Gemini Audio fallback.` : "Starting Gemini Audio fallback.", 5000);
+
+      let stream;
+      try {
+        stream = await ctx.captureWithRetry(video);
+      } catch (err) {
+        return { ok: false, error: err?.message || String(err) };
+      }
+
+      const session = {
+        token,
+        type: "caption",
+        liveStt: true,
+        pipeline,
+        captionTimer: null,
+        lastCueIndex: -1,
+        cues: [],
+        kymaKey: null,
+        stream,
+        pc: null,
+        dc: null,
+        sttLoop: null,
+      };
+      ctx.onSessionCreated(session);
+      ctx.applyTierToolbar();
+      ctx.getTranscriptController()?.renderCaptionTranscript(session.cues);
+
+      const settings = ctx.getSettings();
+      try {
+        const loop = window.LumeoGeminiSTT.create({
+          stream,
+          apiKey: settings.geminiKey,
+          model: settings.geminiModel || "gemini-2.5-flash-lite",
+          language: settings.sourceLanguage || "",
+          onText: (result) => {
+            void this.appendLiveSttCue(video, pipeline, result?.text || "", ctx);
+          },
+          onError: (err) => {
+            ctx.setStatusText("Gemini error");
+            ctx.showToast(err?.message || "Gemini STT error", 7000);
+            ctx.onStateChange({ running: false, paused: false, status: "Gemini error", errorMessage: err?.message || "Gemini STT error" });
+          },
+        });
+        session.sttLoop = loop;
+        loop.start();
+      } catch (err) {
+        stream.getTracks().forEach((track) => track.stop());
+        ctx.removeOverlay();
+        return { ok: false, error: err?.message || String(err) };
+      }
+
+      ctx.setStatusText("Gemini AI Live");
+      ctx.setOverlayState("live");
+      ctx.onStateChange({ running: true, paused: false, status: "Captioning (Gemini STT)" });
+      return { ok: true };
+    },
+
+    async startCaptionOpenAIFallback(video, token, pipeline, reason, ctx) {
+      if (!window.LumeoGroqSTT) {
+        ctx.removeOverlay();
+        return { ok: false, error: "Whisper STT service not loaded." };
+      }
+      ctx.setStatusText("OpenAI Whisper");
+      ctx.setOverlayState("connecting");
+      ctx.showToast(reason ? `${reason} Starting OpenAI Whisper fallback.` : "Starting OpenAI Whisper fallback.", 5000);
+
+      let stream;
+      try {
+        stream = await ctx.captureWithRetry(video);
+      } catch (err) {
+        return { ok: false, error: err?.message || String(err) };
+      }
+
+      const session = {
+        token,
+        type: "caption",
+        liveStt: true,
+        pipeline,
+        captionTimer: null,
+        lastCueIndex: -1,
+        cues: [],
+        kymaKey: null,
+        stream,
+        pc: null,
+        dc: null,
+        sttLoop: null,
+      };
+      ctx.onSessionCreated(session);
+      ctx.applyTierToolbar();
+      ctx.getTranscriptController()?.renderCaptionTranscript(session.cues);
+
+      const settings = ctx.getSettings();
+      try {
+        const loop = window.LumeoGroqSTT.create({
+          stream,
+          apiKey: settings.openaiKey,
+          provider: "openai",
+          model: "whisper-1",
+          language: settings.sourceLanguage || "",
+          onText: (result) => {
+            void this.appendLiveSttCue(video, pipeline, result?.text || "", ctx);
+          },
+          onError: (err) => {
+            ctx.setStatusText("OpenAI error");
+            ctx.showToast(err?.message || "OpenAI Whisper error", 7000);
+            ctx.onStateChange({ running: false, paused: false, status: "OpenAI error", errorMessage: err?.message || "OpenAI Whisper error" });
+          },
+        });
+        session.sttLoop = loop;
+        loop.start();
+      } catch (err) {
+        stream.getTracks().forEach((track) => track.stop());
+        ctx.removeOverlay();
+        return { ok: false, error: err?.message || String(err) };
+      }
+
+      ctx.setStatusText("OpenAI Whisper Live");
+      ctx.setOverlayState("live");
+      ctx.onStateChange({ running: true, paused: false, status: "Captioning (OpenAI STT)" });
       return { ok: true };
     },
 

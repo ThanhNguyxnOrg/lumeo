@@ -51,10 +51,38 @@
     const trackInfo = createTrackInfo(doc, diagnostics.tracks);
     const actions = doc.createElement("div");
     actions.className = "ec-choice-actions";
+
+    if (options.onChromeLiveCaption) {
+      actions.append(
+        createButton(doc, "ec-choice-btn ec-choice-btn-accent", "Chrome Live Caption (0-Key · Free)", () => options.onChromeLiveCaption?.())
+      );
+    }
+    if (options.onGemini) {
+      actions.append(
+        createButton(doc, "ec-choice-btn", "Try Gemini AI STT (Free Tier)", () => options.onGemini?.())
+      );
+    }
+    if (options.onGroq) {
+      actions.append(
+        createButton(doc, "ec-choice-btn", "Try Groq Whisper", () => options.onGroq?.())
+      );
+    }
+    if (options.onOpenAI) {
+      actions.append(
+        createButton(doc, "ec-choice-btn", "Try OpenAI Whisper", () => options.onOpenAI?.())
+      );
+    }
+    if (options.onSoniox) {
+      actions.append(
+        createButton(doc, "ec-choice-btn", "Try Soniox STT", () => options.onSoniox?.())
+      );
+    }
+    if (options.onStandard) {
+      actions.append(
+        createButton(doc, "ec-choice-btn", "Switch to Standard Dub", () => options.onStandard?.())
+      );
+    }
     actions.append(
-      createButton(doc, "ec-choice-btn", "Try Groq Whisper", () => options.onGroq?.()),
-      createButton(doc, "ec-choice-btn", "Try Soniox STT", () => options.onSoniox?.()),
-      createButton(doc, "ec-choice-btn", "Switch to Standard Dub", () => options.onStandard?.()),
       createButton(doc, "ec-choice-btn ec-choice-btn-muted", "Retry caption fetch", () => options.onRetry?.()),
       createButton(doc, "ec-choice-btn ec-choice-btn-muted", "Cancel", () => options.onCancel?.()),
     );

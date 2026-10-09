@@ -196,34 +196,65 @@
     if (typeof window === "undefined" || !("speechSynthesis" in window) || !browserVoiceInput) return;
     const voices = window.speechSynthesis.getVoices() || [];
     const prev = browserVoiceInput.value || currentSettings.standardVoice || "";
-    browserVoiceInput.innerHTML = '<option value="">Auto-pair best natural voice for language</option>';
     const targetLang = currentSettings.targetLanguage || "vi";
-    const prefix = targetLang.split("-")[0].toLowerCase();
-    const matching = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith(prefix));
-    const others = voices.filter((v) => !v.lang || !v.lang.toLowerCase().startsWith(prefix));
+    const picker = window.LumeoVoicePicker;
 
-    if (matching.length > 0) {
-      const matchGroup = document.createElement("optgroup");
-      matchGroup.label = `Matching Voices (${targetLang})`;
-      matching.forEach((v) => {
-        const opt = document.createElement("option");
-        opt.value = v.voiceURI || v.name;
-        opt.textContent = `${v.name} (${v.lang})`;
-        matchGroup.appendChild(opt);
-      });
-      browserVoiceInput.appendChild(matchGroup);
-    }
+    browserVoiceInput.innerHTML = '<option value="">Auto-pair best natural voice for language</option>';
 
-    if (others.length > 0) {
-      const otherGroup = document.createElement("optgroup");
-      otherGroup.label = "All Other Voices";
-      others.forEach((v) => {
-        const opt = document.createElement("option");
-        opt.value = v.voiceURI || v.name;
-        opt.textContent = `${v.name} (${v.lang})`;
-        otherGroup.appendChild(opt);
-      });
-      browserVoiceInput.appendChild(otherGroup);
+    if (picker) {
+      const topVoices = picker.getTopVoicesForLanguage(targetLang, voices);
+      if (topVoices.length > 0) {
+        const matchGroup = document.createElement("optgroup");
+        matchGroup.label = `Recommended Natural Voices (${targetLang})`;
+        topVoices.forEach((v) => {
+          const opt = document.createElement("option");
+          opt.value = v.voiceURI || v.name;
+          opt.textContent = `${picker.cleanVoiceLabel(v.name)} (${v.lang})`;
+          matchGroup.appendChild(opt);
+        });
+        browserVoiceInput.appendChild(matchGroup);
+      }
+      const topSet = new Set(topVoices.map((v) => v.name));
+      const others = voices.filter((v) => !topSet.has(v.name));
+      if (others.length > 0) {
+        const otherGroup = document.createElement("optgroup");
+        otherGroup.label = "All Other Voices";
+        others.forEach((v) => {
+          const opt = document.createElement("option");
+          opt.value = v.voiceURI || v.name;
+          opt.textContent = `${picker.cleanVoiceLabel(v.name)} (${v.lang})`;
+          otherGroup.appendChild(opt);
+        });
+        browserVoiceInput.appendChild(otherGroup);
+      }
+    } else {
+      const prefix = targetLang.split("-")[0].toLowerCase();
+      const matching = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith(prefix));
+      const others = voices.filter((v) => !v.lang || !v.lang.toLowerCase().startsWith(prefix));
+
+      if (matching.length > 0) {
+        const matchGroup = document.createElement("optgroup");
+        matchGroup.label = `Matching Voices (${targetLang})`;
+        matching.forEach((v) => {
+          const opt = document.createElement("option");
+          opt.value = v.voiceURI || v.name;
+          opt.textContent = `${v.name} (${v.lang})`;
+          matchGroup.appendChild(opt);
+        });
+        browserVoiceInput.appendChild(matchGroup);
+      }
+
+      if (others.length > 0) {
+        const otherGroup = document.createElement("optgroup");
+        otherGroup.label = "All Other Voices";
+        others.forEach((v) => {
+          const opt = document.createElement("option");
+          opt.value = v.voiceURI || v.name;
+          opt.textContent = `${v.name} (${v.lang})`;
+          otherGroup.appendChild(opt);
+        });
+        browserVoiceInput.appendChild(otherGroup);
+      }
     }
 
     if (prev) browserVoiceInput.value = prev;

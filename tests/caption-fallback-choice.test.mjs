@@ -11,7 +11,10 @@ describe("ui/caption-fallback-choice.js", () => {
   it("renders no-caption fallback choices and track diagnostics", async () => {
     const { window, api } = await setup();
     const callbacks = {
+      onChromeLiveCaption: vi.fn(),
+      onGemini: vi.fn(),
       onGroq: vi.fn(),
+      onOpenAI: vi.fn(),
       onSoniox: vi.fn(),
       onStandard: vi.fn(),
       onRetry: vi.fn(),
@@ -31,7 +34,10 @@ describe("ui/caption-fallback-choice.js", () => {
 
     const buttons = Array.from(node.querySelectorAll("button"));
     expect(buttons.map((button) => button.textContent)).toEqual([
+      "Chrome Live Caption (0-Key · Free)",
+      "Try Gemini AI STT (Free Tier)",
       "Try Groq Whisper",
+      "Try OpenAI Whisper",
       "Try Soniox STT",
       "Switch to Standard Dub",
       "Retry caption fetch",
@@ -39,7 +45,10 @@ describe("ui/caption-fallback-choice.js", () => {
     ]);
 
     for (const button of buttons) button.click();
+    expect(callbacks.onChromeLiveCaption).toHaveBeenCalledOnce();
+    expect(callbacks.onGemini).toHaveBeenCalledOnce();
     expect(callbacks.onGroq).toHaveBeenCalledOnce();
+    expect(callbacks.onOpenAI).toHaveBeenCalledOnce();
     expect(callbacks.onSoniox).toHaveBeenCalledOnce();
     expect(callbacks.onStandard).toHaveBeenCalledOnce();
     expect(callbacks.onRetry).toHaveBeenCalledOnce();

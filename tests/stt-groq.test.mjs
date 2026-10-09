@@ -57,6 +57,27 @@ describe("services/stt-groq.js", () => {
       .rejects.toThrow("rate limited");
   });
 
+  it("routes to OpenAI endpoint and uses whisper-1 when provider is openai or sk- key is used", async () => {
+    const append = vi.fn();
+    window.FormData = vi.fn(function() { return { append }; });
+    window.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ text: "openai transcript", language: "en" }),
+    }));
+
+    const result = await api.transcribeBlob(new window.Blob(["wav"]), {
+      apiKey: "sk-openai-test-key",
+      provider: "openai",
+    });
+
+    expect(window.fetch).toHaveBeenCalledWith(api.OPENAI_URL, expect.objectContaining({
+      method: "POST",
+      headers: { Authorization: "Bearer sk-openai-test-key" },
+    }));
+    expect(append).toHaveBeenCalledWith("model", "whisper-1");
+    expect(result.text).toBe("openai transcript");
+  });
+
   it("records chunks, converts to WAV, and emits transcribed text", async () => {
     const timers = [];
     const onText = vi.fn();

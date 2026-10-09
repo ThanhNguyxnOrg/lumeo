@@ -248,6 +248,7 @@ const CONTENT_SCRIPT_FILES = [
   "services/tts-openai.js",
   "services/stt-soniox.js",
   "services/stt-groq.js",
+  "services/stt-gemini.js",
   "services/captions.js",
   "services/kyma-client.js",
   "pipelines/caption.js",
@@ -806,6 +807,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.runtime.openOptionsPage();
     } else if (typeof chrome !== "undefined" && chrome.tabs?.create) {
       chrome.tabs.create({ url: chrome.runtime.getURL("options.html") });
+    }
+    sendResponse?.({ ok: true });
+    return false;
+  }
+
+  if (message?.type === "OPEN_CHROME_ACCESSIBILITY_SETTINGS") {
+    if (typeof chrome !== "undefined" && chrome.tabs?.create) {
+      chrome.tabs.create({ url: "chrome://settings/accessibility" });
     }
     sendResponse?.({ ok: true });
     return false;

@@ -97,8 +97,11 @@
 
   async function speakBrowser(text, lang, options = {}) {
     const clean = stripTtsNoise(text);
-    if (!clean) return false;
-    const voice = getVoiceByName(options.voiceName) || getVoicesForLang(lang)[0] || null;
+    const langVoices = getVoicesForLang(lang);
+    const autoVoice = (typeof window !== "undefined" && window.LumeoVoicePicker?.autoPairVoice)
+      ? window.LumeoVoicePicker.autoPairVoice(lang, langVoices)
+      : langVoices[0];
+    const voice = getVoiceByName(options.voiceName) || autoVoice || null;
     stop();
     const utterance = new SpeechSynthesisUtterance(clean);
     activeUtterance = utterance;

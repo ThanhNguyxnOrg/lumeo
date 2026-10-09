@@ -102,4 +102,17 @@ describe("services/providers.js", () => {
     expect(api.hasRequiredKeys("custom-voice-engine", {})).toBe(false);
     expect(api.hasRequiredKeys("custom-voice-engine", { customTtsApiKey: "secret-token" })).toBe(true);
   });
+
+  it("registers gemini-stt and openai-whisper in stt slot with proper key requirements", () => {
+    const sttProviders = api.providersForSlot("caption", "stt").map((p) => p.id);
+    expect(sttProviders).toContain("gemini-stt");
+    expect(sttProviders).toContain("openai-whisper");
+    expect(sttProviders).toContain("groq-whisper");
+
+    expect(api.hasRequiredKeys("gemini-stt", {})).toBe(false);
+    expect(api.hasRequiredKeys("gemini-stt", { geminiKey: "AIza-test" })).toBe(true);
+
+    expect(api.hasRequiredKeys("openai-whisper", {})).toBe(false);
+    expect(api.hasRequiredKeys("openai-whisper", { openaiKey: "sk-test" })).toBe(true);
+  });
 });

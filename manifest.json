@@ -67,14 +67,14 @@
     },
     {
       "matches": ["https://*.youtube.com/*", "https://youtube.com/*"],
-      "js": ["lib/browser-api.js", "lib/platform-adapters.js", "lib/token-guard.js", "lib/audio-utils.js", "ui/overlay.js", "ui/subtitle-overlay.js", "ui/transcript.js", "ui/voice-picker.js", "ui/caption-fallback-choice.js", "services/providers.js", "services/translate.js", "services/srt-export.js", "services/tts-browser.js", "services/tts-openai.js", "services/stt-soniox.js", "services/stt-groq.js", "services/captions.js", "services/kyma-client.js", "pipelines/caption.js", "pipelines/caption-orchestrator.js", "pipelines/realtime.js", "pipelines/standard.js", "services/session-manager.js", "content.js"],
+      "js": ["lib/browser-api.js", "lib/platform-adapters.js", "lib/token-guard.js", "lib/audio-utils.js", "ui/overlay.js", "ui/subtitle-overlay.js", "ui/transcript.js", "ui/voice-picker.js", "ui/caption-fallback-choice.js", "services/providers.js", "services/translate.js", "services/srt-export.js", "services/tts-browser.js", "services/tts-openai.js", "services/stt-soniox.js", "services/stt-groq.js", "services/stt-gemini.js", "services/captions.js", "services/kyma-client.js", "pipelines/caption.js", "pipelines/caption-orchestrator.js", "pipelines/realtime.js", "pipelines/standard.js", "services/session-manager.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["services/sniffer.js", "services/audio-processor.js", "lib/browser-api.js", "lib/platform-adapters.js", "lib/token-guard.js", "lib/audio-utils.js", "ui/overlay.js", "ui/subtitle-overlay.js", "ui/transcript.js", "ui/voice-picker.js", "ui/caption-fallback-choice.js", "services/providers.js", "services/translate.js", "services/srt-export.js", "services/tts-browser.js", "services/tts-openai.js", "services/stt-soniox.js", "services/stt-groq.js", "services/captions.js", "services/kyma-client.js", "pipelines/caption.js", "pipelines/caption-orchestrator.js", "pipelines/realtime.js", "pipelines/standard.js", "services/session-manager.js"],
+      "resources": ["services/sniffer.js", "services/audio-processor.js", "lib/browser-api.js", "lib/platform-adapters.js", "lib/token-guard.js", "lib/audio-utils.js", "ui/overlay.js", "ui/subtitle-overlay.js", "ui/transcript.js", "ui/voice-picker.js", "ui/caption-fallback-choice.js", "services/providers.js", "services/translate.js", "services/srt-export.js", "services/tts-browser.js", "services/tts-openai.js", "services/stt-soniox.js", "services/stt-groq.js", "services/stt-gemini.js", "services/captions.js", "services/kyma-client.js", "pipelines/caption.js", "pipelines/caption-orchestrator.js", "pipelines/realtime.js", "pipelines/standard.js", "services/session-manager.js"],
       "matches": ["https://*.youtube.com/*", "https://youtube.com/*"]
     }
   ]

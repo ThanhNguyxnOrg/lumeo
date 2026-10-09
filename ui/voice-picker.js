@@ -173,6 +173,10 @@
     REALTIME_DEFAULT_VOICE,
     STANDARD_VOICES,
     STANDARD_DEFAULT_VOICE,
+    cleanVoiceLabel,
+    autoPairVoice,
+    getTopVoicesForLanguage,
+    SMART_VOICE_PREFERENCES,
     populate,
   };
 })();

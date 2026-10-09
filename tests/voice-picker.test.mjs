@@ -63,4 +63,19 @@ describe("ui/voice-picker.js", () => {
     expect(select.value).toBe("verse");
     expect(select.getAttribute("aria-label")).toBe("Realtime voice");
   });
+
+  it("prioritizes natural voices and cleans voice labels for Vietnamese", () => {
+    const mockVoices = [
+      { name: "Microsoft HoaiMy Online (Natural) - Vietnamese (Vietnam)", lang: "vi-VN" },
+      { name: "Google tiếng Việt", lang: "vi-VN" },
+      { name: "Microsoft An (Standard)", lang: "vi-VN" },
+      { name: "Microsoft David", lang: "en-US" },
+    ];
+    const top = api.getTopVoicesForLanguage("vi", mockVoices);
+    expect(top).toHaveLength(3);
+    expect(top[0].name).toContain("HoaiMy");
+    expect(top[1].name).toContain("Google");
+    expect(api.cleanVoiceLabel(top[0].name)).toBe("HoaiMy (Natural)");
+    expect(api.cleanVoiceLabel(top[1].name)).toBe("Google tiếng Việt");
+  });
 });

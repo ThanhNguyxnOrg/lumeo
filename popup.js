@@ -217,6 +217,17 @@ function populateLanguages(tier = state.tier, preferred = state.targetLanguage) 
 }
 
 function repopulateVoices(tier, preferredVoiceId) {
+  if (globalThis.LumeoVoicePicker) {
+    const settings = {
+      ...state,
+      targetLanguage: langSelect?.value || state.targetLanguage || "vi",
+      standardVoice: preferredVoiceId !== undefined ? preferredVoiceId : state.standardVoice,
+      realtimeVoice: preferredVoiceId !== undefined ? preferredVoiceId : state.realtimeVoice,
+      captionTtsProvider: state.captionTtsProvider,
+    };
+    globalThis.LumeoVoicePicker.populate(voiceSelect, tier, settings);
+    return;
+  }
   const list = tier === "caption"
     ? CAPTION_VOICES
     : tier === "standard"
@@ -504,18 +515,17 @@ function syncModeProxy(tier) {
 }
 
 function activeVoiceForTier(tier) {
-  if (tier === "caption") return state.captionTtsProvider || "off";
+  if (tier === "caption") {
+    if (state.captionTtsProvider === "off") return "off";
+    if (state.captionTtsProvider === "custom-voice-engine") return "custom-voice-engine";
+    return state.standardVoice || "auto";
+  }
   if (tier === "standard") return state.standardVoice || STANDARD_VOICES[0].id;
   return state.realtimeVoice ?? "marin";
 }
 
 function readSettings() {
   const tier = tierSelect.value || "caption";
-  const voiceKey = tier === "caption"
-    ? "captionTtsProvider"
-    : tier === "standard"
-      ? "standardVoice"
-      : "realtimeVoice";
   const settings = {
     ...state,
     ...allKeyValues(),
@@ -526,7 +536,8 @@ function readSettings() {
     captionTtsProvider: state.captionTtsProvider || "off",
     dubProvider: state.dubProvider || "kyma",
     realtimeProvider: state.realtimeProvider || "kyma-realtime",
-    [voiceKey]: voiceSelect.value,
+    standardVoice: state.standardVoice || "",
+    realtimeVoice: state.realtimeVoice ?? "marin",
     originalVolume: Number(originalVolumeInput.value),
     voiceVolume: Number(voiceVolumeInput.value),
     showSource: showSourceCheckbox.checked,
@@ -535,7 +546,24 @@ function readSettings() {
     openRouterModel: state.openRouterModel || "openrouter/free",
     groqModel: state.groqModel || "llama-3.3-70b-versatile",
   };
-  if (tier === "caption") settings.captionTtsProvider = state.captionTtsProvider || voiceSelect.value || "off";
+  if (tier === "caption") {
+    const val = voiceSelect.value;
+    if (val === "off") {
+      settings.captionTtsProvider = "off";
+    } else if (val === "custom-voice-engine") {
+      settings.captionTtsProvider = "custom-voice-engine";
+    } else if (val === "auto") {
+      settings.captionTtsProvider = "browser";
+      settings.standardVoice = "";
+    } else if (val) {
+      settings.captionTtsProvider = "browser";
+      settings.standardVoice = val;
+    }
+  } else if (tier === "standard") {
+    settings.standardVoice = voiceSelect.value;
+  } else {
+    settings.realtimeVoice = voiceSelect.value;
+  }
   return settings;
 }
 
@@ -851,13 +879,37 @@ tierSelect.addEventListener("change", () => {
   void pushSettings();
 });
 voiceSelect.addEventListener("change", () => {
+  const val = voiceSelect.value;
   if (tierSelect.value === "caption") {
-    state.captionTtsProvider = voiceSelect.value;
+    if (val === "off") {
+      state.captionTtsProvider = "off";
+    } else if (val === "custom-voice-engine") {
+      state.captionTtsProvider = "custom-voice-engine";
+    } else if (val === "auto") {
+      state.captionTtsProvider = "browser";
+      state.standardVoice = "";
+    } else {
+      state.captionTtsProvider = "browser";
+      state.standardVoice = val;
+    }
     renderSetupStack();
+  } else if (tierSelect.value === "standard") {
+    state.standardVoice = val;
+  } else {
+    state.realtimeVoice = val;
   }
   void pushSettings();
 });
-langSelect.addEventListener("change", pushSettings);
+langSelect.addEventListener("change", () => {
+  state.targetLanguage = langSelect.value;
+  repopulateVoices(state.tier, activeVoiceForTier(state.tier));
+  void pushSettings();
+});
+if (typeof window !== "undefined" && window.speechSynthesis) {
+  window.speechSynthesis.onvoiceschanged = () => {
+    repopulateVoices(state.tier, activeVoiceForTier(state.tier));
+  };
+}
 showSourceCheckbox.addEventListener("change", pushSettings);
 originalVolumeInput.addEventListener("input", onVolumeChange);
 voiceVolumeInput.addEventListener("input", onVolumeChange);

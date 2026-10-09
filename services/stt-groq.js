@@ -14,7 +14,9 @@
   if (window.LumeoGroqSTT?.__loaded) return;
 
   const GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
+  const OPENAI_URL = "https://api.openai.com/v1/audio/transcriptions";
   const DEFAULT_MODEL = "whisper-large-v3-turbo";
+  const DEFAULT_OPENAI_MODEL = "whisper-1";
   // Groq enforces a 10s minimum per request, 25MB max. 10s WAV 16 kHz mono
   // is ~320KB — well inside the budget. Push to 15s to reduce per-call
   // overhead (~100ms) without making the caption feed feel laggy.
@@ -23,7 +25,7 @@
 
   function assertKey(apiKey) {
     const key = String(apiKey || "").trim();
-    if (!key) throw new Error("Groq API key is missing.");
+    if (!key) throw new Error("Whisper API key is missing.");
     return key;
   }
 
@@ -32,7 +34,9 @@
   // skip the chunk or tear down the session.
   async function transcribeBlob(wavBlob, options = {}) {
     const key = assertKey(options.apiKey);
-    const model = options.model || DEFAULT_MODEL;
+    const isOpenAI = options.provider === "openai" || (!options.provider && String(options.apiKey || "").startsWith("sk-") && !String(options.apiKey || "").startsWith("gsk_"));
+    const endpoint = options.endpoint || (isOpenAI ? OPENAI_URL : GROQ_URL);
+    const model = options.model || (isOpenAI ? DEFAULT_OPENAI_MODEL : DEFAULT_MODEL);
     const form = new FormData();
     const filename = String(wavBlob?.type || "").includes("webm") ? "chunk.webm" : "chunk.wav";
     form.append("file", wavBlob, filename);
@@ -43,7 +47,7 @@
     if (options.temperature != null) {
       form.append("temperature", String(options.temperature));
     }
-    const response = await fetch(GROQ_URL, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { Authorization: `Bearer ${key}` },
       body: form,
@@ -51,8 +55,9 @@
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+      const providerLabel = isOpenAI ? "OpenAI" : "Groq";
       const detail =
-        data?.error?.message || data?.error || `Groq HTTP ${response.status}`;
+        data?.error?.message || data?.error || `${providerLabel} HTTP ${response.status}`;
       throw new Error(String(detail).slice(0, 240));
     }
     return {
@@ -157,9 +162,12 @@
   window.LumeoGroqSTT = {
     __loaded: true,
     GROQ_URL,
+    OPENAI_URL,
     DEFAULT_MODEL,
+    DEFAULT_OPENAI_MODEL,
     transcribeBlob,
     GroqTranscribeLoop,
     create: (options) => new GroqTranscribeLoop(options),
   };
+  window.LumeoWhisperSTT = window.LumeoGroqSTT;
 })();
