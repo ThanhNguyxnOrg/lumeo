@@ -1092,8 +1092,10 @@
 
         if (volumeChanged) {
           LumeoSessionManager.applyVolumes(settings.originalVolume, settings.voiceVolume);
+          const currentSession = LumeoSessionManager.getSession?.();
+          const isDubbingActive = currentSession && currentSession.type !== "caption";
           const vid = LumeoSessionManager.getVideoEl() || findVideo?.() || document.querySelector("video");
-          if (vid && typeof settings.originalVolume === "number") {
+          if (vid && isDubbingActive && typeof settings.originalVolume === "number") {
             vid.volume = Math.max(0, Math.min(1, settings.originalVolume / 100));
             vid.muted = !!settings.muteOriginal || settings.originalVolume === 0;
           }
