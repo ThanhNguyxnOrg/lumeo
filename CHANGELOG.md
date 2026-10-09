@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.2] - 2026-10-08 — Multi-Tab Audio Isolation & Subtitle Track Matching Patch
+
+### Fixed & Improved
+
+- **Multi-Tab YouTube Audio Isolation:**
+  - Prevented volume sync changes from interfering with inactive YouTube tabs. Only active dubbing sessions now adjust the player volume.
+- **Accurate Original Subtitle Track Selection:**
+  - Fixed track priority in `chooseCaptionTrack`: always prioritizes target language and native audio tracks (including ASR) over foreign manual tracks. Native Vietnamese videos now correctly display Vietnamese as the original/secondary subtitle instead of falling back to uploaded English tracks.
+- **ElevenLabs Voice Selection Clarity:**
+  - Clarified Voice Provider dropdown label to "ElevenLabs / Custom Neural Voice" in Settings for better discoverability.
+
+---
+
 ## [2.0.1] - 2026-10-08 — Performance & Cache Resilience Patch
 
 ### Fixed & Optimized
