@@ -118,4 +118,14 @@ describe("services/captions.js — pure parser surface", () => {
     expect(tracks[1].baseUrl).toContain("v=explicitVid456");
     expect(tracks[1].baseUrl).toContain("lang=vi");
   });
+
+  it("chooseCaptionTrack prioritizes targetLanguage ASR track over manual foreign language track", () => {
+    const tracks = [
+      { languageCode: "en", kind: undefined, baseUrl: "http://example.com/en" },
+      { languageCode: "vi", kind: "asr", baseUrl: "http://example.com/vi-asr" },
+    ];
+    const chosen = api.chooseCaptionTrack(tracks, "vi");
+    expect(chosen.languageCode).toBe("vi");
+    expect(chosen.kind).toBe("asr");
+  });
 });

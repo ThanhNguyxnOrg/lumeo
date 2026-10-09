@@ -680,13 +680,23 @@
     if (!Array.isArray(tracks) || !tracks.length) return null;
     const targetBase = String(targetLanguage || "").split("-")[0];
     const manual = (track) => track.kind !== "asr";
-    // Prefer manual tracks when available, then any auto-generated (asr) track.
-    return (
+
+    // 1. Prioritize exact or base match for targetLanguage (manual first, then asr)
+    const targetMatch =
       tracks.find((track) => manual(track) && track.languageCode === targetLanguage) ||
       tracks.find((track) => manual(track) && track.languageCode?.split("-")[0] === targetBase) ||
-      tracks.find((track) => manual(track)) ||
       tracks.find((track) => track.languageCode === targetLanguage) ||
-      tracks.find((track) => track.languageCode?.split("-")[0] === targetBase) ||
+      tracks.find((track) => track.languageCode?.split("-")[0] === targetBase);
+    if (targetMatch) return targetMatch;
+
+    // 2. If targetLanguage is not in tracks, pick the video's original spoken track to translate from.
+    // YouTube's ASR track is guaranteed to match the video's actual spoken audio.
+    const asrOriginal = tracks.find((track) => track.kind === "asr" || track.vssId?.startsWith("a."));
+    const manualTrack = tracks.find((track) => manual(track));
+
+    return (
+      manualTrack ||
+      asrOriginal ||
       tracks.find((track) => track.languageCode === "en") ||
       tracks[0]
     );
@@ -1067,6 +1077,7 @@
     mergeFragmentedCues,
     parseTimedTextTrackList,
     readCaptionTracksFromInnertube,
+    chooseCaptionTrack,
     fetchSubtitles,
     fetchViaTranscriptPanel,
     mergeBilingualCues,
