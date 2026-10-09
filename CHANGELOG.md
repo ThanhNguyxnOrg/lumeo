@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.6] - 2026-10-09 — Bilingual Layout Sync & Cache Resume Guard
+
+### Fixed & Improved
+
+- **Bilingual Subtitle Layout Auto-Reconciliation:**
+  - Automatically re-applies `applyLayoutPreset("stacked")` when overlay is initialized and when storage is read, ensuring `showSource = true` and `showSourceSub = true` are always active for bilingual subtitles without needing manual toggle back-and-forth from single language mode.
+- **Cache Resume Cue Count Guard:**
+  - Added strict total cue count check (`entry.cues.length === total`) in `isResumableCacheEntry` to prevent attempting to resume stale or mismatched cached subtitle tracks across different video sessions, eliminating the infinite loading spinner on "Loading captions...".
+
 ## [2.0.5] - 2026-10-09 — In-Player Button Resilient Binding & Popover Fix
 
 ### Fixed & Improved

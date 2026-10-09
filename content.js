@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const LUMEO_VERSION = "2.0.5";
+  const LUMEO_VERSION = "2.0.6";
   const GLOBAL_KEY = "__lumeoContentVersion";
   if (window[GLOBAL_KEY] === LUMEO_VERSION) return;
   document.querySelectorAll(".ec-root").forEach((el) => el.remove());
