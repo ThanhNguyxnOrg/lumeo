@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.5] - 2026-10-09 — In-Player Button Resilient Binding & Popover Fix
+
+### Fixed & Improved
+
+- **In-Player Control Bar Button Resilient Event Binding:**
+  - Added auto-rebinding on YouTube control bar mutations (`dataset.lumeoBound`) so that clicking `.ytp-lumeo-button` reliably opens the quick settings popover even when YouTube clones or re-renders controls during playback.
+  - Added capture-phase delegated click and mousedown handling on `document` with duplicate suppression (`__lumeoHandled`) to ensure in-player button clicks are never absorbed or ignored.
+- **Session Start Overlay Initialization:**
+  - Initialized overlay host and YouTube control bar button immediately on `CONTENT_START` when starting translation from the popup.
+  - Synchronized `LUMEO_VERSION` to match `manifest.json` (`2.0.5`), preventing unnecessary content script teardown.
+
 ## [2.0.4] - 2026-10-09 — Smart Voice Sync, Multi-STT Fallback & Player UI Fixes
 
 ### Added & Improved
@@ -17,7 +28,9 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - Standardized default `targetLanguage` to English (`"en"`) across background, popup, options, and content scripts.
 - **In-Player Button Responsiveness & Popover Anchoring:**
   - Fixed popover DOM container anchoring to `#movie_player` to prevent popovers from dropping to the bottom of the page when exiting fullscreen.
-  - Added `mousedown` event propagation isolation to `.ytp-lumeo-button` to prevent YouTube player pause/play conflicts.
+  - Added resilient event listener binding (`dataset.lumeoBound`) and capture-phase event delegation for `.ytp-lumeo-button` to ensure clicking the in-player button always toggles the quick settings popover even after YouTube clones or re-renders controls.
+  - Synchronized `LUMEO_VERSION` in `content.js` to match `manifest.json` (`2.0.4`), preventing unnecessary script re-injection on session start.
+  - Initialized overlay and player controls on `CONTENT_START` so the in-player button is immediately active when starting translation from the popup.
 - **Bilingual Subtitle Track Preservation:**
   - Fixed `chooseCaptionTrack()` to preserve the video's original spoken track as source when target language differs, ensuring both original and translated lines display simultaneously in bilingual mode.
 

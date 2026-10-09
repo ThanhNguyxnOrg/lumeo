@@ -70,6 +70,20 @@
     let currentOriginalVolume = 18;
     let currentVoiceVolume = 100;
 
+    function triggerButtonClick(e) {
+      if (e) {
+        if (e.__lumeoHandled) return;
+        e.__lumeoHandled = true;
+        try { e.stopPropagation(); } catch {}
+        try { e.preventDefault(); } catch {}
+      }
+      if (typeof options.onButtonClick === "function") {
+        options.onButtonClick();
+      } else {
+        toggleSideCollapsed();
+      }
+    }
+
     function ensureYouTubeControlButton() {
       if (typeof doc === "undefined" || !doc.querySelector) return null;
       const rightControls = doc.querySelector(
@@ -94,18 +108,6 @@
             <circle class="ytp-lumeo-dot" cx="18" cy="6" r="2" fill="#94a3b8" />
           </svg>
         `;
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          if (typeof options.onButtonClick === "function") {
-            options.onButtonClick();
-          } else {
-            toggleSideCollapsed();
-          }
-        });
-        btn.addEventListener("mousedown", (e) => {
-          e.stopPropagation();
-        });
 
         const settingsBtn = rightControls.querySelector(".ytp-settings-button");
         try {
@@ -122,6 +124,15 @@
           } catch {}
         }
       }
+
+      if (btn && !btn.dataset.lumeoBound) {
+        btn.dataset.lumeoBound = "true";
+        btn.addEventListener("click", triggerButtonClick);
+        btn.addEventListener("mousedown", (e) => {
+          try { e.stopPropagation(); } catch {}
+        });
+      }
+
       ytButton = btn;
       updateYouTubeControlButton();
       return btn;
@@ -148,6 +159,21 @@
       if (typeof MutationObserver === "undefined") return;
       const target = doc.body || doc.documentElement;
       if (!target) return;
+      if (!doc.__lumeoBtnDelegated) {
+        doc.__lumeoBtnDelegated = true;
+        doc.addEventListener("click", (e) => {
+          const lBtn = e.target?.closest?.(".ytp-lumeo-button");
+          if (lBtn) {
+            triggerButtonClick(e);
+          }
+        }, true);
+        doc.addEventListener("mousedown", (e) => {
+          const lBtn = e.target?.closest?.(".ytp-lumeo-button");
+          if (lBtn) {
+            try { e.stopPropagation(); } catch {}
+          }
+        }, true);
+      }
       if (ytObserver) ytObserver.disconnect();
       ytObserver = new MutationObserver(() => {
         ensureYouTubeControlButton();

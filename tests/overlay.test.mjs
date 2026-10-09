@@ -217,6 +217,40 @@ describe("ui/overlay.js YouTube control bar button integration", () => {
     controller.destroy();
     expect(rightControls.querySelector(".ytp-lumeo-button")).toBeNull();
   });
+
+  it("re-binds listeners to pre-existing or cloned YouTube control button", async () => {
+    const { window } = await createSandboxWindow();
+    loadService("ui/overlay.js", window);
+
+    const moviePlayer = window.document.createElement("div");
+    moviePlayer.id = "movie_player";
+    const chromeBottom = window.document.createElement("div");
+    chromeBottom.className = "ytp-chrome-bottom";
+    const rightControls = window.document.createElement("div");
+    rightControls.className = "ytp-right-controls";
+
+    // Simulate an unbound / cloned button existing in DOM
+    const existingBtn = window.document.createElement("button");
+    existingBtn.className = "ytp-button ytp-lumeo-button";
+    rightControls.appendChild(existingBtn);
+    chromeBottom.appendChild(rightControls);
+    moviePlayer.appendChild(chromeBottom);
+    window.document.body.appendChild(moviePlayer);
+
+    const controller = window.LumeoOverlay.createOverlayController();
+    const root = controller.build();
+
+    expect(existingBtn.dataset.lumeoBound).toBe("true");
+
+    // Click on pre-existing button toggles overlay
+    existingBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(root.classList.contains("is-side-collapsed")).toBe(true);
+
+    existingBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(root.classList.contains("is-side-collapsed")).toBe(false);
+
+    controller.destroy();
+  });
 });
 
 describe("ui/overlay.js native YouTube popover menu", () => {

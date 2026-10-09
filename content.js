@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const LUMEO_VERSION = "2.0.2";
+  const LUMEO_VERSION = "2.0.5";
   const GLOBAL_KEY = "__lumeoContentVersion";
   if (window[GLOBAL_KEY] === LUMEO_VERSION) return;
   document.querySelectorAll(".ec-root").forEach((el) => el.remove());
@@ -164,8 +164,7 @@
     collapsedOnStart: true,
     onButtonClick: () => {
       ensureOverlayBuilt();
-      const open = overlayController.isOpen?.();
-      overlayController.toggleSideCollapsed(open);
+      overlayController.toggleSideCollapsed();
     },
     onStartSession: async () => {
       await handleStartSession();
@@ -956,6 +955,8 @@
               sendResponse({ ok: true, alreadyRunning: true });
               break;
             }
+            ensureOverlayBuilt();
+            overlayController?.ensureYouTubeControlButton?.();
             settings = { ...(msg.settings || {}) };
             LumeoSessionManager.setSettings(settings);
             overlayController?.setSessionState?.({ isTranslating: true });
