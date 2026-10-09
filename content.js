@@ -534,16 +534,17 @@
     if (typeof chrome !== "undefined" && chrome.storage?.local) {
       try {
         chrome.storage.local.get(null, (res) => {
-          if (res) {
             settings = { ...(settings || {}), ...res };
             captionStyle = { ...captionStyle, ...res };
+            applyLayoutPreset(captionStyle.layoutPreset || "stacked");
             if (elements.langSelect && settings.targetLanguage) {
               elements.langSelect.value = settings.targetLanguage;
             }
             populateVoicePicker(settings?.tier || "caption");
             overlayController?.syncCaptionControls?.(captionStyle);
+            applyCaptionStyle();
             overlayController?.updateMenuLabels?.();
-          }
+            if (lastDisplayedCue) setTargetCue(lastDisplayedCue);
         });
       } catch {}
     }

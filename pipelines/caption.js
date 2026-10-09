@@ -100,7 +100,7 @@
   }
 
   function isResumableCacheEntry(entry, total) {
-    if (!entry?.cues?.length) return false;
+    if (!entry?.cues?.length || entry.cues.length !== total) return false;
     if (entry.version !== CACHE_VERSION) return false;
     if ((entry.updatedAt || 0) < now() - CACHE_TTL_MS) return false;
     const completed = countTranslated(entry.cues);
