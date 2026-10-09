@@ -9,9 +9,9 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.0-ff7a45?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.0.3-ff7a45?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/Chrome-MV3-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome MV3">
-  <img src="https://img.shields.io/badge/tests-118%20passed-2ea043?style=for-the-badge" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-201%20passed-2ea043?style=for-the-badge" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-2ea043?style=for-the-badge" alt="License">
 </p>
 
@@ -214,7 +214,7 @@ lumeo/
 │   ├── browser-api.js              # Cross-browser API abstraction
 │   └── token-guard.js              # Page-level async token guard
 │
-├── tests/                          # 117 unit tests (Vitest)
+├── tests/                          # 201 unit tests across 28 test suites (Vitest)
 │   ├── helpers/
 │   │   ├── chrome-mock.mjs         # Chrome API mock for testing
 │   │   └── load-service.mjs        # Service loader helper
@@ -232,7 +232,7 @@ lumeo/
 ## Testing
 
 ```bash
-# Run all 117 unit tests
+# Run all 201 unit tests across 28 suites
 npm test
 
 # Syntax check all JavaScript files

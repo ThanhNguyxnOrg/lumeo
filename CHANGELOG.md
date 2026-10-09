@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.3] - 2026-10-09 — Two-Way Realtime Settings Sync & Bilingual Subtitle Fix
+
+### Fixed & Improved
+
+- **Two-Way Realtime Settings Synchronization:**
+  - Added live `chrome.storage.onChanged` listeners to Options page (`options.js`) and Popup (`popup.js`), ensuring changes made to languages, models, providers, volumes, and API keys immediately synchronize across open tabs and popups without needing page refresh.
+  - Implemented active input focus preservation in Options page to avoid cursor disruption while editing keys or settings.
+  - Updated storage queries to preserve complete configuration objects (`STORAGE.get(null)`), preventing accidental erasure of popup or in-player settings when saving.
+- **Bilingual Subtitle Display Restoration:**
+  - Fixed a state conflict where selecting `Bilingual (Original + Translated)` in the in-player subtitle popover failed to render the source line due to legacy unchecked `showSource: false` state in storage.
+  - Configured `layoutPreset: "stacked"` to consistently ensure `showSource: true`, `showSourceSub: true`, and `showTranslatedSub: true` in storage and overlay rendering.
+- **No-Caption Fallback Clarity:**
+  - Updated diagnostics and documentation for YouTube videos lacking native subtitle tracks (such as music videos or live streams), outlining speech-to-text fallback options.
+
+---
+
 ## [2.0.2] - 2026-10-08 — Multi-Tab Audio Isolation & Subtitle Track Matching Patch
 
 ### Fixed & Improved

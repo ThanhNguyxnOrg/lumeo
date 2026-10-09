@@ -183,6 +183,7 @@
       applyLayoutPreset(preset);
       saveCaptionStyle();
       applyCaptionStyle();
+      if (lastDisplayedCue) setTargetCue(lastDisplayedCue);
     },
     onFontSizeChange: (size) => {
       captionStyle.fontSize = size;
@@ -333,6 +334,7 @@
           delete res.lumeoSubPosition;
           settings = { ...(settings || {}), ...res };
           captionStyle = { ...captionStyle, ...res };
+          applyLayoutPreset(captionStyle.layoutPreset || "stacked");
           if (elements.langSelect && res.targetLanguage) {
             elements.langSelect.value = res.targetLanguage;
             autoPairVoiceForLanguage(res.targetLanguage);
@@ -357,6 +359,9 @@
           if (Object.keys(updated).length > 0) {
             settings = { ...(settings || {}), ...updated };
             captionStyle = { ...captionStyle, ...updated };
+            if (updated.layoutPreset) {
+              applyLayoutPreset(updated.layoutPreset);
+            }
             if (updated.targetLanguage && elements.langSelect) {
               elements.langSelect.value = updated.targetLanguage;
               autoPairVoiceForLanguage(updated.targetLanguage);
@@ -382,6 +387,9 @@
           bottomOffset: captionStyle.bottomOffset,
           highContrast: captionStyle.highContrast,
           layoutPreset: captionStyle.layoutPreset,
+          showSource: captionStyle.showSource,
+          showSourceSub: captionStyle.showSourceSub,
+          showTranslatedSub: captionStyle.showTranslatedSub,
           subtitleOrder: captionStyle.subtitleOrder,
           secondaryLanguage: captionStyle.secondaryLanguage || "original",
           subBackgroundOpacity: captionStyle.subBackgroundOpacity,
@@ -756,7 +764,7 @@
         const isSourceTop = captionStyle.subtitleOrder === "source-top";
         const secondaryText = cue.secondaryTranslated || cue.text;
         const showTranslated = captionStyle.layoutPreset !== "source-only";
-        const showSource = captionStyle.showSource !== false && captionStyle.layoutPreset !== "translated-only" && secondaryText && secondaryText !== (cue.translated || cue.text);
+        const showSource = captionStyle.layoutPreset !== "translated-only" && Boolean(secondaryText) && secondaryText !== (cue.translated || cue.text);
 
         const createTranslatedNode = () => {
           const translated = document.createElement("div");

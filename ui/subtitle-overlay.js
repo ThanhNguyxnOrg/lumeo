@@ -204,10 +204,18 @@
             "subBackgroundOpacity",
             "subShadowStyle",
             "subtitleOrder",
+            "showSource",
             "showSourceSub",
             "showTranslatedSub",
           ], (res) => {
-            if (res) applyStyle(res);
+            if (res) {
+              const preset = res.layoutPreset || "stacked";
+              if (preset === "stacked" || preset === "compact") {
+                res.showSource = true;
+                res.showSourceSub = true;
+              }
+              applyStyle(res);
+            }
           });
         }
       } catch {}
@@ -224,10 +232,17 @@
             if (changes.fontSize) updated.fontSize = changes.fontSize.newValue;
             if (changes.bottomOffset) updated.bottomOffset = changes.bottomOffset.newValue;
             if (changes.highContrast) updated.highContrast = changes.highContrast.newValue;
-            if (changes.layoutPreset) updated.layoutPreset = changes.layoutPreset.newValue;
+            if (changes.layoutPreset) {
+              updated.layoutPreset = changes.layoutPreset.newValue;
+              if (updated.layoutPreset === "stacked" || updated.layoutPreset === "compact") {
+                updated.showSource = true;
+                updated.showSourceSub = true;
+              }
+            }
             if (changes.subBackgroundOpacity) updated.subBackgroundOpacity = changes.subBackgroundOpacity.newValue;
             if (changes.subShadowStyle) updated.subShadowStyle = changes.subShadowStyle.newValue;
             if (changes.subtitleOrder) updated.subtitleOrder = changes.subtitleOrder.newValue;
+            if (changes.showSource) updated.showSource = changes.showSource.newValue;
             if (changes.showSourceSub) updated.showSourceSub = changes.showSourceSub.newValue;
             if (changes.showTranslatedSub) updated.showTranslatedSub = changes.showTranslatedSub.newValue;
             if (Object.keys(updated).length > 0) {
@@ -278,8 +293,10 @@
         target.classList.toggle("lumeo-sub-transparent", clamped === 0);
       }
       const layoutPreset = captionStyle.layoutPreset || "stacked";
-      target.classList.toggle("lumeo-hide-translated", captionStyle.showTranslatedSub === false || layoutPreset === "source-only");
-      target.classList.toggle("lumeo-hide-source", captionStyle.showSourceSub === false || layoutPreset === "translated-only");
+      const hideSource = layoutPreset === "translated-only" || captionStyle.showSource === false || captionStyle.showSourceSub === false;
+      const hideTranslated = layoutPreset === "source-only" || captionStyle.showTranslatedSub === false;
+      target.classList.toggle("lumeo-hide-source", hideSource);
+      target.classList.toggle("lumeo-hide-translated", hideTranslated);
       target.classList.toggle("lumeo-layout-compact", layoutPreset === "compact");
       target.classList.toggle("lumeo-layout-source-only", layoutPreset === "source-only");
       target.classList.toggle("lumeo-layout-translated-only", layoutPreset === "translated-only");
@@ -603,9 +620,12 @@
       target.classList.toggle("lumeo-order-source-top", isSourceTop);
       target.classList.toggle("lumeo-order-translation-top", !isSourceTop);
 
-      const showTranslated = layoutPreset !== "source-only";
+      const hideSource = layoutPreset === "translated-only" || captionStyle.showSource === false || captionStyle.showSourceSub === false;
+      const hideTranslated = layoutPreset === "source-only" || captionStyle.showTranslatedSub === false;
+
+      const showTranslated = !hideTranslated;
       const secondaryText = cue.secondaryTranslated || cue.text;
-      const showSource = captionStyle.showSource !== false && layoutPreset !== "translated-only" && secondaryText && secondaryText !== (cue.translated || cue.text);
+      const showSource = !hideSource && Boolean(secondaryText) && secondaryText !== (cue.translated || cue.text);
 
       function createTranslatedEl() {
         const translated = target.ownerDocument.createElement("div");

@@ -52,7 +52,16 @@ const DEFAULT_SETTINGS = {
   standardVoice: "English_magnetic_voiced_man",
   originalVolume: 18,
   voiceVolume: 100,
-  showSource: false,
+  showSource: true,
+  showSourceSub: true,
+  showTranslatedSub: true,
+  muteOriginal: false,
+  fontSize: 22,
+  bottomOffset: 14,
+  highContrast: false,
+  layoutPreset: "stacked",
+  subBackgroundOpacity: 75,
+  subShadowStyle: "drop-shadow",
   kymaKey: "",
   customProxyBaseUrl: "",
   customProxyApiKey: "",
@@ -350,16 +359,19 @@ async function ensureContentScript(tabId) {
 }
 
 async function loadSettings() {
-  const stored = await chrome.storage.local.get(DEFAULT_SETTINGS);
-  Object.assign(state, stored);
-  return stored;
+  const stored = await chrome.storage.local.get(null);
+  Object.assign(state, DEFAULT_SETTINGS, stored);
+  return state;
 }
 
 async function persistSettings(partial) {
   Object.assign(state, partial);
   const persistable = {};
-  for (const k of Object.keys(DEFAULT_SETTINGS)) {
-    if (k in partial && partial[k] !== undefined) persistable[k] = state[k];
+  for (const [k, v] of Object.entries(partial)) {
+    if (v !== undefined) {
+      persistable[k] = v;
+      state[k] = v;
+    }
   }
   if (Object.keys(persistable).length) {
     await chrome.storage.local.set(persistable);
@@ -904,10 +916,9 @@ if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "local") {
       for (const [key, change] of Object.entries(changes)) {
-        if (key in state) {
-          state[key] = change.newValue;
-        }
+        state[key] = change.newValue;
       }
+      broadcastToPopup();
     }
   });
 }

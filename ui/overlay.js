@@ -243,7 +243,16 @@
             elements.layoutPreset.value = val;
             elements.layoutPreset.dispatchEvent(new win.Event("change", { bubbles: true }));
           }
-          try { chrome.storage?.local?.set({ layoutPreset: val }); } catch {}
+          const isTranslatedOnly = val === "translated-only";
+          const isSourceOnly = val === "source-only";
+          try {
+            chrome.storage?.local?.set({
+              layoutPreset: val,
+              showSource: !isTranslatedOnly,
+              showSourceSub: !isTranslatedOnly,
+              showTranslatedSub: !isSourceOnly,
+            });
+          } catch {}
           if (typeof options.onLayoutChange === "function") {
             try { options.onLayoutChange(val); } catch {}
           }

@@ -139,7 +139,7 @@ let state = {
   standardVoice: "English_magnetic_voiced_man",
   originalVolume: 18,
   voiceVolume: 100,
-  showSource: false,
+  showSource: true,
   status: "Ready",
 };
 
@@ -517,6 +517,7 @@ function readSettings() {
       ? "standardVoice"
       : "realtimeVoice";
   const settings = {
+    ...state,
     ...allKeyValues(),
     tier,
     targetLanguage: langSelect.value || "vi",
@@ -944,6 +945,18 @@ browserApi.addRuntimeMessageListener((message) => {
     renderSetupStack();
   }
 });
+
+if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local") {
+      const updated = {};
+      for (const [k, v] of Object.entries(changes)) {
+        updated[k] = v.newValue;
+      }
+      applyState(updated);
+    }
+  });
+}
 
 try {
   const manifest = browserApi.getManifest();
