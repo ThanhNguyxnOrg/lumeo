@@ -1,0 +1,17 @@
+name: Auto-assign human-only
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  auto-assign:
+    if: github.event.sender.type != 'Bot' && !endsWith(github.actor, '[bot]')
+    uses: ThanhNguyxnOrg/.github/.github/workflows/reusable-auto-assign.yml@main
+    secrets: inherit
