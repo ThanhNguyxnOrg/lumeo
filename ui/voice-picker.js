@@ -56,48 +56,91 @@
     return clean || name;
   }
 
+  // Voice-tag aliases shared with services/tts-browser.js matching: full tags
+  // naming the same language across platforms (fil/tl, no/nb/nn, zh/cmn/yue).
+  const LANG_TAG_ALIASES = {
+    fil: ["fil", "tl"],
+    tl: ["tl", "fil"],
+    no: ["no", "nb", "nn"],
+    nb: ["nb", "no", "nn"],
+    nn: ["nn", "no", "nb"],
+    zh: ["zh", "cmn", "yue"],
+    "zh-cn": ["zh-cn", "cmn-cn"],
+    "zh-tw": ["zh-tw", "cmn-tw"],
+    cmn: ["cmn", "zh", "yue"],
+    yue: ["yue", "zh", "cmn"],
+  };
+
+  function normTag(tag) {
+    return String(tag || "").toLowerCase();
+  }
+
+  // Full-tag equality (incl. aliases) first, then separator-aware base prefix.
+  function voiceTagMatches(voiceLang, wanted) {
+    const v = normTag(voiceLang);
+    const w = normTag(wanted);
+    if (!v || !w) return false;
+    if (v === w) return true;
+    const aliases = LANG_TAG_ALIASES[w] || LANG_TAG_ALIASES[w.split("-")[0]] || [];
+    if (aliases.includes(v) || aliases.includes(v.split("-")[0])) return true;
+    const wBase = w.split("-")[0];
+    return v === wBase || v.startsWith(`${wBase}-`);
+  }
+
   function autoPairVoice(langCode, voices = []) {
     if (!voices || voices.length === 0) return null;
+    const want = normTag(langCode);
     const prefs = SMART_VOICE_PREFERENCES[langCode] || [];
     for (const prefName of prefs) {
       const match = voices.find((v) => v.name.includes(prefName) || prefName.includes(v.name));
-      if (match) return match;
+      if (match && voiceTagMatches(match.lang, langCode)) return match;
     }
+    const exact = voices.find((v) => normTag(v.lang) === want);
+    if (exact) return exact;
     const langPrefix = (langCode || "vi").split("-")[0].toLowerCase();
-    const langMatch = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith(langPrefix));
-    return langMatch || null;
+    const langMatch = voices.find((v) => v.lang && voiceTagMatches(v.lang, langCode));
+    if (langMatch) return langMatch;
+    // Separator-aware last resort (never bare prefix: "th" must not match "the-*").
+    return voices.find((v) => {
+      const vl = v.lang && v.lang.toLowerCase();
+      return vl === langPrefix || (!!vl && vl.startsWith(`${langPrefix}-`));
+    }) || null;
   }
 
   function getTopVoicesForLanguage(langCode, voices = []) {
     if (!voices || voices.length === 0) return [];
-    const langPrefix = (langCode || "vi").split("-")[0].toLowerCase();
-    const matching = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith(langPrefix));
+    const want = normTag(langCode);
+    const matching = voices.filter((v) => v.lang && voiceTagMatches(v.lang, langCode));
     if (matching.length === 0) return [];
+
+    const exact = matching.filter((v) => normTag(v.lang) === want);
+    const rest = matching.filter((v) => normTag(v.lang) !== want);
 
     const prefs = SMART_VOICE_PREFERENCES[langCode] || [];
     const prioritized = [];
     const seen = new Set();
 
+    const pushIfNew = (v) => {
+      if (v && !seen.has(v.name)) {
+        prioritized.push(v);
+        seen.add(v.name);
+      }
+    };
+
     for (const prefName of prefs) {
       const found = matching.find((v) => (v.name.includes(prefName) || prefName.includes(v.name)) && !seen.has(v.name));
-      if (found) {
-        prioritized.push(found);
-        seen.add(found.name);
+      if (found) pushIfNew(found);
+    }
+
+    // Full-tag hits outrank base-prefix hits within each quality band.
+    for (const band of [exact, rest]) {
+      for (const v of band) {
+        if (v.name.includes("Natural") || v.name.includes("Google")) pushIfNew(v);
       }
     }
 
-    for (const v of matching) {
-      if (!seen.has(v.name) && (v.name.includes("Natural") || v.name.includes("Google"))) {
-        prioritized.push(v);
-        seen.add(v.name);
-      }
-    }
-
-    for (const v of matching) {
-      if (!seen.has(v.name)) {
-        prioritized.push(v);
-        seen.add(v.name);
-      }
+    for (const band of [exact, rest]) {
+      for (const v of band) pushIfNew(v);
     }
 
     return prioritized.slice(0, 3);
@@ -128,9 +171,14 @@
 
       const targetLang = settings.targetLanguage || "en";
       const voices = (typeof window !== "undefined" && window.speechSynthesis?.getVoices?.()) || [];
+      const matchingCount = voices.filter((v) => v.lang && voiceTagMatches(v.lang, targetLang)).length;
       const pairedVoice = autoPairVoice(targetLang, voices);
       const pairedClean = pairedVoice ? cleanVoiceLabel(pairedVoice.name) : "";
-      const autoText = pairedClean ? `Auto (${pairedClean})` : "Auto (Recommended)";
+      // Empty state: no OS voice for this language is normal (spec), so say
+      // so instead of silently reading with the default (often EN) voice.
+      const autoText = matchingCount === 0
+        ? `Auto (No ${targetLang} voice installed — uses default)`
+        : pairedClean ? `Auto (${pairedClean})` : "Auto (Recommended)";
 
       appendOption(selectEl, "auto", autoText);
 
@@ -141,11 +189,14 @@
 
       appendOption(selectEl, "off", "Off / Mute");
 
+      const offered = new Set(Array.from(selectEl.options).map((o) => o.value));
       if (settings.captionTtsProvider === "off") {
         selectEl.value = "off";
-      } else if (settings.standardVoice) {
+      } else if (settings.standardVoice && offered.has(settings.standardVoice)) {
         selectEl.value = settings.standardVoice;
       } else {
+        // Drop stale cross-language selections: a voice picked for another
+        // language must not keep reading the new language.
         selectEl.value = "auto";
       }
       return;

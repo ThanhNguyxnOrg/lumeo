@@ -213,16 +213,24 @@
     if (!isCurrent()) return;
 
     if (sessionRef.nextPlayAt < sessionRef.audioCtx.currentTime) sessionRef.nextPlayAt = 0;
+    // Backlog guard: tighter 1.10 cap trades chipmunking for queue drift under sustained
+    // expansion (e.g. 6s speech per 5s chunk drifts +0.45s/chunk). Fast-forward instead of
+    // queueing unbounded lag; current (fresher) chunk wins over stale backlog.
+    if (sessionRef.nextPlayAt - sessionRef.audioCtx.currentTime > 2.0) {
+      sessionRef.nextPlayAt = sessionRef.audioCtx.currentTime + 0.05;
+    }
     const startAt = Math.max(sessionRef.audioCtx.currentTime + 0.05, sessionRef.nextPlayAt);
     const source = sessionRef.audioCtx.createBufferSource();
     source.buffer = audioBuffer;
 
-    const targetDuration = 5.0;
+    const video = typeof context.getVideo === "function" ? context.getVideo() : null;
+    const fitPlaybackRate = Number(video?.playbackRate) || 1;
+    const targetDuration = 5.0 / fitPlaybackRate;
     const ttsDuration = audioBuffer.duration;
     const speedRatio = ttsDuration / targetDuration;
     let rate = 1.0;
     if (speedRatio > 1.05) {
-      rate = Math.min(speedRatio, 1.35);
+      rate = Math.min(speedRatio, 1.1);
     }
     if (source.playbackRate) {
       source.playbackRate.value = rate;
@@ -244,7 +252,6 @@
     try { source.start(startAt); } catch {}
     sessionRef.nextPlayAt = startAt + duration;
 
-    const video = typeof context.getVideo === "function" ? context.getVideo() : null;
     if (video) {
       if (settings.muteOriginal) {
         video.muted = true;

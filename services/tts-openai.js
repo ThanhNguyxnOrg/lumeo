@@ -90,6 +90,10 @@
     const url = await synthesize(text, options);
     if (!url) return false;
     stop();
+    // Preempt any in-flight browser speech so network audio never overlaps it.
+    try {
+      if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+    } catch {}
     currentAudio = new Audio(url);
     currentAudio.volume = Number(options.volume ?? 1);
     if (typeof options.onEnd === "function") {

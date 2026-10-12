@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.7] - 2026-10-12 — Translation Anti-Stall, Free All-Language Voices & Caption Fetch Bounds
+
+### Fixed & Improved
+
+- **Translation Anti-Stall (google-free rate limits):**
+  - One rate-limited cue no longer kills the whole batch: per-item retry with backoff (2 retries, 1.5s/3s + jitter, concurrency 3) then source-text fallback per line.
+  - Translation progress now advances per cue (no more frozen `0/N`), with a partial-limit toast when lines fall back.
+  - Fallback lines are flagged, excluded from cache completion, and retranslated on Stop → Start or automatically in the background (60s cooldown); translation cache bumped to v3 so stale fallback entries are discarded once.
+- **Caption Fetch Bounds ("Loading captions..." spin):**
+  - Every caption-fetch leg now has a timeout (12s direct, 15s background proxy, 60s overall cascade deadline) with parallel watch-HTML discovery, so loading always resolves to subtitles or a loud error.
+  - The session toggle button now cancels while loading instead of restarting; the gear button falls back to opening the options page directly when the background does not ack.
+  - Fixed `sniffer.js` injection blocked as "Unsafe attempt to load URL" by moving the nonce from URL query to `dataset`, with a live-scope nonce handoff.
+- **Free Voices for All Languages:**
+  - Browser TTS language map covers every caption language; utterance language stays BCP-47; voice matching is full-tag-first with `fil/tl`, `no/nb/nn`, `zh/cmn/yue` aliases.
+  - Popup voice list auto-filters to the selected translation language with an explicit empty state and stale-pick reset.
+  - Spoken rate auto-fits each subtitle window (0.90–1.10×, per-language triggers) instead of the old 1.15–1.4× speedup; Standard dub caps at 1.10× with backlog fast-forward.
+- **Transcript Drawer Polish:**
+  - Replaced emoji-as-icons with SVG, unified ghost export button, fallback-line marker, reduced-motion-safe loading state.
+
 ## [2.0.6] - 2026-10-09 — Bilingual Layout Sync & Cache Resume Guard
 
 ### Fixed & Improved

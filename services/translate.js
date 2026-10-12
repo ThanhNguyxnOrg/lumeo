@@ -88,6 +88,13 @@
   async function requestJSON(url, options = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs || DEFAULT_TIMEOUT_MS);
+    // Link the caller signal when AbortSignal.any is unavailable so the
+    // internal timeout still applies (MV3 Chrome always has .any; defensive).
+    if (typeof AbortSignal.any !== "function" && options.signal && typeof options.signal.addEventListener === "function") {
+      options.signal.addEventListener("abort", () => {
+        try { controller.abort(); } catch {}
+      }, { once: true });
+    }
     const signal = typeof AbortSignal.any === "function" && options.signal
       ? AbortSignal.any([options.signal, controller.signal])
       : (options.signal || controller.signal);
@@ -119,32 +126,114 @@
     return results;
   }
 
+  function isRetryableTranslateError(err, signal) {
+    if (signal?.aborted) return false;
+    // Internal per-request timeouts surface as AbortError (user stops surface
+    // via signal.aborted above); both 429/5xx and network failures are worth one retry.
+    if (err?.name === "AbortError") return true;
+    return /429|HTTP 5\d\d|Failed to fetch|NetworkError|Load failed|Network request failed/i.test(err?.message || String(err));
+  }
+
+  function translateDelay(ms, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new DOMException("Aborted", "AbortError"));
+        return;
+      }
+      const timer = setTimeout(() => {
+        signal?.removeEventListener?.("abort", onAbort);
+        resolve();
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      if (typeof signal?.addEventListener === "function") {
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    });
+  }
+
+  // Backoff for an already-throttled endpoint: start at 1.5s with jitter so
+  // a full batch retrying at once does not deepen the throttle in lockstep.
+  function translateBackoffMs(attempt) {
+    return 1500 * 2 ** attempt + Math.floor(Math.random() * 500);
+  }
+
   async function translateGoogleFree(texts, targetLanguage, options = {}) {
     const cache = new Map();
-    return mapConcurrent(texts, 5, async (text) => {
+    const total = texts.length;
+    let done = 0;
+    let failed = 0;
+    const failedIndexes = [];
+    const report = () => {
+      try { options.onItemDone?.(done, total); } catch {}
+    };
+    // Concurrency 3 (not 5): the unofficial gtx endpoint throttles bursty
+    // parallel hits, and a throttle here used to stall the whole batch.
+    const out = await mapConcurrent(texts, 3, async (text, itemIndex) => {
       if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
       const trimmed = String(text ?? "").trim();
-      if (!trimmed) return "";
-      if (cache.has(trimmed)) return cache.get(trimmed);
+      if (!trimmed) {
+        done += 1;
+        report();
+        return "";
+      }
+      if (cache.has(trimmed)) {
+        done += 1;
+        report();
+        return cache.get(trimmed);
+      }
       const url =
         "https://translate.googleapis.com/translate_a/single" +
         `?client=gtx&sl=auto&tl=${encodeURIComponent(targetLanguage)}` +
         `&dt=t&q=${encodeURIComponent(trimmed)}`;
-      try {
-        const data = await requestJSON(url, { signal: options.signal });
-        const translated = Array.isArray(data?.[0])
-          ? data[0].map((part) => part?.[0] || "").join("").trim()
-          : "";
-        const result = translated || text;
-        if (translated) cache.set(trimmed, result);
-        return result;
-      } catch (err) {
-        if (options.signal?.aborted || err?.name === "AbortError") {
-          throw new DOMException("Aborted", "AbortError");
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+        try {
+          // Explicit per-request timeout: a hung request must surface as a
+          // retryable failure, never park a worker slot for the 30s default.
+          const data = await requestJSON(url, { signal: options.signal, timeoutMs: options.translateTimeoutMs || 12000 });
+          const translated = Array.isArray(data?.[0])
+            ? data[0].map((part) => part?.[0] || "").join("").trim()
+            : "";
+          const result = translated || text;
+          if (translated) cache.set(trimmed, result);
+          done += 1;
+          report();
+          return result;
+        } catch (err) {
+          if (options.signal?.aborted) {
+            throw new DOMException("Aborted", "AbortError");
+          }
+          if (attempt < 2 && isRetryableTranslateError(err, options.signal)) {
+            try {
+              await translateDelay(translateBackoffMs(attempt), options.signal);
+            } catch (abortErr) {
+              throw abortErr;
+            }
+            continue;
+          }
+          // Per-item fallback: one rate-limited cue must not kill the batch.
+          // The item index is reported so callers can flag it for retry
+          // instead of caching it as a successful translation.
+          failed += 1;
+          failedIndexes.push(itemIndex);
+          done += 1;
+          report();
+          return text;
         }
-        throw new Error(`Google Free translation failed: ${err?.message || err}`);
       }
+      failed += 1;
+      failedIndexes.push(itemIndex);
+      done += 1;
+      report();
+      return text;
     });
+    if (failed > 0) {
+      try { options.onPartialFailure?.({ failed, total, indexes: failedIndexes }); } catch {}
+    }
+    return out;
   }
 
   async function translateGoogleCloud(texts, targetLanguage, options) {
@@ -299,31 +388,53 @@
     const texts = normalizeTexts(textsInput);
     const outputs = [];
     const batchSize = options.batchSize || DEFAULT_BATCH_SIZE;
+    // Incremental progress is google-free-only (single-request providers such
+    // as chat-completions/Gemini resolve a whole group at once and ignore
+    // these callbacks). Aggregate across internal groups so progress stays
+    // monotonic and the partial toast fires once per call, not per group.
+    let failedTotal = 0;
+    const failedIndexes = [];
+    const hasProgress = typeof options.onItemDone === "function";
+    const hasPartial = typeof options.onPartialFailure === "function";
     for (const group of chunk(texts, batchSize)) {
       if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      const offset = outputs.length;
+      const groupOptions = (hasProgress || hasPartial) ? {
+        ...options,
+        onItemDone: hasProgress ? (done) => options.onItemDone(offset + done, texts.length) : undefined,
+        onPartialFailure: hasPartial
+          ? ({ failed, indexes }) => {
+            failedTotal += failed;
+            for (const i of (indexes || [])) failedIndexes.push(offset + i);
+          }
+          : undefined,
+      } : options;
       let translated;
       switch (provider) {
         case PROVIDERS.GOOGLE_CLOUD:
-          translated = await translateGoogleCloud(group, targetLanguage, options);
+          translated = await translateGoogleCloud(group, targetLanguage, groupOptions);
           break;
         case PROVIDERS.OPENAI:
         case PROVIDERS.OPENROUTER:
         case PROVIDERS.CUSTOM_GATEWAY:
         case PROVIDERS.GROQ:
-          translated = await translateChatCompletions(group, targetLanguage, { ...options, provider });
+          translated = await translateChatCompletions(group, targetLanguage, { ...groupOptions, provider });
           break;
         case PROVIDERS.GEMINI:
-          translated = await translateGemini(group, targetLanguage, options);
+          translated = await translateGemini(group, targetLanguage, groupOptions);
           break;
         case PROVIDERS.LIBRETRANSLATE:
-          translated = await translateLibreTranslate(group, targetLanguage, options);
+          translated = await translateLibreTranslate(group, targetLanguage, groupOptions);
           break;
         case PROVIDERS.GOOGLE_FREE:
         default:
-          translated = await translateGoogleFree(group, targetLanguage, options);
+          translated = await translateGoogleFree(group, targetLanguage, groupOptions);
           break;
       }
       outputs.push(...translated);
+    }
+    if (failedTotal > 0 && hasPartial) {
+      try { options.onPartialFailure({ failed: failedTotal, total: texts.length, indexes: failedIndexes }); } catch {}
     }
     return outputs;
   }

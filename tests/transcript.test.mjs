@@ -111,6 +111,21 @@ describe("LumeoTranscriptDrawer", () => {
     expect(emptyEl.querySelector(".lumeo-transcript-empty-title").textContent).toBe("No subtitles yet");
   });
 
+  it("uses SVG icons instead of emoji and styles export as ghost button", () => {
+    const root = controller.build();
+    const html = root.innerHTML;
+    expect(html).not.toContain("✨");
+    expect(html).not.toContain("📥");
+    expect(html).not.toContain("📝");
+    const exportBtn = root.querySelector(".lumeo-transcript-export");
+    expect(exportBtn).not.toBeNull();
+    expect(exportBtn.querySelector("svg")).not.toBeNull();
+    expect(exportBtn.getAttribute("aria-label")).toBe("Export subtitles as SRT");
+    const summarizeBtn = root.querySelector(".lumeo-transcript-summarize");
+    expect(summarizeBtn.querySelector("svg")).not.toBeNull();
+    expect(root.querySelector(".lumeo-transcript-actions")).not.toBeNull();
+  });
+
   it("fires onToggle callback when drawer visibility changes", () => {
     const onToggle = vi.fn();
     const ctrl = window.LumeoTranscript.createTranscriptController({
@@ -122,5 +137,16 @@ describe("LumeoTranscriptDrawer", () => {
     expect(onToggle).toHaveBeenCalledWith(true);
     expect(ctrl.toggle(false)).toBe(false);
     expect(onToggle).toHaveBeenCalledWith(false);
+  });
+
+  it("marks fallback lines so failed translations are distinguishable", () => {
+    controller.renderCaptionTranscript([
+      { start: 1, end: 2, text: "Hello", translated: "Xin chào" },
+      { start: 2, end: 3, text: "World", translated: "World", __fallback: true },
+    ]);
+    const items = controller.getElement().querySelectorAll(".lumeo-transcript-item");
+    expect(items[0].classList.contains("is-fallback")).toBe(false);
+    expect(items[1].classList.contains("is-fallback")).toBe(true);
+    expect(items[1].title).toContain("original text");
   });
 });

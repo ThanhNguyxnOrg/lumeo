@@ -138,4 +138,19 @@ describe("services/captions.js — pure parser surface", () => {
     expect(chosen.languageCode).toBe("vi");
     expect(chosen.kind).toBe("asr");
   });
+
+  it("injects the sniffer without a URL query so web_accessible_resources matches", () => {
+    window.document.head.innerHTML = "";
+    api.injectSniffer();
+    const script = window.document.getElementById("lumeo-caption-sniffer");
+    expect(script).not.toBeNull();
+    // Chrome blocks extension resources whose URL carries ?params ("Unsafe
+    // attempt to load URL") even when listed in web_accessible_resources.
+    expect(script.src).toBe("chrome-extension://lumeo/services/sniffer.js");
+    expect(script.src).not.toContain("?");
+    expect(script.dataset.nonce).toBeTruthy();
+    // Idempotent: a second call must not duplicate the tag.
+    api.injectSniffer();
+    expect(window.document.querySelectorAll("#lumeo-caption-sniffer")).toHaveLength(1);
+  });
 });

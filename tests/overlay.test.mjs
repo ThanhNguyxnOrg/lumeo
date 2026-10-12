@@ -544,6 +544,46 @@ describe("ui/overlay.js native YouTube popover menu", () => {
     expect(toggleBtn.textContent).toContain("Stop Translation");
   });
 
+  it("cancels instead of restarting when the toggle is clicked while loading", async () => {
+    const { window } = await createSandboxWindow();
+    loadService("ui/overlay.js", window);
+    let startCalled = false;
+    let stopCalled = false;
+    const controller = window.LumeoOverlay.createOverlayController({
+      onStartSession: () => { startCalled = true; },
+      onStopSession: () => { stopCalled = true; },
+    });
+    const root = controller.build();
+    const toggleBtn = root.querySelector("[data-lumeo-toggle-session]");
+
+    controller.setSessionState({ isTranslating: false, isLoading: true, statusText: "Loading captions..." });
+    toggleBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(stopCalled).toBe(true);
+    expect(startCalled).toBe(false);
+  });
+
+  it("opens the options page directly when the background does not ack the gear button", async () => {
+    const { window } = await createSandboxWindow();
+    loadService("ui/overlay.js", window);
+    const runtime = {
+      lastError: null,
+      sendMessage: (msg, cb) => {
+        runtime.lastError = { message: "Receiving end does not exist" };
+        try { cb(); } finally { runtime.lastError = null; }
+      },
+      getURL: (path) => `chrome-extension://test-id/${path}`,
+    };
+    window.chrome = { runtime };
+    const opened = [];
+    window.open = (url) => { opened.push(url); return null; };
+    const controller = window.LumeoOverlay.createOverlayController();
+    const root = controller.build();
+    const gearBtn = root.querySelector("[data-ec-open-options]");
+    expect(gearBtn).not.toBeNull();
+    gearBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(opened).toEqual(["chrome-extension://test-id/options.html"]);
+  });
+
   it("toggles transcript button active class and exposes setTranscriptActive", async () => {
     let transcriptToggled = false;
     const { window } = await createSandboxWindow();

@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const LUMEO_VERSION = "2.0.6";
+  const LUMEO_VERSION = "2.0.7";
   const GLOBAL_KEY = "__lumeoContentVersion";
   if (window[GLOBAL_KEY] === LUMEO_VERSION) return;
   document.querySelectorAll(".ec-root").forEach((el) => el.remove());
@@ -82,11 +82,31 @@
     const voices = window.speechSynthesis.getVoices();
     if (!voices || voices.length === 0) return null;
     const prefs = SMART_VOICE_PREFERENCES[langCode] || [];
+    const wantPref = String(langCode || "").toLowerCase();
+    const wantBase = wantPref.split("-")[0];
+    const prefBases = { fil: ["fil", "tl"], tl: ["tl", "fil"], no: ["no", "nb", "nn"], nb: ["nb", "no", "nn"], nn: ["nn", "no", "nb"], zh: ["zh", "cmn", "yue"], cmn: ["cmn", "zh", "yue"], yue: ["yue", "zh", "cmn"] }[wantBase] || [wantBase];
     for (const prefName of prefs) {
       const match = voices.find((v) => v.name.includes(prefName) || prefName.includes(v.name));
-      if (match) return match.name;
+      // Gate pref hits by language like ui/voice-picker.js: a future pref
+      // addition must not cross-pair voices across languages.
+      if (match) {
+        const ml = String(match.lang || "").toLowerCase();
+        const mb = ml.split("-")[0];
+        if (ml === wantPref || prefBases.includes(mb)) return match.name;
+      }
     }
-    const langMatch = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith(langCode.toLowerCase()));
+    const want = String(langCode || "").toLowerCase();
+    const exact = voices.find((v) => String(v.lang || "").toLowerCase() === want);
+    if (exact) return exact.name;
+    // Separator-aware base match + known aliases (fil/tl, no/nb/nn, zh/cmn/yue).
+    const base = want.split("-")[0];
+    const aliasBases = { fil: ["fil", "tl"], tl: ["tl", "fil"], no: ["no", "nb", "nn"], nb: ["nb", "no", "nn"], nn: ["nn", "no", "nb"], zh: ["zh", "cmn", "yue"], cmn: ["cmn", "zh", "yue"], yue: ["yue", "zh", "cmn"] }[base] || [base];
+    const langMatch = voices.find((v) => {
+      const vl = String(v.lang || "").toLowerCase();
+      if (!vl) return false;
+      const vb = vl.split("-")[0];
+      return aliasBases.includes(vb) && (vl === vb || vl.startsWith(`${vb}-`) || aliasBases.includes(vl));
+    });
     if (langMatch) return langMatch.name;
     return null;
   }

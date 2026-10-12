@@ -699,6 +699,43 @@
       return { ok: true };
     },
 
+    fitRateForCue({ text = "", targetLanguage = "en", duration = 3.0, playbackRate = 1 } = {}) {
+      const clean = String(text || "").trim();
+      const lang = String(targetLanguage || "en").split("-")[0].toLowerCase();
+      const isCjkCharLang = lang === "zh" || lang === "ja";
+      const isThai = lang === "th";
+      let tokenCount = 0;
+      if (clean) {
+        if (isCjkCharLang) {
+          tokenCount = clean.replace(/\s+/g, "").length;
+        } else if (isThai) {
+          try {
+            if (typeof Intl !== "undefined" && Intl.Segmenter) {
+              tokenCount = [...new Intl.Segmenter("th", { granularity: "word" }).segment(clean)].filter((s) => s.isWordLike).length || Math.ceil(clean.replace(/\s+/g, "").length / 3.5);
+            } else {
+              tokenCount = Math.ceil(clean.replace(/\s+/g, "").length / 3.5);
+            }
+          } catch {
+            tokenCount = Math.ceil(clean.replace(/\s+/g, "").length / 3.5);
+          }
+        } else {
+          tokenCount = clean.split(/\s+/).length;
+        }
+      }
+      const rate = Number(playbackRate) || 1;
+      const available = Number(duration) > 0 ? Number(duration) / rate : 3.0;
+      const trigger = lang === "ja" ? 6.5 : lang === "zh" ? 5.5 : 2.8;
+      if (!(tokenCount > 0 && available > 0)) return 1.0;
+      const tokensPerSec = tokenCount / available;
+      if (tokensPerSec > trigger) {
+        return Math.min(1.1, 1.0 + (tokensPerSec - trigger) * 0.08);
+      }
+      if (tokensPerSec < trigger * 0.7 && available > 1.0) {
+        return Math.max(0.9, 1.0 - (trigger * 0.7 - tokensPerSec) * 0.05);
+      }
+      return 1.0;
+    },
+
     updateCaptionProgress(progress = {}, ctx) {
       const completed = Number(progress.completed || 0);
       const total = Number(progress.total || 0);
@@ -765,6 +802,11 @@
             const label = from === "custom-gateway" ? "Custom AI Gateway" : (from ? from.charAt(0).toUpperCase() + from.slice(1) : "AI Translation");
             ctx.showToast(`⚠️ ${label} error or quota reached. Temporarily switched to Google Free.`, 6000);
           },
+          onPartialFailure: ({ failed, total }) => {
+            // Forward lines self-heal in the background within a minute;
+            // lines already played need Stop then Start to fix.
+            ctx.showToast(`⚠️ ${failed}/${total} lines hit the free translation limit and show original text. Upcoming lines retry automatically; press Stop then Start to fix earlier lines.`, 7000);
+          },
         });
       } catch (err) {
         ctx.setActivePipeline?.(null);
@@ -772,8 +814,15 @@
           pipeline.stop();
           return { ok: false, error: "Cancelled before captions loaded." };
         }
-        ctx.removeOverlay();
-        return { ok: false, error: err?.message || String(err) };
+        // Loud failure: keep the overlay with an error state instead of
+        // removing it silently — the translating phase must never stall mute.
+        const message = err?.message || String(err);
+        ctx.setStatusText("Caption failed");
+        ctx.setOverlayState("error");
+        ctx.setTargetText(`Could not translate captions: ${message}`);
+        ctx.showToast(`Caption failed: ${message} — press Stop then Start to retry.`, 8000);
+        ctx.onStateChange({ running: false, paused: false, status: "Caption error", errorMessage: message });
+        return { ok: false, error: message };
       } finally {
         ctx.setActivePipeline?.(null);
       }
@@ -850,14 +899,12 @@
             ? (cue.end - cue.start)
             : 3.0;
           const textToSpeak = (cue.translated || cue.text || "").trim();
-          const wordCount = textToSpeak ? textToSpeak.split(/\s+/).length : 0;
-          let calculatedRate = 1.15;
-          if (wordCount > 0 && duration > 0) {
-            const wordsPerSec = wordCount / duration;
-            if (wordsPerSec > 2.8) {
-              calculatedRate = Math.min(1.4, Math.max(1.15, 1.15 + (wordsPerSec - 2.8) * 0.08));
-            }
-          }
+          const calculatedRate = window.LumeoCaptionOrchestrator.fitRateForCue({
+            text: textToSpeak,
+            targetLanguage: liveSettings.targetLanguage || "en",
+            duration,
+            playbackRate: video?.playbackRate || 1,
+          });
           const effectiveRate = liveSettings.ttsRate || calculatedRate;
 
           pipeline.speakCue(cue, {

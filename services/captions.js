@@ -38,7 +38,12 @@
     try {
       const script = document.createElement("script");
       script.id = SNIFFER_ID;
-      script.src = chrome.runtime.getURL(`services/sniffer.js?nonce=${encodeURIComponent(SNIFFER_NONCE)}`);
+      // NOTE: no query string on src — Chrome refuses to load extension
+      // resources whose URL carries ?params ("Unsafe attempt to load URL")
+      // even when listed in web_accessible_resources. The nonce travels via
+      // dataset instead (read by sniffer.js from document.currentScript).
+      script.src = chrome.runtime.getURL("services/sniffer.js");
+      script.dataset.nonce = SNIFFER_NONCE;
       (document.head || document.documentElement).appendChild(script);
     } catch {}
   }
@@ -48,6 +53,10 @@
     if (event.origin !== window.location.origin) return;
     const data = event.data;
     if (!data || typeof data !== "object" || data.source !== SNIFFER_SOURCE) return;
+    // Missing-nonce pass-through is deliberate: the static MAIN injection has
+    // no nonce until the dynamic loader hands one over, and early sniffed URLs
+    // must not be dropped. Page-actor spoofing is accepted and confined to the
+    // caption-data plane (URLs/text only, still parsed defensively below).
     if (data.nonce && data.nonce !== SNIFFER_NONCE) return;
 
     if (data.type === "subtitle-url" && typeof data.url === "string") {
@@ -156,20 +165,57 @@
     });
   }
 
+  async function fetchTextWithTimeout(url, timeoutMs = 12000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      try { controller.abort(); } catch {}
+    }, timeoutMs);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (response.ok) return await response.text();
+    } catch {
+      // Fall through to extension background proxy.
+    } finally {
+      clearTimeout(timer);
+    }
+    return null;
+  }
+
+  // Background-proxy fetch that can never hang the caption cascade: if the
+  // service worker is unreachable or never responds, resolve null instead of
+  // parking "Loading captions..." forever.
+  function sendFetchProxy(url, timeoutMs = 15000) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          resolve(null);
+        }
+      }, timeoutMs);
+      try {
+        chrome.runtime.sendMessage({ action: "fetchUrl", url }, (reply) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(reply?.ok ? reply.text : null);
+        });
+      } catch {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(null);
+        }
+      }
+    });
+  }
+
   async function fetchText(url) {
     const pageText = await fetchTextViaPage(url);
     if (pageText !== null) return pageText;
-    try {
-      const response = await fetch(url);
-      if (response.ok) return response.text();
-    } catch {
-      // Fall back to extension background proxy.
-    }
-    return new Promise((resolve) => {
-      chrome.runtime.sendMessage({ action: "fetchUrl", url }, (reply) => {
-        resolve(reply?.ok ? reply.text : null);
-      });
-    });
+    const direct = await fetchTextWithTimeout(url);
+    if (direct !== null) return direct;
+    return sendFetchProxy(url);
   }
 
   function decodeHtml(value) {
@@ -600,21 +646,29 @@
       videoId ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` : null,
       location.href,
     ].filter(Boolean);
-    for (const target of targets) {
+    // Fetch targets in parallel (priority order preserved below): sequential
+    // 12s+15s hops used to stack ~80s of "Loading captions..." on slow pages.
+    const results = await Promise.all(targets.map(async (target) => {
       try {
         const html = await fetchText(target);
-        if (!html) continue;
-        const tracks = parseCaptionTracksFromHtml(html);
-        if (tracks?.length) return tracks;
+        if (!html) return null;
+        return parseCaptionTracksFromHtml(html);
       } catch {
-        // Try the next URL.
+        return null;
       }
+    }));
+    for (const tracks of results) {
+      if (tracks?.length) return tracks;
     }
     return null;
   }
 
-  async function readCaptionTracksFromInnertube(videoId) {
+  async function readCaptionTracksFromInnertube(videoId, timeoutMs = 12000) {
     if (!videoId) return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      try { controller.abort(); } catch {}
+    }, timeoutMs);
     try {
       const response = await fetch("https://www.youtube.com/youtubei/v1/player", {
         method: "POST",
@@ -631,6 +685,7 @@
           contentCheckOk: true,
           racyCheckOk: true,
         }),
+        signal: controller.signal,
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) return null;
@@ -638,6 +693,8 @@
       return Array.isArray(tracks) && tracks.length ? tracks : null;
     } catch {
       return null;
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -986,10 +1043,15 @@
 
     let source = null;
     if (!adapter || adapter.name === "youtube") {
-      source =
+      // Human-scale bound on the whole discovery cascade: per-hop timeouts
+      // cap each request, but sequential fallbacks can still stack minutes of
+      // "Loading captions...". On deadline the loud no-tracks error path runs.
+      const cascade = (async () =>
         await fetchViaPageData(targetLanguage, { diagnostics }) ||
         await fetchViaSniff(videoId) ||
-        await fetchViaTranscriptPanel(diagnostics);
+        await fetchViaTranscriptPanel(diagnostics))();
+      const deadline = new Promise((resolve) => setTimeout(() => resolve(null), 60000));
+      source = await Promise.race([cascade, deadline]);
     } else {
       source = await fetchGenericSubtitles(targetLanguage);
     }

@@ -1046,7 +1046,10 @@
       });
       elements.toggleSessionBtn?.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (isTranslating) {
+        // Loading also cancels: the caption-fetch phase is bounded, and a
+        // stuck spinner must never trap the user without an out. Previously
+        // this branch restarted a session instead of stopping it.
+        if (isTranslating || isLoading) {
           if (typeof options.onStopSession === "function") {
             options.onStopSession();
           } else if (elements.stopBtn) {
@@ -1221,7 +1224,30 @@
       root.querySelectorAll("[data-ec-open-options]").forEach((btn) => {
         btn.addEventListener("click", (e) => {
           e.stopPropagation();
-          try { chrome.runtime?.sendMessage?.({ type: "OPEN_OPTIONS_PAGE" }); } catch {}
+          const fallbackOpen = () => {
+            try {
+              const url = chrome.runtime?.getURL?.("options.html");
+              if (url) window.open(url, "_blank");
+            } catch {}
+          };
+          // If the background never acks (e.g. service worker unreachable),
+          // open the options page directly instead of a dead gear button.
+          let done = false;
+          let timer = null;
+          const finish = (openFallback) => {
+            if (done) return;
+            done = true;
+            if (timer) clearTimeout(timer);
+            if (openFallback) fallbackOpen();
+          };
+          try {
+            chrome.runtime?.sendMessage?.({ type: "OPEN_OPTIONS_PAGE" }, () => {
+              finish(!!chrome.runtime?.lastError);
+            });
+            timer = setTimeout(() => finish(true), 2500);
+          } catch {
+            finish(true);
+          }
         });
       });
 

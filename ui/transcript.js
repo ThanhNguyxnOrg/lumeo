@@ -23,6 +23,14 @@
       return `${m}:${rem.toString().padStart(2, "0")}`;
     }
 
+    function svgIcon(inner, viewBox = "0 0 16 16") {
+      return `<svg viewBox="${viewBox}" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${inner}</svg>`;
+    }
+
+    const ICON_SPARK = '<path d="M8 1.5l1.6 4.2 4.2 1.6-4.2 1.6L8 13.1 6.4 8.9 2.2 7.3l4.2-1.6L8 1.5z" fill="currentColor" stroke="none"/>';
+    const ICON_DOWNLOAD = '<path d="M8 2v7.5m0 0L5.2 6.7M8 9.5l2.8-2.8M2.8 12.5h10.4"/>';
+    const ICON_DOC = '<g stroke-width="1.4"><rect x="3" y="1.8" width="10" height="12.4" rx="1.6"/><path d="M5.6 5.4h4.8M5.6 8h4.8M5.6 10.6h3"/></g>';
+
     function build() {
       if (root) return root;
       root = doc.createElement("aside");
@@ -44,7 +52,7 @@
       summarizeBtn.type = "button";
       summarizeBtn.className = "lumeo-transcript-summarize";
       summarizeBtn.setAttribute("aria-label", "Summarize video with AI");
-      summarizeBtn.textContent = "✨ Summarize";
+      summarizeBtn.innerHTML = `${svgIcon(ICON_SPARK)}<span>Summarize</span>`;
       summarizeBtn.addEventListener("click", () => {
         if (typeof onSummarize === "function") {
           onSummarize(cues);
@@ -53,11 +61,9 @@
 
       const exportBtn = doc.createElement("button");
       exportBtn.type = "button";
-      exportBtn.className = "lumeo-transcript-summarize";
-      exportBtn.style.background = "transparent";
-      exportBtn.style.border = "1px solid var(--lumeo-line, rgba(255,255,255,0.15))";
+      exportBtn.className = "lumeo-transcript-export";
       exportBtn.setAttribute("aria-label", "Export subtitles as SRT");
-      exportBtn.textContent = "📥 SRT";
+      exportBtn.innerHTML = `${svgIcon(ICON_DOWNLOAD)}<span>SRT</span>`;
       exportBtn.addEventListener("click", () => {
         if (!cues || cues.length === 0) return;
         if (win.LumeoSrtExport?.toSrt && win.LumeoSrtExport?.downloadText) {
@@ -75,9 +81,7 @@
       closeBtn.addEventListener("click", () => toggle(false));
 
       const headerActions = doc.createElement("div");
-      headerActions.style.display = "flex";
-      headerActions.style.alignItems = "center";
-      headerActions.style.gap = "8px";
+      headerActions.className = "lumeo-transcript-actions";
       headerActions.append(summarizeBtn, exportBtn, count, closeBtn);
 
       header.append(title, headerActions);
@@ -143,6 +147,11 @@
       source.className = "lumeo-transcript-source";
       source.textContent = cue.text;
 
+      if (cue.__fallback) {
+        item.classList.add("is-fallback");
+        item.title = "Translation failed — showing original text";
+      }
+
       textWrap.append(target, source);
       item.append(time, textWrap);
 
@@ -180,9 +189,9 @@
         const empty = doc.createElement("div");
         empty.className = "lumeo-transcript-empty";
         empty.innerHTML = `
-          <div class="lumeo-transcript-empty-icon">📝</div>
+          <div class="lumeo-transcript-empty-icon"><svg viewBox="0 0 16 16" width="30" height="30" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">${ICON_DOC}</svg></div>
           <div class="lumeo-transcript-empty-title">No subtitles yet</div>
-          <div class="lumeo-transcript-empty-hint">Click "Start Translation" to view real-time bilingual transcripts</div>
+          <div class="lumeo-transcript-empty-hint">Press Start Translation in the player to load bilingual subtitles here</div>
         `;
         listEl.appendChild(empty);
         return;
@@ -229,7 +238,7 @@
     function showSummaryLoading() {
       if (!summaryEl) build();
       summaryEl.hidden = false;
-      summaryEl.innerHTML = '<div class="lumeo-summary-loading" style="padding: 10px; font-size: 12px; color: #38bdf8;">✨ Generating AI video summary...</div>';
+      summaryEl.innerHTML = '<div class="lumeo-summary-loading">Generating video summary…</div>';
     }
 
     function setSummary(summaryMarkdown) {
@@ -239,23 +248,15 @@
 
       const head = doc.createElement("div");
       head.className = "lumeo-summary-head";
-      head.style.display = "flex";
-      head.style.justifyContent = "space-between";
-      head.style.alignItems = "center";
-      head.style.marginBottom = "6px";
 
       const title = doc.createElement("strong");
-      title.style.fontSize = "12px";
-      title.style.color = "#f97316";
-      title.textContent = "✨ AI Key Takeaways";
+      title.className = "lumeo-summary-title";
+      title.textContent = "Key takeaways";
 
       const close = doc.createElement("button");
       close.type = "button";
       close.className = "lumeo-summary-close";
-      close.style.background = "transparent";
-      close.style.border = "none";
-      close.style.color = "#94a3b8";
-      close.style.cursor = "pointer";
+      close.setAttribute("aria-label", "Dismiss summary");
       close.textContent = "✕";
       close.addEventListener("click", () => { summaryEl.hidden = true; });
 
@@ -263,9 +264,6 @@
 
       const content = doc.createElement("div");
       content.className = "lumeo-summary-content";
-      content.style.fontSize = "12px";
-      content.style.lineHeight = "1.5";
-      content.style.whiteSpace = "pre-wrap";
       content.textContent = summaryMarkdown;
 
       summaryEl.append(head, content);
@@ -277,7 +275,6 @@
       summaryEl.replaceChildren();
       const errDiv = doc.createElement("div");
       errDiv.className = "lumeo-summary-error";
-      errDiv.style.cssText = "padding: 10px; font-size: 12px; color: #f87171;";
       errDiv.textContent = String(errMsg || "Summary generation failed.");
       summaryEl.appendChild(errDiv);
     }

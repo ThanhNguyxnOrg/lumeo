@@ -6,7 +6,9 @@
   const DEFAULT_TRANSLATE_PROVIDER = "google-free";
   const DEFAULT_TARGET_LANGUAGE = "vi";
   const CACHE_LIMIT = 50;
-  const CACHE_VERSION = 2;
+  // Bumped to 3: v2 entries may hold rate-limit fallback lines stored as
+  // successful translations. Those must be retranslated, never trusted.
+  const CACHE_VERSION = 3;
   const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
   // 5 MB soft cap — each cached video's translated cues average ~40 KB, so
   // 50 videos ≈ 2 MB. Cap is defense against edge cases: 3-hour podcasts,
@@ -87,12 +89,16 @@
   }
 
   function countTranslated(cues = []) {
-    return cues.filter((cue) => typeof cue?.translated === "string" && cue.translated.length > 0).length;
+    // Fallback lines (rate-limited, showing source text) are NOT done — they
+    // must be retranslated on retry, so they never count toward completion.
+    return cues.filter((cue) => !cue?.__fallback && typeof cue?.translated === "string" && cue.translated.length > 0).length;
   }
 
   function mergeCachedCues(sourceCues, cachedCues = []) {
     return sourceCues.map((cue, index) => {
-      const translated = cachedCues[index]?.translated;
+      const cached = cachedCues[index];
+      if (cached?.__fallback) return { ...cue };
+      const translated = cached?.translated;
       return typeof translated === "string" && translated.length > 0
         ? { ...cue, translated }
         : { ...cue };
@@ -210,6 +216,7 @@
       this.options = {};
       this.isTranslatingAhead = false;
       this.isPaidProvider = false;
+      this.lastFallbackRetryAt = 0;
     }
 
     stop() {
@@ -217,6 +224,7 @@
       this.abortController?.abort();
       this.abortController = null;
       this.isTranslatingAhead = false;
+      this.lastFallbackRetryAt = 0;
       window.LumeoTTS?.stop?.();
       window.LumeoSonioxSTT?.stop?.();
     }
@@ -279,12 +287,15 @@
           : total;
 
         let start = 0;
+        let totalFailed = 0;
         while (start < maxInitialCues) {
           const nextEnd = Math.min(maxInitialCues, findBatchEndIndex(cues, start, batchSize));
           const batchIndexes = [];
           const sourceTexts = [];
           for (let index = start; index < nextEnd; index += 1) {
-            if (cues[index]?.translated) continue;
+            // Fallback lines (showing source text after a rate limit) re-enter
+            // the batch so retry translates them for real.
+            if (cues[index]?.translated && !cues[index]?.__fallback) continue;
             batchIndexes.push(index);
             sourceTexts.push(cues[index].text);
           }
@@ -292,16 +303,29 @@
           if (!sourceTexts.length) continue;
 
           let translated;
+          const baseCompleted = completed;
+          const batchFailed = new Set();
+          const batchOptions = {
+            ...options,
+            provider: activeProvider,
+            signal,
+            targetLanguageName: options.targetLanguageName || targetLanguage,
+            // Incremental progress so the overlay never freezes at 0/N while
+            // a 40-cue google-free batch works through its request queue.
+            onItemDone: (done) => {
+              options.onProgress?.({ phase: "translating", completed: baseCompleted + done, total });
+            },
+            // Collect failed item indexes (relative to sourceTexts); the
+            // aggregate partial toast fires once after the loop below.
+            onPartialFailure: ({ indexes }) => {
+              for (const i of (indexes || [])) batchFailed.add(i);
+            },
+          };
           try {
             translated = await window.LumeoTranslate.translateBatch(
               sourceTexts,
               targetLanguage,
-              {
-                ...options,
-                provider: activeProvider,
-                signal,
-                targetLanguageName: options.targetLanguageName || targetLanguage,
-              },
+              batchOptions,
             );
           } catch (batchErr) {
             if (activeProvider !== "google-free" && !signal.aborted) {
@@ -314,10 +338,8 @@
                 sourceTexts,
                 targetLanguage,
                 {
-                  ...options,
+                  ...batchOptions,
                   provider: "google-free",
-                  signal,
-                  targetLanguageName: options.targetLanguageName || targetLanguage,
                 },
               );
             } else {
@@ -331,6 +353,9 @@
           let secTranslated = null;
           if (options.secondaryLanguage && options.secondaryLanguage !== "original" && options.secondaryLanguage !== subtitles.sourceLanguage) {
             try {
+              // Secondary translation is best-effort: strip the primary
+              // progress/partial callbacks so its counts never leak into the
+              // primary progress bar or partial-limit toast.
               secTranslated = await window.LumeoTranslate.translateBatch(
                 sourceTexts,
                 options.secondaryLanguage,
@@ -339,6 +364,8 @@
                   provider: activeProvider,
                   signal,
                   targetLanguageName: options.secondaryLanguage,
+                  onItemDone: undefined,
+                  onPartialFailure: undefined,
                 },
               );
             } catch (e) {
@@ -350,6 +377,11 @@
             const translatedIndex = batchIndexes.indexOf(index);
             if (translatedIndex >= 0) {
               const updated = { ...cue, translated: translated[translatedIndex] || cue.text };
+              if (batchFailed.has(translatedIndex)) {
+                updated.__fallback = true;
+              } else {
+                delete updated.__fallback;
+              }
               if (secTranslated && secTranslated[translatedIndex]) {
                 updated.secondaryTranslated = secTranslated[translatedIndex];
               }
@@ -357,12 +389,20 @@
             }
             return cue;
           });
+          totalFailed += batchFailed.size;
           completed = countTranslated(cues);
           await setCachedResult(key, {
             cues,
             meta: progressMeta({ ...subtitles, provider: activeProvider, cached: false }, completed, total),
           });
           options.onProgress?.({ phase: completed === total ? "translated" : "translating", completed, total });
+        }
+
+        if (totalFailed > 0) {
+          try { options.onPartialFailure?.({ failed: totalFailed, total }); } catch {}
+          // Start the cooldown clock: upcoming fallback lines self-heal via
+          // the background lookahead; already-played ones need manual retry.
+          this.lastFallbackRetryAt = now();
         }
       }
 
@@ -386,7 +426,7 @@
       if (this.isTranslatingAhead || !this.abortController) return;
       const lookahead = currentTime + 120;
       const needsTranslation = this.cues.findIndex(
-        (cue) => cue.start >= currentTime && cue.start <= lookahead && !cue.translated,
+        (cue) => cue.start >= currentTime && cue.start <= lookahead && (!cue.translated || cue.__fallback),
       );
       if (needsTranslation === -1) return;
 
@@ -396,33 +436,56 @@
       const targetLanguage = this.targetLanguage || DEFAULT_TARGET_LANGUAGE;
       let activeProvider = this.activeProvider || DEFAULT_TRANSLATE_PROVIDER;
       const batchSize = Math.max(1, Number(this.options.batchSize || 20));
+      // Skip check mirrors start(): fallback lines re-enter so a later retry
+      // translates them instead of trusting the cached source text.
+      const skipTranslated = (cue) => cue?.translated && !cue?.__fallback;
 
       try {
         const nextEnd = Math.min(this.cues.length, findBatchEndIndex(this.cues, needsTranslation, batchSize));
         const batchIndexes = [];
         const sourceTexts = [];
         for (let i = needsTranslation; i < nextEnd; i++) {
-          if (!this.cues[i]?.translated) {
+          if (!skipTranslated(this.cues[i])) {
             batchIndexes.push(i);
             sourceTexts.push(this.cues[i].text);
           }
         }
-        if (!sourceTexts.length) {
+      if (!sourceTexts.length) {
           this.isTranslatingAhead = false;
           return;
         }
 
+        // Fallback-only batches (rate-limited lines showing source text) are
+        // auto-retried at most once per minute so a persistent throttle is
+        // healed without hammering it every tick; batches containing genuinely
+        // untranslated cues always proceed immediately.
+        if (batchIndexes.every((i) => this.cues[i]?.translated)) {
+          if (now() - (this.lastFallbackRetryAt || 0) < 60000) {
+            this.isTranslatingAhead = false;
+            return;
+          }
+          this.lastFallbackRetryAt = now();
+        }
+
         let translated;
+        const aheadFailed = new Set();
+        const aheadOptions = {
+          ...this.options,
+          provider: activeProvider,
+          signal,
+          targetLanguageName: this.options.targetLanguageName || targetLanguage,
+          // Collect only — no progress/toast here (background lookahead);
+          // flags below keep these lines retryable like the main loop.
+          onItemDone: undefined,
+          onPartialFailure: ({ indexes }) => {
+            for (const i of (indexes || [])) aheadFailed.add(i);
+          },
+        };
         try {
           translated = await window.LumeoTranslate.translateBatch(
             sourceTexts,
             targetLanguage,
-            {
-              ...this.options,
-              provider: activeProvider,
-              signal,
-              targetLanguageName: this.options.targetLanguageName || targetLanguage,
-            },
+            aheadOptions,
           );
         } catch (batchErr) {
           if (activeProvider !== "google-free" && !signal.aborted) {
@@ -435,10 +498,8 @@
               sourceTexts,
               targetLanguage,
               {
-                ...this.options,
+                ...aheadOptions,
                 provider: "google-free",
-                signal,
-                targetLanguageName: this.options.targetLanguageName || targetLanguage,
               },
             );
           } else {
@@ -460,6 +521,8 @@
                 provider: activeProvider,
                 signal,
                 targetLanguageName: this.options.secondaryLanguage,
+                onItemDone: undefined,
+                onPartialFailure: undefined,
               },
             );
           } catch (e) {
@@ -474,6 +537,11 @@
           const matchIdx = batchIndexes.indexOf(index);
           if (matchIdx >= 0) {
             const updated = { ...cue, translated: translated[matchIdx] || cue.text };
+            if (aheadFailed.has(matchIdx)) {
+              updated.__fallback = true;
+            } else {
+              delete updated.__fallback;
+            }
             if (secTranslated && secTranslated[matchIdx]) {
               updated.secondaryTranslated = secTranslated[matchIdx];
             }

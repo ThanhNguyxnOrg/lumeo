@@ -96,4 +96,17 @@ describe("services/tts-openai.js", () => {
 
     expect(window.URL.revokeObjectURL).toHaveBeenCalledWith("blob:tts");
   });
+
+  it("cancels in-flight browser speech before playing network audio", async () => {
+    window.fetch = vi.fn(async () => ({ ok: true, blob: async () => new window.Blob(["mp3"]) }));
+    const cancel = vi.fn();
+    window.speechSynthesis = { cancel };
+    window.Audio = vi.fn(function Audio() {
+      this.addEventListener = () => {};
+      this.play = () => Promise.resolve();
+    });
+
+    await expect(api.speak("hello", "en", { apiKey: "openai-key" })).resolves.toBe(true);
+    expect(cancel).toHaveBeenCalled();
+  });
 });

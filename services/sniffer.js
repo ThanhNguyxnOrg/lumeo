@@ -6,6 +6,17 @@
     if (typeof window.__ytTransSnifferRepublish === 'function') {
       window.__ytTransSnifferRepublish();
     }
+    // Adopt the dynamic loader's nonce into the LIVE (first) scope: this
+    // evaluation's own SNIFFER_NONCE dies with its closure, so hand the value
+    // over instead of only republishing. Without this, dataset auth would be
+    // silently dead whenever the static manifest injection won the race.
+    try {
+      const ds = document.currentScript;
+      const n = ds && ds.dataset && ds.dataset.nonce;
+      if (n && typeof window.__ytTransSnifferSetNonce === 'function') {
+        window.__ytTransSnifferSetNonce(n);
+      }
+    } catch {}
     return;
   }
 
@@ -23,7 +34,13 @@
   const CURRENT_SCRIPT = document.currentScript;
   let SNIFFER_NONCE = '';
   try {
-    if (CURRENT_SCRIPT && CURRENT_SCRIPT.src) {
+    // Dataset first: injectSniffer passes the nonce via dataset because a
+    // ?nonce= query on the script URL breaks web_accessible_resources
+    // matching ("Unsafe attempt to load URL"). Query fallback kept for
+    // robustness with any other loader.
+    if (CURRENT_SCRIPT && CURRENT_SCRIPT.dataset && CURRENT_SCRIPT.dataset.nonce) {
+      SNIFFER_NONCE = CURRENT_SCRIPT.dataset.nonce;
+    } else if (CURRENT_SCRIPT && CURRENT_SCRIPT.src) {
       SNIFFER_NONCE = new URL(CURRENT_SCRIPT.src, window.location.origin).searchParams.get('nonce') || '';
     }
   } catch {}
@@ -201,6 +218,18 @@
 
   Object.defineProperty(window, '__ytTransSnifferRepublish', {
     value: schedulePublishes,
+    configurable: false,
+    enumerable: false,
+    writable: false,
+  });
+
+  // Cross-evaluation nonce handoff for the dynamic loader (see top of file).
+  // Best-effort auth only: the value is DOM-visible, so it separates our
+  // traffic from accidental collisions, not from a determined page actor.
+  Object.defineProperty(window, '__ytTransSnifferSetNonce', {
+    value: (n) => {
+      if (typeof n === 'string' && n) SNIFFER_NONCE = n;
+    },
     configurable: false,
     enumerable: false,
     writable: false,

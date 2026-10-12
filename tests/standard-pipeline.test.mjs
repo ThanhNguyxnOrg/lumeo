@@ -174,15 +174,15 @@ describe("pipelines/standard.js", () => {
       ...callbacks,
     });
 
-    expect(sourceNode.playbackRate.value).toBeCloseTo(1.2, 5);
-    expect(session.nextPlayAt).toBeCloseTo(8.05, 5);
+    expect(sourceNode.playbackRate.value).toBeCloseTo(1.1, 5);
+    expect(session.nextPlayAt).toBeCloseTo(8.5045, 4);
     expect(video.volume).toBe(1.0);
 
     vi.advanceTimersByTime(50);
     expect(video.volume).toBeCloseTo(0.075, 5);
 
-    audioCtx.currentTime = 8.05;
-    vi.advanceTimersByTime(5000);
+    audioCtx.currentTime = 8.5045;
+    vi.advanceTimersByTime(6000);
     expect(video.volume).toBeCloseTo(0.5, 5);
 
     vi.useRealTimers();

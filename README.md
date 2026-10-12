@@ -9,9 +9,9 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.3-ff7a45?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.0.7-ff7a45?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/Chrome-MV3-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome MV3">
-  <img src="https://img.shields.io/badge/tests-201%20passed-2ea043?style=for-the-badge" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-241%20passed-2ea043?style=for-the-badge" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-2ea043?style=for-the-badge" alt="License">
 </p>
 
@@ -67,9 +67,11 @@ No account required. No telemetry. No Lumeo-operated server. Your API keys stay 
 
 ### 🔊 Text-to-Speech (Caption Tier)
 
-- **Browser TTS** — Free, on-device speech synthesis
-- **Google Cloud TTS** — Chirp3-HD voices (BYOK)
+- **Browser TTS** — Free, on-device speech synthesis for 100+ languages with per-language voice auto-pairing; the voice list auto-filters to the selected target language
+- **Google Cloud TTS** — Chirp3-HD voices (BYOK); locales without a Chirp3-HD voice fall back to browser speech automatically
 - **OpenAI TTS** — High-quality neural voices (BYOK)
+- **Custom / ElevenLabs voices** — Bring your own voice; playback rate auto-fits the subtitle timing
+- Spoken lines auto-fit their subtitle window (0.90–1.10×) so narration keeps pace with the video without chipmunking
 
 ### 🔒 Privacy-First
 

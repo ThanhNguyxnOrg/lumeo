@@ -29,7 +29,7 @@ describe("ui/voice-picker.js", () => {
     api.populate(select, "caption", { captionTtsProvider: "browser" });
     expect(optionValues(select)).toContain("auto");
     expect(optionValues(select)).toContain("off");
-    expect(optionLabels(select)).toContain("Auto (Recommended)");
+    expect(optionLabels(select)).toContain("Auto (No en voice installed — uses default)");
     expect(select.value).toBe("auto");
     expect(select.getAttribute("aria-label")).toBe("Caption speech voice");
 
@@ -77,5 +77,48 @@ describe("ui/voice-picker.js", () => {
     expect(top[1].name).toContain("Google");
     expect(api.cleanVoiceLabel(top[0].name)).toBe("HoaiMy (Natural)");
     expect(api.cleanVoiceLabel(top[1].name)).toBe("Google tiếng Việt");
+  });
+
+  it("filters popup list to only the selected translation language", () => {
+    const { window: win } = { window: select.ownerDocument.defaultView };
+    win.speechSynthesis = {
+      getVoices: () => [
+        { name: "Microsoft Premwadee Online (Natural) - Thai (Thailand)", lang: "th-TH" },
+        { name: "Google ภาษาไทย", lang: "th-TH" },
+        { name: "Microsoft HoaiMy Online (Natural) - Vietnamese (Vietnam)", lang: "vi-VN" },
+        { name: "Google US English", lang: "en-US" },
+      ],
+    };
+    api.populate(select, "caption", { targetLanguage: "th", captionTtsProvider: "browser" });
+    const values = optionValues(select);
+    const labels = optionLabels(select).join(" ");
+    expect(values).toContain("auto");
+    expect(values).toContain("off");
+    expect(labels).toContain("Premwadee");
+    expect(labels).not.toContain("HoaiMy");
+    expect(labels).not.toContain("US English");
+  });
+
+  it("prefers full-tag zh-CN over zh-TW and matches fil/tl aliases", () => {
+    const voices = [
+      { name: "Voice TW", lang: "zh-TW" },
+      { name: "Voice CN", lang: "zh-CN" },
+    ];
+    expect(api.getTopVoicesForLanguage("zh-CN", voices)[0].lang).toBe("zh-CN");
+    expect(api.autoPairVoice("zh-CN", voices).lang).toBe("zh-CN");
+    expect(api.getTopVoicesForLanguage("fil", [{ name: "Tagalog Voice", lang: "tl-PH" }])).toHaveLength(1);
+  });
+
+  it("signals empty state and drops stale cross-language voice picks", () => {
+    const { window: win } = { window: select.ownerDocument.defaultView };
+    win.speechSynthesis = { getVoices: () => [] };
+    api.populate(select, "caption", { targetLanguage: "lo", captionTtsProvider: "browser" });
+    expect(optionLabels(select).join(" ")).toContain("No lo voice installed");
+
+    win.speechSynthesis = {
+      getVoices: () => [{ name: "Google tiếng Việt", lang: "vi-VN" }],
+    };
+    api.populate(select, "caption", { targetLanguage: "vi", captionTtsProvider: "browser", standardVoice: "Stale Other-Lang Voice" });
+    expect(select.value).toBe("auto");
   });
 });

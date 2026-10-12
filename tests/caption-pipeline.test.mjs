@@ -100,10 +100,139 @@ describe("pipelines/caption.js", () => {
     expect(getCache().stats.ttlMs).toBe(api.CACHE_TTL_MS);
   });
 
+  it("emits incremental progress as google-free items complete", async () => {
+    const { window, api } = await setup({
+      subtitles: { videoId: "abc", sourceLanguage: "en", nativeTarget: false, cues: cues() },
+    });
+    window.LumeoTranslate.translateBatch.mockImplementationOnce(async (texts, lang, opts) => {
+      opts.onItemDone?.(1, texts.length);
+      opts.onItemDone?.(2, texts.length);
+      return texts.map((text) => `${text}-vi`);
+    });
+    const onProgress = vi.fn();
+    const result = await api.create().start({ videoId: "abc", targetLanguage: "vi", translateProvider: "google-free", onProgress });
+    expect(result.ok).toBe(true);
+    expect(onProgress).toHaveBeenCalledWith({ phase: "translating", completed: 1, total: 2 });
+    expect(onProgress).toHaveBeenCalledWith({ phase: "translating", completed: 2, total: 2 });
+  });
+
+  it("survives one rate-limited cue: batch completes with per-item fallback and live progress", async () => {
+    // End-to-end repro of the reported "Translating captions 0/22" stall with
+    // the REAL google-free path (not a mocked translateBatch): every fetch for
+    // the "world" cue answers 429, everything else succeeds.
+    const { window, api, getCache } = await setup({
+      subtitles: {
+        videoId: "abc",
+        sourceLanguage: "en",
+        nativeTarget: false,
+        cues: [
+          { start: 0, end: 1, text: "hello" },
+          { start: 1, end: 2, text: "world" },
+          { start: 2, end: 3, text: "bye" },
+        ],
+      },
+    });
+    loadService("services/translate.js", window);
+    window.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("q=world")) {
+        return { ok: false, status: 429, json: async () => ({ error: "HTTP 429" }), text: async () => "HTTP 429" };
+      }
+      const q = decodeURIComponent(u.split("q=")[1] || "");
+      return { ok: true, status: 200, json: async () => [[[`${q}-vi`, q, null, null, 10]]], text: async () => "" };
+    });
+    const onProgress = vi.fn();
+    const onPartialFailure = vi.fn();
+    const result = await api.create().start({
+      videoId: "abc",
+      targetLanguage: "vi",
+      translateProvider: "google-free",
+      onProgress,
+      onPartialFailure,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.cues.map((cue) => cue.translated)).toEqual(["hello-vi", "world", "bye-vi"]);
+    // Progress visibly moves instead of freezing at 0/3.
+    expect(onProgress).toHaveBeenCalledWith({ phase: "translating", completed: 1, total: 3 });
+    expect(onProgress).toHaveBeenCalledWith({ phase: "translating", completed: 2, total: 3 });
+    expect(onProgress).toHaveBeenCalledWith({ phase: "translating", completed: 3, total: 3 });
+    expect(onPartialFailure).toHaveBeenCalledWith({ failed: 1, total: 3 });
+    expect(getCache().entries["abc::vi::google-free::en"].cues).toHaveLength(3);
+  }, 20000);
+
+  it("retranslates fallback lines on restart instead of trusting cached source text", async () => {
+    const subs = {
+      videoId: "abc",
+      sourceLanguage: "en",
+      nativeTarget: false,
+      cues: [
+        { start: 0, end: 1, text: "hello" },
+        { start: 1, end: 2, text: "world" },
+      ],
+    };
+    const { window, api } = await setup({ subtitles: subs });
+    loadService("services/translate.js", window);
+    const okFetch = async (url) => {
+      const q = decodeURIComponent(String(url).split("q=")[1] || "");
+      return { ok: true, status: 200, json: async () => [[[`${q}-vi`, q, null, null, 10]]], text: async () => "" };
+    };
+    // Round 1: "world" always 429 → flagged fallback showing source text.
+    window.fetch = vi.fn(async (url) => {
+      if (String(url).includes("q=world")) {
+        return { ok: false, status: 429, json: async () => ({ error: "HTTP 429" }), text: async () => "HTTP 429" };
+      }
+      return okFetch(url);
+    });
+    const first = await api.create().start({ videoId: "abc", targetLanguage: "vi", translateProvider: "google-free" });
+    expect(first.ok).toBe(true);
+    expect(first.cues[1].__fallback).toBe(true);
+    expect(first.cues[1].translated).toBe("world");
+    // Round 2 (Stop then Start): limits lifted → fallback line retranslated.
+    window.fetch = vi.fn(okFetch);
+    const second = await api.create().start({ videoId: "abc", targetLanguage: "vi", translateProvider: "google-free" });
+    expect(second.cues.map((cue) => cue.translated)).toEqual(["hello-vi", "world-vi"]);
+    expect(second.cues.some((cue) => cue.__fallback)).toBe(false);
+  }, 20000);
+
+  it("auto-retries fallback lines in the background after cooldown", async () => {
+    const { window, api } = await setup({
+      subtitles: { videoId: "abc", sourceLanguage: "en", nativeTarget: false, cues: cues() },
+    });
+    const seed = () => {
+      const pipeline = api.create();
+      pipeline.abortController = new AbortController();
+      pipeline.cues = [
+        { start: 0, end: 1, text: "hello", translated: "hello-vi" },
+        { start: 1, end: 2, text: "world", translated: "world", __fallback: true },
+      ];
+      pipeline.targetLanguage = "vi";
+      pipeline.activeProvider = "google-free";
+      pipeline.options = { batchSize: 20, targetLanguageName: "Vietnamese" };
+      pipeline.subtitles = { sourceLanguage: "en" };
+      pipeline.key = "abc::vi::google-free::en";
+      window.LumeoTranslate.translateBatch = vi.fn(async (texts) => texts.map((text) => `${text}-vi`));
+      return pipeline;
+    };
+
+    const healed = seed();
+    healed.lastFallbackRetryAt = 0;
+    await healed.checkAndTranslateAhead(0);
+    expect(window.LumeoTranslate.translateBatch).toHaveBeenCalledWith(["world"], "vi", expect.objectContaining({ provider: "google-free" }));
+    expect(healed.cues[1].translated).toBe("world-vi");
+    expect(healed.cues[1].__fallback).toBeUndefined();
+
+    const gated = seed();
+    window.LumeoTranslate.translateBatch.mockClear();
+    gated.lastFallbackRetryAt = Date.now();
+    await gated.checkAndTranslateAhead(0);
+    expect(window.LumeoTranslate.translateBatch).not.toHaveBeenCalled();
+    expect(gated.cues[1].__fallback).toBe(true);
+  });
+
   it("uses cached translated cues without calling translation", async () => {
     const cachedCues = [{ start: 0, end: 1, text: "hello", translated: "xin chào" }];
     const { window, api } = await setup({
-      cache: { entries: { "abc::vi::google-free::en": { cues: cachedCues, version: 2, updatedAt: 9_000_000_000_000 } } },
+      cache: { entries: { "abc::vi::google-free::en": { cues: cachedCues, version: 3, updatedAt: 9_000_000_000_000 } } },
       subtitles: { videoId: "abc", sourceLanguage: "en", nativeTarget: false, cues: cues() },
     });
 
@@ -128,7 +257,7 @@ describe("pipelines/caption.js", () => {
           "abc::vi::google-free::en": {
             cues: partialCues,
             meta: { progress: { completed: 1, total: 2 }, resume: true },
-            version: 2,
+            version: 3,
             updatedAt: 9_000_000_000_000,
           },
         },
@@ -172,7 +301,7 @@ describe("pipelines/caption.js", () => {
       cache: {
         entries: {
           "abc::vi::google-free::en": { cues: cachedCues, version: 1, updatedAt: 1_700_000_000_000 },
-          "abc::vi::google-free::auto": { cues: cachedCues, version: 2, updatedAt: 1_700_000_000_000 - (30 * 24 * 60 * 60 * 1000) - 1 },
+          "abc::vi::google-free::auto": { cues: cachedCues, version: 3, updatedAt: 1_700_000_000_000 - (30 * 24 * 60 * 60 * 1000) - 1 },
         },
       },
       subtitles: { videoId: "abc", sourceLanguage: "en", nativeTarget: false, cues: cues() },
@@ -189,7 +318,7 @@ describe("pipelines/caption.js", () => {
     const entries = Object.fromEntries(
       Array.from({ length: 55 }, (_, index) => [
         `old-${index}`,
-        { version: 2, updatedAt: Date.now() - 1000 - index, cues: [{ text: `old ${index}` }] },
+        { version: 3, updatedAt: Date.now() - 1000 - index, cues: [{ text: `old ${index}` }] },
       ]),
     );
     const { api, getCache } = await setup({
