@@ -1,90 +1,77 @@
-﻿name: Auto-merge Dependabot
+name: Auto-merge Dependabot
 
-on: pull_request_target
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: auto-merge-${{ github.event.pull_request.base.ref }}
+  cancel-in-progress: false
+
 jobs:
   auto-merge:
-    name: Auto-merge safe updates
     runs-on: ubuntu-latest
     if: github.actor == 'dependabot[bot]'
     steps:
-      - name: Fetch Dependabot metadata
+      - name: Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@v3
         with:
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── Strategy ─────────────────────────────────────────────────
-      # Auto-merge when ANY of these is true:
-      #   1. Minor or patch update (any package)
-      #   2. Dev dependency (even major — doesn't ship to users)
-      #   3. GitHub Actions update (any version)
-      # Only require manual review for: major updates to PRODUCTION deps
-
-      - name: Determine merge strategy
+      - name: Determine strategy
         id: strategy
         run: |
           UPDATE_TYPE="${{ steps.metadata.outputs.update-type }}"
           DEP_TYPE="${{ steps.metadata.outputs.dependency-type }}"
-          PKG_ECOSYSTEM="${{ steps.metadata.outputs.package-ecosystem }}"
-          DIR_NAME="${{ steps.metadata.outputs.dependency-names }}"
-
-          echo "update-type=$UPDATE_TYPE"
-          echo "dep-type=$DEP_TYPE"
-          echo "ecosystem=$PKG_ECOSYSTEM"
-
-          # Default: needs review
-          SAFE="false"
-
-          # Rule 1: minor/patch → always safe
-          if [[ "$UPDATE_TYPE" != "version-update:semver-major" ]]; then
-            SAFE="true"
-            echo "reason=minor/patch update"
+          ECOSYSTEM="${{ steps.metadata.outputs.package-ecosystem }}"
+          GROUP="${{ steps.metadata.outputs.dependency-group }}"
+          SHOULD_MERGE="false"
+          if [[ "$UPDATE_TYPE" != "version-update:semver-major" ]] \
+            || [[ "$DEP_TYPE" == "direct:development" ]] \
+            || [[ "$DEP_TYPE" == "indirect" ]] \
+            || [[ "$ECOSYSTEM" == "github_actions" ]] \
+            || [[ "$GROUP" == *"dev-tooling"* ]]; then
+            SHOULD_MERGE="true"
           fi
+          echo "should_merge=$SHOULD_MERGE" >> "$GITHUB_OUTPUT"
+          echo "Decision: should_merge=$SHOULD_MERGE (type=$UPDATE_TYPE dep=$DEP_TYPE eco=$ECOSYSTEM)"
 
-          # Rule 2: dev dependency → always safe (even major)
-          if [[ "$DEP_TYPE" == "indirect" || "$DEP_TYPE" == "direct:development" || "$DEP_TYPE" == *"development"* ]]; then
-            SAFE="true"
-            echo "reason=dev dependency"
-          fi
-
-          # Rule 3: GitHub Actions → always safe
-          if [[ "$PKG_ECOSYSTEM" == "github_actions" || "$PKG_ECOSYSTEM" == "github-actions" ]]; then
-            SAFE="true"
-            echo "reason=github-actions update"
-          fi
-
-          echo "safe=$SAFE" >> "$GITHUB_OUTPUT"
-
-      # Auto-approve + merge safe updates
       - name: Generate GitHub App Token
-        if: steps.strategy.outputs.safe == 'true'
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_PRIVATE_KEY }}
 
-      - name: Auto-merge safe updates
-        if: steps.strategy.outputs.safe == 'true'
+      - name: Auto-approve and merge safe updates
+        if: steps.strategy.outputs.should_merge == 'true'
         run: |
-          gh pr review "$PR_URL" --approve
-          BODY=$(printf "🤖 Verified and auto-merged by ThanhNguyxnAgent\n\nCo-authored-by: ThanhNguyxnAgent[bot] <296222857+thanhnguyxnagent[bot]@users.noreply.github.com>\nSigned-off-by: ThanhNguyxnAgent[bot] <296222857+thanhnguyxnagent[bot]@users.noreply.github.com>")
-          gh pr merge "$PR_URL" --auto --squash --body "$BODY"
+          gh pr review "$PR_URL" --approve --body "Auto-approved by ThanhNguyxnAgent: safe dependency update."
+          BODY=$(printf "Verified and auto-merged by ThanhNguyxnAgent\n\nCo-authored-by: ThanhNguyxnAgent[bot] <296222857+thanhnguyxnagent[bot]@users.noreply.github.com>\nSigned-off-by: ThanhNguyxnAgent[bot] <296222857+thanhnguyxnagent[bot]@users.noreply.github.com>")
+          for i in 1 2 3; do
+            if gh pr merge "$PR_URL" --auto --squash --body "$BODY"; then
+              exit 0
+            fi
+            echo "merge attempt $i failed, retrying in 20s..."
+            sleep 20
+          done
+          exit 1
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      # Flag dangerous updates for human review
-      - name: Label major production updates for review
-        if: steps.strategy.outputs.safe != 'true'
+      - name: Flag for manual people review
+        if: steps.strategy.outputs.should_merge == 'false'
         run: |
-          gh pr edit "$PR_URL" --add-label "major-update,needs-review" || echo "Labeling failed"
+          gh pr edit "$PR_URL" --add-label "major-update,needs-review" \
+            --add-assignee "ThanhNguyxn07,RealThanhNguyxn" \
+            --add-reviewer "ThanhNguyxn07,RealThanhNguyxn"
+          gh pr comment "$PR_URL" --body "Manual review required: major production dependency update. Core owners assigned and requested - please review changelog for breaking changes before merging."
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
