@@ -95,9 +95,16 @@
         try { controller.abort(); } catch {}
       }, { once: true });
     }
-    const signal = typeof AbortSignal.any === "function" && options.signal
-      ? AbortSignal.any([options.signal, controller.signal])
-      : (options.signal || controller.signal);
+    const signal = (() => {
+      // AbortSignal.any can throw on exotic inputs (e.g. cross-realm signals
+      // in tests); fall back to plain chaining instead of failing the call.
+      try {
+        if (typeof AbortSignal.any === "function" && options.signal) {
+          return AbortSignal.any([options.signal, controller.signal]);
+        }
+      } catch {}
+      return options.signal || controller.signal;
+    })();
     try {
       const response = await fetch(url, {
         ...options,
