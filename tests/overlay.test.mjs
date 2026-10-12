@@ -22,7 +22,7 @@ describe("ui/overlay.js keyboard shortcuts", () => {
   });
 
   it("collapses the overlay with Escape only when focus is inside the overlay", () => {
-    root.querySelector("[data-ec-stop]").focus();
+    root.querySelector("[data-lumeo-toggle-session]").focus();
     window.document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
     expect(root.classList.contains("is-side-collapsed")).toBe(true);
@@ -57,7 +57,7 @@ describe("ui/overlay.js keyboard shortcuts", () => {
   });
 
   it("shows shortcut help with ? or h only when overlay focus is active", () => {
-    root.querySelector("[data-ec-stop]").focus();
+    root.querySelector("[data-lumeo-toggle-session]").focus();
     window.document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "?", bubbles: true }));
 
     expect(root.querySelector(".ec-toast")?.textContent).toContain("Ctrl/Cmd+Shift+L");
