@@ -161,6 +161,7 @@ describe("services/translate.js", () => {
     const onPartialFailure = vi.fn();
     const out = await api.translateBatch(["hello", "world"], "vi", {
       provider: "google-free",
+      retryDelayBaseMs: 20,
       onItemDone,
       onPartialFailure,
     });
@@ -182,7 +183,7 @@ describe("services/translate.js", () => {
       if (calls === 1) return fakeResponse({ error: "HTTP 429" }, { status: 429 });
       return fakeResponse([[["xin chào", "hello", null, null, 10]]]);
     });
-    const out = await api.translateBatch(["hello"], "vi", { provider: "google-free" });
+    const out = await api.translateBatch(["hello"], "vi", { provider: "google-free", retryDelayBaseMs: 20 });
     expect(out).toEqual(["xin chào"]);
     expect(calls).toBe(2);
   }, 15000);
@@ -208,8 +209,8 @@ describe("services/translate.js", () => {
   it("aborts promptly when stopped during backoff", async () => {
     window.fetch = vi.fn(async () => fakeResponse({ error: "HTTP 429" }, { status: 429 }));
     const controller = new AbortController();
-    const promise = api.translateBatch(["hello"], "vi", { provider: "google-free", signal: controller.signal });
-    setTimeout(() => controller.abort(), 100);
+    const promise = api.translateBatch(["hello"], "vi", { provider: "google-free", signal: controller.signal, retryDelayBaseMs: 200 });
+    setTimeout(() => controller.abort(), 50);
     await expect(promise).rejects.toThrow(/Aborted/);
     expect(window.fetch).toHaveBeenCalledTimes(1);
   }, 10000);
@@ -219,7 +220,7 @@ describe("services/translate.js", () => {
       init.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
     }));
     const started = Date.now();
-    const out = await api.translateBatch(["hello"], "vi", { provider: "google-free", translateTimeoutMs: 60 });
+    const out = await api.translateBatch(["hello"], "vi", { provider: "google-free", translateTimeoutMs: 60, retryDelayBaseMs: 20 });
     expect(out).toEqual(["hello"]);
     expect(Date.now() - started).toBeLessThan(8000);
   }, 15000);

@@ -147,6 +147,7 @@ describe("pipelines/caption.js", () => {
       videoId: "abc",
       targetLanguage: "vi",
       translateProvider: "google-free",
+      retryDelayBaseMs: 20,
       onProgress,
       onPartialFailure,
     });
@@ -183,7 +184,7 @@ describe("pipelines/caption.js", () => {
       }
       return okFetch(url);
     });
-    const first = await api.create().start({ videoId: "abc", targetLanguage: "vi", translateProvider: "google-free" });
+    const first = await api.create().start({ videoId: "abc", targetLanguage: "vi", translateProvider: "google-free", retryDelayBaseMs: 20 });
     expect(first.ok).toBe(true);
     expect(first.cues[1].__fallback).toBe(true);
     expect(first.cues[1].translated).toBe("world");

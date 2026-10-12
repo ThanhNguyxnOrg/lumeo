@@ -156,8 +156,12 @@
 
   // Backoff for an already-throttled endpoint: start at 1.5s with jitter so
   // a full batch retrying at once does not deepen the throttle in lockstep.
-  function translateBackoffMs(attempt) {
-    return 1500 * 2 ** attempt + Math.floor(Math.random() * 500);
+  // Test knobs (documented here; production never passes them):
+  // - options.translateTimeoutMs: per-request timeout (default 12000).
+  // - options.retryDelayBaseMs: backoff base (default 1500).
+  function translateBackoffMs(attempt, baseMs) {
+    const base = Number(baseMs) > 0 ? Number(baseMs) : 1500;
+    return base * 2 ** attempt + Math.floor(Math.random() * Math.max(50, base / 3));
   }
 
   async function translateGoogleFree(texts, targetLanguage, options = {}) {
@@ -208,7 +212,7 @@
           }
           if (attempt < 2 && isRetryableTranslateError(err, options.signal)) {
             try {
-              await translateDelay(translateBackoffMs(attempt), options.signal);
+              await translateDelay(translateBackoffMs(attempt, options.retryDelayBaseMs), options.signal);
             } catch (abortErr) {
               throw abortErr;
             }
