@@ -207,10 +207,15 @@ describe("services/translate.js", () => {
   });
 
   it("aborts promptly when stopped during backoff", async () => {
-    window.fetch = vi.fn(async () => fakeResponse({ error: "HTTP 429" }, { status: 429 }));
+    // Deterministic: abort synchronously inside the first fetch so no
+    // wall-clock race decides whether the abort lands mid-backoff. (A 50ms
+    // setTimeout race flaked on loaded CI runners.)
     const controller = new AbortController();
+    window.fetch = vi.fn(async () => {
+      controller.abort();
+      return fakeResponse({ error: "HTTP 429" }, { status: 429 });
+    });
     const promise = api.translateBatch(["hello"], "vi", { provider: "google-free", signal: controller.signal, retryDelayBaseMs: 200 });
-    setTimeout(() => controller.abort(), 50);
     await expect(promise).rejects.toThrow(/Aborted/);
     expect(window.fetch).toHaveBeenCalledTimes(1);
   }, 10000);
