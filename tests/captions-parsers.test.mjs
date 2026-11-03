@@ -139,18 +139,25 @@ describe("services/captions.js — pure parser surface", () => {
     expect(chosen.kind).toBe("asr");
   });
 
-  it("injects the sniffer without a URL query so web_accessible_resources matches", () => {
-    window.document.head.innerHTML = "";
+  it("asks the background for a MAIN-world sniffer instead of injecting a page script", () => {
+    const sent = [];
+    window.chrome.runtime.sendMessage = (message, callback) => {
+      sent.push(message);
+      callback?.({ ok: true });
+      return Promise.resolve({ ok: true });
+    };
+    delete window.document.documentElement.dataset.lumeoSniffer;
+
     api.injectSniffer();
-    const script = window.document.getElementById("lumeo-caption-sniffer");
-    expect(script).not.toBeNull();
-    // Chrome blocks extension resources whose URL carries ?params ("Unsafe
-    // attempt to load URL") even when listed in web_accessible_resources.
-    expect(script.src).toBe("chrome-extension://lumeo/services/sniffer.js");
-    expect(script.src).not.toContain("?");
-    expect(script.dataset.nonce).toBeTruthy();
-    // Idempotent: a second call must not duplicate the tag.
+
+    // YouTube's CSP rejects page-level extension scripts ("Unsafe attempt to
+    // load URL"), so the content script must delegate to chrome.scripting.
+    expect(window.document.getElementById("lumeo-caption-sniffer")).toBeNull();
+    expect(sent.filter((message) => message.type === "ENSURE_SNIFFER")).toHaveLength(1);
+
+    // Once the MAIN-world sniffer publishes its DOM marker, calls are no-ops.
+    window.document.documentElement.dataset.lumeoSniffer = "1";
     api.injectSniffer();
-    expect(window.document.querySelectorAll("#lumeo-caption-sniffer")).toHaveLength(1);
+    expect(sent.filter((message) => message.type === "ENSURE_SNIFFER")).toHaveLength(1);
   });
 });

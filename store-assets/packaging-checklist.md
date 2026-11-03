@@ -1,14 +1,22 @@
-# P5 packaging checklist
+# Release packaging checklist
 
-Status: ready for release candidate. Packaging execution is manual until a final zip path/version is chosen.
-Date: 2026-05-12
+Status: automated by `scripts/build-targets.mjs` and `.github/workflows/release.yml`.
 
 ## Preflight
 
-1. Confirm `manifest.json` version and `README.md` badge match the planned release.
-2. Confirm privacy policy URL is hosted and reachable.
-3. Confirm `store-assets/web-store-metadata.md` copy matches current behavior.
-4. Confirm manual screenshots exist outside the extension zip:
+1. Confirm the version is consistent everywhere:
+   ```bash
+   npm run check:versions
+   ```
+2. Confirm every file referenced by `manifest.json` exists:
+   ```bash
+   npm run check:manifest
+   ```
+3. Confirm the AMO first-submission metadata is valid:
+   ```bash
+   node -e "const m=JSON.parse(require('fs').readFileSync('store-assets/amo-metadata.json','utf8')); if(!m.summary?.['en-US']||!m.categories?.length||!m.version?.license) throw new Error('bad AMO metadata');"
+   ```
+4. Confirm hosted privacy policy URL and screenshots are current:
    - `01-popup-idle.png`
    - `02-panel-caption.png`
    - `03-realtime-dub.png`
@@ -17,93 +25,32 @@ Date: 2026-05-12
 
 ## Required local checks
 
-```powershell
+```bash
 npm run check:all
 npm test
+npm run build:targets
 ```
 
-## Package allowlist
+## Build output
 
-Include:
+`npm run build:targets` writes four deterministic ZIPs plus checksums to `dist/`:
 
-- `manifest.json`
-- `background.js`
-- `content.js`
-- `content.css`
-- `popup.html`
-- `popup.js`
-- `popup.css`
-- `lib/`
-- `services/`
-- `pipelines/`
-- `ui/`
-- `icons/`
+- `lumeo-v<version>-chrome.zip` (Chrome / Brave sideload)
+- `lumeo-v<version>-edge.zip` (Edge Add-ons, manual upload)
+- `lumeo-v<version>-firefox.zip` (AMO submission source, automated when secrets exist)
+- `lumeo-v<version>-opera.zip` (Opera Add-ons, manual upload)
+- `SHA256SUMS.txt`
+- `build-metadata.json`
 
-Optional, if desired for reviewer context:
+The builder packages only tracked runtime files. `.env*`, `tests/`, `docs/`, `scripts/`, `store-assets/`, `node_modules/`, local logs, and generated browser profiles are never included.
 
-- `docs/privacy.html`
-- `README.md`
-- `SECURITY.md`
+## Automation
 
-Exclude:
-
-- `.git/`, `.github/`
-- `.sisyphus/`, `.playwright-mcp/`
-- `node_modules/`
-- `coverage/`
-- `output/`
-- `tests/`
-- generated browser profiles
-- generated screenshots
-- local logs
-- `.env*`
-
-## Windows package command
-
-Use PowerShell from repo root:
-
-```powershell
-$dest = "store-assets/lumeo-2.0.0.zip"
-Remove-Item -LiteralPath $dest -ErrorAction SilentlyContinue
-Compress-Archive -LiteralPath @(
-  "manifest.json",
-  "background.js",
-  "content.js",
-  "content.css",
-  "popup.html",
-  "popup.js",
-  "popup.css",
-  "lib",
-  "services",
-  "pipelines",
-  "ui",
-  "icons"
-) -DestinationPath $dest
-```
-
-## Shell package command
-
-Use Git Bash or WSL from repo root:
-
-```bash
-zip -r store-assets/lumeo-2.0.0.zip \
-  manifest.json background.js content.js content.css popup.html popup.js popup.css \
-  lib services pipelines ui icons
-```
-
-## Post-package audit
-
-```powershell
-$tmp = Join-Path $env:TEMP "lumeo-package-check"
-Remove-Item -Recurse -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath "store-assets/lumeo-2.0.0.zip" -DestinationPath $tmp -Force
-Get-ChildItem -Recurse -File $tmp | ForEach-Object { $_.FullName.Replace($tmp, "") } | Sort-Object
-```
-
-Verify no excluded paths appear.
+Push a version tag (`v<version>`) or run the `Release` workflow manually with a tag. The workflow validates versions, runs tests and manifest checks, builds every target, verifies packaged manifest versions, submits Firefox to AMO when `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` exist, and publishes all ZIPs to GitHub Releases.
 
 ## Manual blocks
 
-- Chrome Web Store upload is manual.
-- Store form approval is manual.
-- Clean Chrome profile test is manual unless a safe local profile script is added later.
+- Edge Add-ons upload and certification.
+- Opera Add-ons upload and review.
+- Chrome Web Store / Brave store listing (requires the paid Chrome Web Store developer registration).
+- AMO listing review is manual on Mozilla's side; the submission itself is automated.

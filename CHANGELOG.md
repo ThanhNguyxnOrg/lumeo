@@ -15,13 +15,31 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - **Caption Fetch Bounds ("Loading captions..." spin):**
   - Every caption-fetch leg now has a timeout (12s direct, 15s background proxy, 60s overall cascade deadline) with parallel watch-HTML discovery, so loading always resolves to subtitles or a loud error.
   - The session toggle button now cancels while loading instead of restarting; the gear button falls back to opening the options page directly when the background does not ack.
-  - Fixed `sniffer.js` injection blocked as "Unsafe attempt to load URL" by moving the nonce from URL query to `dataset`, with a live-scope nonce handoff.
+  - Fixed `sniffer.js` injection blocked by YouTube's CSP as "Unsafe attempt to load URL": the page `<script src>` fallback is gone and the sniffer is injected through `chrome.scripting.executeScript({ world: "MAIN" })` from the background for already-open tabs.
 - **Free Voices for All Languages:**
   - Browser TTS language map covers every caption language; utterance language stays BCP-47; voice matching is full-tag-first with `fil/tl`, `no/nb/nn`, `zh/cmn/yue` aliases.
   - Popup voice list auto-filters to the selected translation language with an explicit empty state and stale-pick reset.
   - Spoken rate auto-fits each subtitle window (0.90–1.10×, per-language triggers) instead of the old 1.15–1.4× speedup; Standard dub caps at 1.10× with backlog fast-forward.
 - **Transcript Drawer Polish:**
   - Replaced emoji-as-icons with SVG, unified ghost export button, fallback-line marker, reduced-motion-safe loading state.
+- **Cross-Browser & Release Engineering:**
+  - Added `scripts/build-targets.mjs`: one canonical `manifest.json` plus per-target transforms, deterministic ZIPs, SHA-256 checksums, and a tracked-file allowlist so `.env`, tests, docs, and local artifacts cannot leak into a store package. `pack.sh` / `pack.ps1` now use it.
+  - Firefox build uses `background.scripts` with Gecko metadata and AMO data-collection disclosure; `browser.*` promise APIs (including `storage`) are used on Firefox instead of callback calls.
+  - Tag releases now build Chrome, Edge, Firefox, and Opera packages in GitHub Actions, verify every packaged manifest version, and publish them together. AMO listed submission runs from the same workflow when `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` are configured.
+  - Added version, manifest-reference, and AMO-metadata checks to CI (`check:versions`, `check:manifest`).
+  - Custom AI gateway and custom TTS endpoints can request host access at runtime; `api.elevenlabs.io` and `api.deepseek.com` are install-time defaults. The canonical `web_accessible_resources` list shrank to the AudioWorklet only.
+- **TTS Queue, Key Isolation & Firefox Release Readiness:**
+  - Spoken captions are queued instead of preempted: a new cue waits for the line already playing, the backlog is capped, and the oldest pending line is skipped with a toast when audio falls behind. Rate fitting now stretches to `1.6×` instead of `1.1×`, and ElevenLabs defaults to `eleven_flash_v2_5`.
+  - Content scripts no longer read the whole `chrome.storage.local` area. They receive only non-secret preferences, and fallback paths request a single provider key from the background through `GET_PROVIDER_KEY` (YouTube senders only). `GET_STATE` returns a pruned snapshot to content senders.
+  - Soniox WebSocket messages (`startSonioxWs`, `sonioxAudio`, `stopSonioxWs`) now require a YouTube sender.
+  - Privacy/store documents now describe the real storage protection instead of claiming `TRUSTED_CONTEXTS`.
+  - Auto-merge workflow passes Dependabot metadata through `env:` instead of interpolating it into shell code.
+
+- **Realtime / Session Fixes:**
+  - Switching language during a realtime session no longer stops the previous session's shared audio stream; failed handovers restore the previous token/settings and stale candidates are disposed.
+- **Security Hardening:**
+  - The background caption-fetch proxy accepts only YouTube `/api/timedtext` URLs from YouTube senders, caps response size, and rejects redirects outside that host.
+  - Dynamic `innerHTML` label rendering in the overlay toolbar was replaced with DOM APIs to keep page data out of markup parsing.
 
 ## [2.0.6] - 2026-10-09 — Bilingual Layout Sync & Cache Resume Guard
 

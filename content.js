@@ -344,13 +344,51 @@
 
   const IGNORED_STORAGE_KEYS = new Set(["lumeoCaptionCacheV1", "lumeoSubPosition"]);
 
+  // Non-secret preferences only. Provider API keys must arrive through the
+  // background's pruned CONTENT_START/GET_PROVIDER_KEY paths so a YouTube tab
+  // never holds keys the active session does not need.
+  const CONTENT_STORAGE_KEYS = [
+    "tier",
+    "targetLanguage",
+    "translateProvider",
+    "sttProvider",
+    "captionTtsProvider",
+    "dubProvider",
+    "realtimeProvider",
+    "realtimeVoice",
+    "standardVoice",
+    "showSource",
+    "showSourceSub",
+    "showTranslatedSub",
+    "muteOriginal",
+    "fontSize",
+    "bottomOffset",
+    "highContrast",
+    "layoutPreset",
+    "subtitleOrder",
+    "secondaryLanguage",
+    "subShadowStyle",
+    "subBackgroundOpacity",
+    "autoStart",
+    "smartSkipNative",
+    "autoPauseOnHover",
+    "navHotkeys",
+    "voiceVolume",
+    "originalVolume",
+    "translationContext",
+    "libreTranslateUrl",
+    "customProxyBaseUrl",
+    "customProxyModelId",
+    "customTtsBaseUrl",
+    "customTtsVoiceId",
+    "customTtsModelId",
+  ];
+
   // Load from chrome.storage.local on startup
   try {
     if (typeof chrome !== "undefined" && chrome.storage?.local) {
-      chrome.storage.local.get(null, (res) => {
+      chrome.storage.local.get(CONTENT_STORAGE_KEYS, (res) => {
         if (res) {
-          delete res.lumeoCaptionCacheV1;
-          delete res.lumeoSubPosition;
           settings = { ...(settings || {}), ...res };
           captionStyle = { ...captionStyle, ...res };
           applyLayoutPreset(captionStyle.layoutPreset || "stacked");
@@ -553,7 +591,7 @@
 
     if (typeof chrome !== "undefined" && chrome.storage?.local) {
       try {
-        chrome.storage.local.get(null, (res) => {
+        chrome.storage.local.get(CONTENT_STORAGE_KEYS, (res) => {
             settings = { ...(settings || {}), ...res };
             captionStyle = { ...captionStyle, ...res };
             applyLayoutPreset(captionStyle.layoutPreset || "stacked");

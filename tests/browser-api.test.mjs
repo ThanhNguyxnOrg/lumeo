@@ -46,15 +46,25 @@ describe("browser API wrapper", () => {
       tabs: {
         query: vi.fn(async () => [{ id: 3 }]),
       },
-      storage: { local: {} },
+      storage: {
+        local: {
+          get: vi.fn(async () => ({ existing: true })),
+          set: vi.fn(async () => undefined),
+        },
+      },
     };
     const api = loadBrowserApi();
 
     await expect(api.sendRuntimeMessage({ type: "PING" })).resolves.toEqual({ source: "browser", message: { type: "PING" } });
     await expect(api.queryTabs({ currentWindow: true })).resolves.toEqual([{ id: 3 }]);
+    await expect(api.storageGet(["existing"])).resolves.toEqual({ existing: true });
+    await expect(api.storageSet({ existing: false })).resolves.toBeUndefined();
     expect(api.getManifest()).toEqual({ version: "1.2.3" });
     expect(api.getURL("content.js")).toBe("moz-extension://lumeo/content.js");
     expect(globalThis.chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(globalThis.browser.runtime.sendMessage).toHaveBeenCalledWith({ type: "PING" });
+    expect(globalThis.browser.tabs.query).toHaveBeenCalledWith({ currentWindow: true });
+    expect(globalThis.browser.storage.local.get).toHaveBeenCalledWith(["existing"]);
   });
 
   it("no-ops optional Chrome-only storage access level", async () => {
@@ -62,5 +72,36 @@ describe("browser API wrapper", () => {
     const api = loadBrowserApi();
 
     await expect(api.setStorageAccessLevel("TRUSTED_CONTEXTS")).resolves.toBeUndefined();
+  });
+
+  it("requests optional host permissions through either callback or promise APIs", async () => {
+    globalThis.chrome = {
+      permissions: {
+        request: vi.fn((permissions, done) => done(true)),
+        contains: vi.fn((permissions, done) => done(false)),
+      },
+    };
+    const api = loadBrowserApi();
+
+    await expect(api.requestPermissions({ origins: ["https://api.example.com/*"] })).resolves.toBe(true);
+    await expect(api.containsPermissions({ origins: ["https://api.example.com/*"] })).resolves.toBe(false);
+    expect(globalThis.chrome.permissions.request).toHaveBeenCalledWith(
+      { origins: ["https://api.example.com/*"] },
+      expect.any(Function),
+    );
+
+    globalThis.browser = {
+      permissions: {
+        request: vi.fn(async (permissions) => permissions.origins.length > 0),
+      },
+    };
+    await expect(api.requestPermissions({ origins: ["https://api.example.com/*"] })).resolves.toBe(true);
+    expect(globalThis.browser.permissions.request).toHaveBeenCalledWith({ origins: ["https://api.example.com/*"] });
+  });
+
+  it("resolves false when the permissions API is unavailable", async () => {
+    const api = loadBrowserApi();
+    await expect(api.requestPermissions({ origins: ["https://api.example.com/*"] })).resolves.toBe(false);
+    await expect(api.containsPermissions({ origins: ["https://api.example.com/*"] })).resolves.toBe(false);
   });
 });

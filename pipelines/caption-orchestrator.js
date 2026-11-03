@@ -1,6 +1,26 @@
 // pipelines/caption-orchestrator.js
 
 (() => {
+  // Ask the background for a single provider key when a fallback path needs
+  // one. Content scripts must not read the whole storage area, and the
+  // background only serves this to YouTube senders.
+  function requestProviderKey(name) {
+    return new Promise((resolve) => {
+      try {
+        const reply = chrome.runtime.sendMessage(
+          { type: "GET_PROVIDER_KEY", key: name },
+          (response) => {
+            void chrome.runtime.lastError;
+            resolve(response?.ok ? String(response.key || "") : "");
+          },
+        );
+        if (reply && typeof reply.catch === "function") reply.catch(() => resolve(""));
+      } catch {
+        resolve("");
+      }
+    });
+  }
+
   window.LumeoCaptionOrchestrator = {
     missingCaptionDependencies() {
       const required = [
@@ -95,6 +115,7 @@
           voiceName: settings.standardVoice,
           rate: settings.ttsRate || 1,
           volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
+          onSkip: () => ctx.showToast("⚠️ Spoken audio is catching up; oldest line skipped.", 3500),
           onFailover: () => {
             ctx.showToast("⚠️ Custom voice error. Temporarily fell back to browser speech.", 5000);
           },
@@ -158,11 +179,11 @@
 
     async startGeminiChoice(video, token, pipeline, reason, ctx) {
       const settings = ctx.getSettings() || {};
-      if (!settings.geminiKey && typeof chrome !== "undefined" && chrome.storage?.local) {
+      if (!settings.geminiKey) {
         try {
-          const res = await chrome.storage.local.get(["geminiKey"]);
-          if (res?.geminiKey) {
-            settings.geminiKey = res.geminiKey;
+          const key = await requestProviderKey("geminiKey");
+          if (key) {
+            settings.geminiKey = key;
             settings.sttProvider = "gemini-stt";
             ctx.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { sttProvider: "gemini-stt" } });
           }
@@ -190,11 +211,11 @@
 
     async startOpenAIChoice(video, token, pipeline, reason, ctx) {
       const settings = ctx.getSettings() || {};
-      if (!settings.openaiKey && typeof chrome !== "undefined" && chrome.storage?.local) {
+      if (!settings.openaiKey) {
         try {
-          const res = await chrome.storage.local.get(["openaiKey"]);
-          if (res?.openaiKey) {
-            settings.openaiKey = res.openaiKey;
+          const key = await requestProviderKey("openaiKey");
+          if (key) {
+            settings.openaiKey = key;
             settings.sttProvider = "openai-whisper";
             ctx.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { sttProvider: "openai-whisper" } });
           }
@@ -222,11 +243,11 @@
 
     async startGroqChoice(video, token, pipeline, reason, ctx) {
       const settings = ctx.getSettings() || {};
-      if (!settings.groqApiKey && typeof chrome !== "undefined" && chrome.storage?.local) {
+      if (!settings.groqApiKey) {
         try {
-          const res = await chrome.storage.local.get(["groqApiKey"]);
-          if (res?.groqApiKey) {
-            settings.groqApiKey = res.groqApiKey;
+          const key = await requestProviderKey("groqApiKey");
+          if (key) {
+            settings.groqApiKey = key;
             settings.sttProvider = "groq-whisper";
             ctx.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { sttProvider: "groq-whisper" } });
           }
@@ -254,11 +275,11 @@
 
     async startSonioxChoice(video, token, pipeline, reason, ctx) {
       const settings = ctx.getSettings() || {};
-      if (!settings.sonioxApiKey && typeof chrome !== "undefined" && chrome.storage?.local) {
+      if (!settings.sonioxApiKey) {
         try {
-          const res = await chrome.storage.local.get(["sonioxApiKey"]);
-          if (res?.sonioxApiKey) {
-            settings.sonioxApiKey = res.sonioxApiKey;
+          const key = await requestProviderKey("sonioxApiKey");
+          if (key) {
+            settings.sonioxApiKey = key;
             settings.sttProvider = "soniox";
             ctx.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { sttProvider: "soniox" } });
           }
@@ -391,6 +412,7 @@
             voiceName: liveSettings.standardVoice,
             rate: liveSettings.ttsRate || 1,
             volume: Math.min((liveSettings.voiceVolume ?? 100) / 100, 1),
+            onSkip: () => ctx.showToast("⚠️ Spoken audio is catching up; oldest line skipped.", 3500),
           }).catch(() => { });
         }
         ctx.setStatusText("YouTube CC live");
@@ -728,7 +750,7 @@
       if (!(tokenCount > 0 && available > 0)) return 1.0;
       const tokensPerSec = tokenCount / available;
       if (tokensPerSec > trigger) {
-        return Math.min(1.1, 1.0 + (tokensPerSec - trigger) * 0.08);
+        return Math.min(1.6, 1.0 + (tokensPerSec - trigger) * 0.12);
       }
       if (tokensPerSec < trigger * 0.7 && available > 1.0) {
         return Math.max(0.9, 1.0 - (trigger * 0.7 - tokensPerSec) * 0.05);
@@ -919,6 +941,7 @@
             voiceName: liveSettings.standardVoice,
             rate: effectiveRate,
             volume: Math.min((liveSettings.voiceVolume ?? 100) / 100, 1),
+            onSkip: () => ctx.showToast("⚠️ Spoken audio is catching up; oldest line skipped.", 3500),
             onFailover: () => {
               ctx.showToast("⚠️ Custom voice error. Temporarily fell back to browser speech.", 5000);
             },

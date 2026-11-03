@@ -598,7 +598,8 @@
 
     speakCue(cue, options = {}) {
       if (!cue?.translated) return Promise.resolve(false);
-      return window.LumeoTTS.speak(
+      const speakFn = window.LumeoTTS.speakQueued || window.LumeoTTS.speak;
+      return speakFn(
         cue.translated,
         options.targetLanguage || DEFAULT_TARGET_LANGUAGE,
         { ...options, volume: options.volume ?? 1 },

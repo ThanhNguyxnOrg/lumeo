@@ -110,5 +110,17 @@ Major changes here.
       expect(plan.tag).toBe("v2.0.0");
       expect(plan.version).toBe("2.0.0");
     });
+
+    it("does not release on a manual run without a tag", () => {
+      const plan = determineReleasePlan({
+        eventName: "workflow_dispatch",
+        tagInput: "",
+        commitMessage: "chore: release 2.0.0",
+        manifestVersion: "2.0.0",
+        changelogContent: changelog,
+      });
+
+      expect(plan.shouldRelease).toBe(false);
+    });
   });
 });

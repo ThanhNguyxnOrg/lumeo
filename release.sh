@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# release.sh — bump version, pack zip, commit, tag, push, create GitHub release.
+# release.sh — bump version, verify, pack, commit, tag, push.
+#
+# GitHub Actions owns publication now. Pushing the tag triggers
+# .github/workflows/release.yml, which builds every target and creates the
+# GitHub release with deterministic ZIPs + SHA-256 checksums.
 #
 # Usage:
 #   ./release.sh patch       # 2.0.0 → 2.0.1 (bug fix)
 #   ./release.sh minor       # 2.0.0 → 2.1.0 (new feature)
 #   ./release.sh major       # 2.0.0 → 3.0.0 (breaking change)
 #   ./release.sh 2.0.1       # explicit version
-#
-# Then upload the resulting zip to:
-#   https://chrome.google.com/webstore/devconsole
-# (manual step — browser-based, can't automate without OAuth setup)
 
 set -euo pipefail
 
@@ -27,54 +27,56 @@ case "$1" in
   major) NEW=$(node -e "const [a]='$CUR'.split('.').map(Number); console.log([a+1,0,0].join('.'))") ;;
   *)     NEW="$1" ;;
 esac
+NEW="${NEW#v}"
 
 echo "Bumping $CUR → $NEW"
 
-# Update manifest.json, package.json, and content.js LUMEO_VERSION in lock-step
+# Update manifest.json, package.json, content.js, and the README badge in lock-step.
 node -e "
 const fs = require('fs');
+const version = '$NEW';
 const m = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
-m.version = '$NEW';
-m.version_name = '$NEW';
+m.version = version;
+m.version_name = version;
 fs.writeFileSync('manifest.json', JSON.stringify(m, null, 2) + '\n');
 const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-p.version = '$NEW';
+p.version = version;
 fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
 let c = fs.readFileSync('content.js', 'utf8');
-c = c.replace(/const LUMEO_VERSION = \"[^\"]+\";/, 'const LUMEO_VERSION = \"$NEW\";');
+c = c.replace(/const LUMEO_VERSION = \"[^\"]+\";/, 'const LUMEO_VERSION = \"' + version + '\";');
 fs.writeFileSync('content.js', c);
+let r = fs.readFileSync('README.md', 'utf8');
+r = r.replace(/(badge\/version-)\d+\.\d+\.\d+/, '\$1' + version);
+fs.writeFileSync('README.md', r);
 "
 
-# Pack the zip
-./pack.sh
+# Fail before tagging if CHANGELOG/README/package/content drift.
+node scripts/check-versions.mjs
 
-# Show the diff and ask for confirmation before pushing
+if ! grep -q "^## \[$NEW\]" CHANGELOG.md; then
+  echo "CHANGELOG.md is missing a '## [$NEW]' section. Add release notes, then re-run." >&2
+  exit 1
+fi
+
+npm run check:all
+npm test
+./pack.sh "$NEW"
+
 echo
-git diff --stat manifest.json package.json content.js
+git diff --stat manifest.json package.json content.js README.md CHANGELOG.md
 echo
-read -r -p "Looks right? Commit + tag + push + create GitHub release? [y/N] " ans
+read -r -p "Looks right? Commit + tag + push? [y/N] " ans
 [ "$ans" = "y" ] || { echo "aborted; files were updated locally but not committed"; exit 1; }
 
-git add manifest.json package.json content.js CHANGELOG.md
+git add manifest.json package.json content.js README.md CHANGELOG.md
 git commit -m "chore: release v$NEW"
 git tag -a "v$NEW" -m "v$NEW"
 git push
 git push --tags
 
-# Optional release notes — paste from CHANGELOG.md or write inline
-ZIP="$HOME/lumeo-v${NEW}.zip"
-gh release create "v$NEW" "$ZIP" \
-  --title "v$NEW" \
-  --notes "Install via developer mode: download \`lumeo-v${NEW}.zip\`, unzip, drag into chrome://extensions with Developer mode on. Web Store update propagates automatically once Chrome approves."
-
 echo
-echo "✓ Released v$NEW"
-echo "  Zip:    $ZIP"
-echo "  GitHub: https://github.com/ThanhNguyxnOrg/lumeo/releases/tag/v$NEW"
+echo "✓ Pushed v$NEW"
+echo "  GitHub Actions will build Chrome, Edge, Firefox, and Opera packages and publish the release."
+echo "  https://github.com/ThanhNguyxnOrg/lumeo/actions/workflows/release.yml"
 echo
-echo "Next manual step (Web Store auto-update):"
-echo "  1. https://chrome.google.com/webstore/devconsole"
-echo "  2. Pick the Lumeo item"
-echo "  3. Drag $ZIP into the package upload area"
-echo "  4. Add a one-line changelog and Submit for review"
-echo "  5. Auto-rolls out to users 1-3 days after Chrome approves"
+echo "Next: download the target ZIPs from the GitHub release and upload them to the stores you use."

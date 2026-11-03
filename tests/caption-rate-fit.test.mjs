@@ -17,11 +17,11 @@ describe("caption fitRateForCue (multilingual)", () => {
     expect(api.fitRateForCue({ text: "hello world foo bar baz qux quux corge grault garply waldo fred", targetLanguage: "en", duration: 5, playbackRate: 1 })).toBe(1.0);
   });
 
-  it("speeds up dense EN within 1.10 cap", () => {
+  it("speeds up dense EN within 1.6 cap", () => {
     const dense = Array(20).fill("word").join(" ");
-    expect(api.fitRateForCue({ text: dense, targetLanguage: "en", duration: 5, playbackRate: 1 })).toBeCloseTo(1.096, 3);
-    const veryDense = Array(30).fill("word").join(" ");
-    expect(api.fitRateForCue({ text: veryDense, targetLanguage: "en", duration: 5, playbackRate: 1 })).toBe(1.1);
+    expect(api.fitRateForCue({ text: dense, targetLanguage: "en", duration: 5, playbackRate: 1 })).toBeCloseTo(1.144, 3);
+    const veryDense = Array(50).fill("word").join(" ");
+    expect(api.fitRateForCue({ text: veryDense, targetLanguage: "en", duration: 5, playbackRate: 1 })).toBe(1.6);
   });
 
   it("slows down sparse EN to floor 0.90", () => {
@@ -35,14 +35,14 @@ describe("caption fitRateForCue (multilingual)", () => {
     expect(api.fitRateForCue({ text: jaNormal, targetLanguage: "ja", duration: 5, playbackRate: 1 })).toBe(1.0);
   });
 
-  it("caps dense zh at 1.10", () => {
-    const zhDense = "你".repeat(35);
-    expect(api.fitRateForCue({ text: zhDense, targetLanguage: "zh", duration: 5, playbackRate: 1 })).toBe(1.1);
+  it("caps dense zh at 1.6", () => {
+    const zhDense = "你".repeat(60);
+    expect(api.fitRateForCue({ text: zhDense, targetLanguage: "zh", duration: 5, playbackRate: 1 })).toBe(1.6);
   });
 
   it("accounts for video playbackRate", () => {
     const ten = Array(10).fill("word").join(" ");
-    expect(api.fitRateForCue({ text: ten, targetLanguage: "en", duration: 5, playbackRate: 2 })).toBeCloseTo(1.096, 3);
+    expect(api.fitRateForCue({ text: ten, targetLanguage: "en", duration: 5, playbackRate: 2 })).toBeCloseTo(1.144, 3);
   });
 
   it("returns 1.0 for empty text", () => {
@@ -52,7 +52,7 @@ describe("caption fitRateForCue (multilingual)", () => {
   it("keeps th fit within bounds", () => {
     const rate = api.fitRateForCue({ text: "สวัสดีครับ ยินดีต้อนรับ", targetLanguage: "th", duration: 4, playbackRate: 1 });
     expect(rate).toBeGreaterThanOrEqual(0.9);
-    expect(rate).toBeLessThanOrEqual(1.1);
+    expect(rate).toBeLessThanOrEqual(1.6);
   });
 });
 

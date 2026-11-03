@@ -39,4 +39,12 @@ describe("background content script injection", () => {
     const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
     expect(manifest.commands?._execute_action?.suggested_key?.default).toBe("Alt+L");
   });
+
+  it("injects the page-world sniffer before content modules", () => {
+    const background = fs.readFileSync("background.js", "utf8");
+    const snifferIndex = background.indexOf("await ensureSniffer(tabId);");
+    const modulesIndex = background.indexOf("files: CONTENT_SCRIPT_FILES");
+    expect(snifferIndex).toBeGreaterThan(-1);
+    expect(modulesIndex).toBeGreaterThan(snifferIndex);
+  });
 });

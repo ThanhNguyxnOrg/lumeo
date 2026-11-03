@@ -507,10 +507,13 @@
         btn.type = "button";
         btn.className = "ytp-lumeo-sub-item" + (String(item.id) === String(currentVal) ? " is-selected" : "");
         btn.setAttribute("data-sub-id", item.id);
-        btn.innerHTML = `
-          <span class="ytp-lumeo-sub-check">✓</span>
-          <span class="ytp-lumeo-sub-label">${item.label}</span>
-        `;
+        const check = doc.createElement("span");
+        check.className = "ytp-lumeo-sub-check";
+        check.textContent = "✓";
+        const label = doc.createElement("span");
+        label.className = "ytp-lumeo-sub-label";
+        label.textContent = String(item.label ?? "");
+        btn.replaceChildren(check, label);
         btn.addEventListener("click", (e) => {
           e.stopPropagation();
           sub.onSelect(item.id);
@@ -1277,33 +1280,33 @@
 
     function updateSessionControls() {
       if (!elements.toggleSessionBtn) return;
+      const setButtonContent = (iconClass, iconText, labelText) => {
+        const icon = doc.createElement("span");
+        icon.className = iconClass;
+        if (iconText) icon.textContent = iconText;
+        const text = doc.createElement("span");
+        text.className = "ytp-lumeo-session-text";
+        text.textContent = labelText;
+        elements.toggleSessionBtn.replaceChildren(icon, text);
+      };
       if (isLoading) {
         elements.toggleSessionBtn.classList.remove("is-start", "is-stop");
         elements.toggleSessionBtn.classList.add("is-loading");
         elements.toggleSessionBtn.title = "Loading translation...";
         elements.toggleSessionBtn.setAttribute("aria-label", "Loading Translation");
-        elements.toggleSessionBtn.innerHTML = `
-          <span class="ytp-lumeo-session-spinner"></span>
-          <span class="ytp-lumeo-session-text">${currentStatusText || "Loading & translating..."}</span>
-        `;
+        setButtonContent("ytp-lumeo-session-spinner", "", currentStatusText || "Loading & translating...");
       } else if (isTranslating) {
         elements.toggleSessionBtn.classList.remove("is-start", "is-loading");
         elements.toggleSessionBtn.classList.add("is-stop");
         elements.toggleSessionBtn.title = "Stop active translation";
         elements.toggleSessionBtn.setAttribute("aria-label", "Stop Translation");
-        elements.toggleSessionBtn.innerHTML = `
-          <span class="ytp-lumeo-session-icon">⏹</span>
-          <span class="ytp-lumeo-session-text">Stop Translation</span>
-        `;
+        setButtonContent("ytp-lumeo-session-icon", "⏹", "Stop Translation");
       } else {
         elements.toggleSessionBtn.classList.remove("is-stop", "is-loading");
         elements.toggleSessionBtn.classList.add("is-start");
         elements.toggleSessionBtn.title = "Start real-time translation";
         elements.toggleSessionBtn.setAttribute("aria-label", "Start Translation");
-        elements.toggleSessionBtn.innerHTML = `
-          <span class="ytp-lumeo-session-icon">▶</span>
-          <span class="ytp-lumeo-session-text">Start Translation</span>
-        `;
+        setButtonContent("ytp-lumeo-session-icon", "▶", "Start Translation");
       }
     }
 

@@ -1,0 +1,9 @@
+{
+  "summary": {
+    "en-US": "Bilingual captions and live AI dubbing for YouTube."
+  },
+  "categories": ["photos-music-videos"],
+  "version": {
+    "license": "MIT"
+  }
+}

@@ -95,7 +95,9 @@
     source = null;
     audioCtx = null;
     stream = null;
-    chrome.runtime.sendMessage({ action: "stopSonioxWs" }).catch(() => {});
+    try {
+      chrome.runtime.sendMessage({ action: "stopSonioxWs" }, () => { void chrome.runtime.lastError; });
+    } catch {}
     emit("status", "Stopped");
   }
 

@@ -9,6 +9,7 @@ _design_reference/
 ext/
 
 # Built release zips
+dist/
 *.zip
 !store-assets/*.zip
 

@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/version-2.0.7-ff7a45?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/Chrome-MV3-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome MV3">
-  <img src="https://img.shields.io/badge/tests-241%20passed-2ea043?style=for-the-badge" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-271%20passed-2ea043?style=for-the-badge" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-2ea043?style=for-the-badge" alt="License">
 </p>
 
@@ -28,7 +28,7 @@
 
 ## What is Lumeo?
 
-Lumeo is a Chrome extension that lets you watch any YouTube video in your language. It offers **three tiers** — from free caption translation to real-time AI dubbing — so you can pick the one that fits the moment.
+Lumeo is a browser extension for Chrome, Edge, Firefox, Opera, and other Chromium-based browsers. It lets you watch any YouTube video in your language. It offers **three tiers** — from free caption translation to real-time AI dubbing — so you can pick the one that fits the moment.
 
 No account required. No telemetry. No Lumeo-operated server. Your API keys stay on your device.
 
@@ -84,28 +84,46 @@ No account required. No telemetry. No Lumeo-operated server. Your API keys stay 
 
 ## Installation
 
+### Firefox (AMO)
+
+Lumeo is submitted to [addons.mozilla.org](https://addons.mozilla.org/) as a listed add-on. Once the first AMO review completes, install it from the AMO listing and Firefox keeps it updated automatically.
+
+### Chrome / Brave (sideload ZIP)
+
+Chrome Web Store currently requires a paid developer registration, so the Chrome/Brave package is distributed through GitHub Releases:
+
+1. Download `lumeo-v<version>-chrome.zip` from the [latest release](https://github.com/ThanhNguyxnOrg/lumeo/releases/latest).
+2. Unzip it to a folder you keep.
+3. Open `chrome://extensions` (or `brave://extensions`).
+4. Enable **Developer mode** (top-right toggle).
+5. Click **Load unpacked** → select the unzipped folder.
+6. Pin Lumeo to your toolbar.
+
+### Edge
+
+1. Download `lumeo-v<version>-edge.zip` from the [latest release](https://github.com/ThanhNguyxnOrg/lumeo/releases/latest).
+2. Open `edge://extensions`, enable **Developer mode**, and choose **Load unpacked**.
+3. For store installation, the Edge Add-ons listing is uploaded manually from the same ZIP until a publishing API is available.
+
+### Opera
+
+1. Download `lumeo-v<version>-opera.zip` from the [latest release](https://github.com/ThanhNguyxnOrg/lumeo/releases/latest).
+2. Open `opera://extensions`, enable **Developer mode**, and choose **Load unpacked**.
+
 ### From Source (Developer Mode)
 
 ```bash
 git clone https://github.com/ThanhNguyxnOrg/lumeo.git
 cd lumeo
 npm install
+npm run build:targets
 ```
 
-1. Open `chrome://extensions` in Chrome
-2. Enable **Developer mode** (top-right toggle)
-3. Click **Load unpacked** → select the `lumeo` folder
-4. Pin Lumeo to your toolbar
+Then load `dist/chrome` (or `dist/firefox`, `dist/edge`, `dist/opera`) as an unpacked extension.
 
 ### Update
 
-```bash
-git pull
-```
-
-Then click the ↻ reload icon on the extension card in `chrome://extensions`.
-
-> **Note:** After reloading the extension, also refresh any open YouTube tabs to pick up the new content script.
+Pull the repo or download the newer ZIP, then reload the extension card. After reloading the extension, also refresh any open YouTube tabs to pick up the new content script.
 
 ---
 
@@ -216,17 +234,19 @@ lumeo/
 │   ├── browser-api.js              # Cross-browser API abstraction
 │   └── token-guard.js              # Page-level async token guard
 │
-├── tests/                          # 201 unit tests across 28 test suites (Vitest)
+├── tests/                          # 271 unit tests across 35 test suites (Vitest)
 │   ├── helpers/
 │   │   ├── chrome-mock.mjs         # Chrome API mock for testing
 │   │   └── load-service.mjs        # Service loader helper
 │   └── *.test.mjs                  # Test files for each module
 │
 ├── icons/                          # Extension icons (16, 48, 128px)
-├── store-assets/                   # Web Store metadata, screenshots, privacy policy
-├── docs/                           # Technical documentation
-├── scripts/                        # Build & check scripts
-└── .github/workflows/ci.yml        # GitHub Actions CI pipeline
+├── store-assets/                   # Store metadata, screenshots, privacy policy, AMO listing metadata
+├── docs/                           # Technical documentation and release research
+├── scripts/                        # Target builder, version/manifest checks, release prep
+└── .github/workflows/
+    ├── ci.yml                      # Syntax, tests, and target-package verification
+    └── release.yml                 # Tag-gated multi-target release + optional AMO submission
 ```
 
 ---
@@ -234,30 +254,43 @@ lumeo/
 ## Testing
 
 ```bash
-# Run all 201 unit tests across 28 suites
+# Run all 271 unit tests across 35 suites
 npm test
 
 # Syntax check all JavaScript files
 npm run check:all
+
+# Version + manifest-reference checks (same checks CI/release run)
+npm run check:versions
+npm run check:manifest
 ```
 
 All tests run via [Vitest](https://vitest.dev/) with a custom Chrome API mock. No browser required.
 
 ---
 
-## Build a Release Zip
+## Build Release Packages
 
 ```bash
-# macOS / Linux
-./pack.sh
-# → ~/lumeo-v1.0.0.zip
+# Build all four store ZIPs into dist/
+npm run build:targets
 
-# Windows / PowerShell
+# Chrome-only quick package (macOS/Linux)
+./pack.sh
+
+# Chrome-only quick package (Windows/PowerShell)
 .\pack.ps1
-# → $HOME\lumeo-v1.0.0.zip
 ```
 
-Reads the version from `manifest.json`, excludes dev files (`.git`, `node_modules`, `tests/`). Drop the zip into the Chrome Web Store Developer Console.
+`dist/` then contains:
+
+- `lumeo-v<version>-chrome.zip`
+- `lumeo-v<version>-edge.zip`
+- `lumeo-v<version>-firefox.zip`
+- `lumeo-v<version>-opera.zip`
+- `SHA256SUMS.txt` and `build-metadata.json`
+
+The builder reads `manifest.json`, packages only tracked runtime files (`.env`, tests, docs, and local artifacts can never leak in), writes per-target manifest transforms, and produces deterministic ZIP bytes. The same ZIPs are published automatically on every version tag by [`.github/workflows/release.yml`](.github/workflows/release.yml). Firefox is submitted to AMO when the `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` repository secrets are configured; Edge and Opera uploads remain manual.
 
 ---
 
@@ -274,8 +307,12 @@ Reads the version from `manifest.json`, excludes dev files (`.git`, `node_module
 | `https://openrouter.ai/*` | OpenRouter translation (BYOK) |
 | `https://api.groq.com/*` | Groq STT/translation (BYOK) |
 | `https://translate.googleapis.com/*` | Free Google Translate |
+| `https://translation.googleapis.com/*` | Google Cloud Translation (BYOK) |
 | `https://texttospeech.googleapis.com/*` | Google Cloud TTS (BYOK) |
 | `https://stt-rt.soniox.com/*` | Soniox STT fallback (BYOK) |
+| `https://api.elevenlabs.io/*` | ElevenLabs / custom neural voice (BYOK) |
+| `https://api.deepseek.com/*` | DeepSeek through the custom AI gateway (BYOK) |
+| `optional_host_permissions` | Requested from Settings only when you enter a custom gateway or voice base URL (e.g. Ollama, LM Studio, a LAN TTS server). Nothing is granted at install time. |
 
 ---
 
@@ -286,7 +323,8 @@ Reads the version from `manifest.json`, excludes dev files (`.git`, `node_module
 - [ ] Dictionary lookup on highlighted caption text
 - [ ] Auto-pick tier based on available captions
 - [ ] SRT/ZIP export across all tiers
-- [ ] Firefox MV3 port
+- [x] Firefox MV3 port and AMO listed-channel packaging
+- [ ] Edge Add-ons and Opera Add-ons store submissions
 
 ---
 
@@ -297,11 +335,13 @@ PRs welcome on `main`. The codebase is **plain vanilla JS** — no build step, n
 Before opening a PR:
 
 ```bash
-npm test                    # All 117 tests must pass
+npm test                    # All 260 tests must pass
 npm run check:all           # Syntax check
+npm run check:versions      # Manifest/package/content/README/CHANGELOG versions
+npm run check:manifest      # Every file referenced by manifest.json exists
 ```
 
-If you bump `manifest.json` version, also update `LUMEO_VERSION` in `content.js` and `EXPECTED_CONTENT_VERSION` in `background.js`.
+Version bumps are handled by `./release.sh patch|minor|major|x.y.z`, which updates `manifest.json`, `package.json`, `content.js`, and the README badge together, then verifies them with `scripts/check-versions.mjs`. Do not edit those versions by hand.
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) • [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) • [`SECURITY.md`](./SECURITY.md)
 

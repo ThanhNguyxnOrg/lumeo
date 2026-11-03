@@ -3,7 +3,6 @@
 
   if (window.LumeoCaptions?.__loaded) return;
 
-  const SNIFFER_ID = "lumeo-caption-sniffer";
   const SNIFFER_SOURCE = "yt-trans-sniffer";
   const SNIFFER_NONCE = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
     ? crypto.randomUUID()
@@ -32,19 +31,19 @@
     }
   }
 
+  // YouTube enforces a strict page CSP (and Trusted Types), so a page
+  // <script src="chrome-extension://..."> is rejected with
+  // "Unsafe attempt to load URL ... Domains, protocols and ports must match".
+  // The sniffer is injected by the manifest at document_start and by the
+  // background worker via scripting.executeScript({ world: "MAIN" }) for tabs
+  // that already existed before the extension loaded. This helper only asks
+  // the background for that injection and is safe to call repeatedly.
   function injectSniffer() {
     if (window.top !== window) return;
-    if (document.getElementById(SNIFFER_ID)) return;
+    if (document.documentElement?.dataset?.lumeoSniffer === "1") return;
     try {
-      const script = document.createElement("script");
-      script.id = SNIFFER_ID;
-      // NOTE: no query string on src — Chrome refuses to load extension
-      // resources whose URL carries ?params ("Unsafe attempt to load URL")
-      // even when listed in web_accessible_resources. The nonce travels via
-      // dataset instead (read by sniffer.js from document.currentScript).
-      script.src = chrome.runtime.getURL("services/sniffer.js");
-      script.dataset.nonce = SNIFFER_NONCE;
-      (document.head || document.documentElement).appendChild(script);
+      const pending = chrome.runtime.sendMessage({ type: "ENSURE_SNIFFER" });
+      if (pending && typeof pending.catch === "function") pending.catch(() => {});
     } catch {}
   }
 
@@ -53,13 +52,14 @@
     if (event.origin !== window.location.origin) return;
     const data = event.data;
     if (!data || typeof data !== "object" || data.source !== SNIFFER_SOURCE) return;
-    // Missing-nonce pass-through is deliberate: the static MAIN injection has
-    // no nonce until the dynamic loader hands one over, and early sniffed URLs
-    // must not be dropped. Page-actor spoofing is accepted and confined to the
-    // caption-data plane (URLs/text only, still parsed defensively below).
+    // Missing-nonce pass-through is deliberate: the manifest/scripting MAIN
+    // injection has no nonce, and early sniffed URLs must not be dropped.
+    // Page-actor spoofing is accepted and confined to the caption-data plane
+    // (URLs/text only, still parsed defensively below).
     if (data.nonce && data.nonce !== SNIFFER_NONCE) return;
 
     if (data.type === "subtitle-url" && typeof data.url === "string") {
+      if (!isTimedTextUrl(data.url)) return;
       try {
         const parsed = new URL(data.url);
         const videoId = parsed.searchParams.get("v") || getVideoId();
@@ -73,6 +73,7 @@
     }
 
     if (data.type === "caption-body" && typeof data.url === "string") {
+      if (!isTimedTextUrl(data.url)) return;
       try {
         const parsed = new URL(data.url);
         const videoId = parsed.searchParams.get("v") || getVideoId();
@@ -126,11 +127,11 @@
   try { injectSniffer(); } catch {}
 
   function isTimedTextUrl(url) {
-    if (typeof url !== "string") return false;
+    if (typeof url !== "string" || !url) return false;
     try {
       const parsed = new URL(url, window.location.origin);
       const isAllowedHost = parsed.hostname === "www.youtube.com" || parsed.hostname === "youtube.com" || parsed.hostname === window.location.hostname;
-      return isAllowedHost && parsed.pathname.includes("/api/timedtext");
+      return parsed.protocol === "https:" && isAllowedHost && parsed.pathname.replace(/\/+$/, "") === "/api/timedtext";
     } catch {
       return false;
     }
@@ -211,6 +212,7 @@
   }
 
   async function fetchText(url) {
+    if (!isTimedTextUrl(url)) return null;
     const pageText = await fetchTextViaPage(url);
     if (pageText !== null) return pageText;
     const direct = await fetchTextWithTimeout(url);
@@ -770,7 +772,9 @@
 
   function buildTimedTextUrl(track, options = {}) {
     if (!track?.baseUrl) return "";
-    const url = new URL(String(track.baseUrl).replace(/\\u0026/g, "&"));
+    const raw = String(track.baseUrl).replace(/\\u0026/g, "&");
+    if (!isTimedTextUrl(raw)) return "";
+    const url = new URL(raw);
     if (options.targetLanguage) url.searchParams.set("lang", options.targetLanguage);
     if (options.translateTo) url.searchParams.set("tlang", options.translateTo);
     if (!url.searchParams.has("fmt")) url.searchParams.set("fmt", "json3");

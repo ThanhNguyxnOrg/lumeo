@@ -25,11 +25,12 @@ jobs:
 
       - name: Determine strategy
         id: strategy
+        env:
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEP_TYPE: ${{ steps.metadata.outputs.dependency-type }}
+          ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          GROUP: ${{ steps.metadata.outputs.dependency-group }}
         run: |
-          UPDATE_TYPE="${{ steps.metadata.outputs.update-type }}"
-          DEP_TYPE="${{ steps.metadata.outputs.dependency-type }}"
-          ECOSYSTEM="${{ steps.metadata.outputs.package-ecosystem }}"
-          GROUP="${{ steps.metadata.outputs.dependency-group }}"
           SHOULD_MERGE="false"
           if [[ "$UPDATE_TYPE" != "version-update:semver-major" ]] \
             || [[ "$DEP_TYPE" == "direct:development" ]] \

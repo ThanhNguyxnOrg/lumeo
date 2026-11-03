@@ -26,8 +26,14 @@
     "https://texttospeech.googleapis.com/*",
     "https://stt-rt.soniox.com/*",
     "https://libretranslate.com/*",
+    "https://api.elevenlabs.io/*",
+    "https://api.deepseek.com/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
   ],
   "icons": {
     "16": "icons/icon-16.png",
@@ -74,7 +80,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["services/sniffer.js", "services/audio-processor.js", "lib/browser-api.js", "lib/platform-adapters.js", "lib/token-guard.js", "lib/audio-utils.js", "ui/overlay.js", "ui/subtitle-overlay.js", "ui/transcript.js", "ui/voice-picker.js", "ui/caption-fallback-choice.js", "services/providers.js", "services/translate.js", "services/srt-export.js", "services/tts-browser.js", "services/tts-openai.js", "services/stt-soniox.js", "services/stt-groq.js", "services/stt-gemini.js", "services/captions.js", "services/kyma-client.js", "pipelines/caption.js", "pipelines/caption-orchestrator.js", "pipelines/realtime.js", "pipelines/standard.js", "services/session-manager.js"],
+      "resources": ["services/audio-processor.js"],
       "matches": ["https://*.youtube.com/*", "https://youtube.com/*"]
     }
   ]

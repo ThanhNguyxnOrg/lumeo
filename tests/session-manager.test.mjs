@@ -122,3 +122,109 @@ describe("services/session-manager.js", () => {
   });
 });
 
+async function setupRealtime() {
+  const { window } = await createSandboxWindow();
+  const video = window.document.createElement("video");
+  video.volume = 1;
+  video.muted = false;
+  const track = { stop: vi.fn(), kind: "audio" };
+  const stream = {
+    getAudioTracks: () => [track],
+    getTracks: () => [track],
+  };
+
+  window.LumeoAudioUtils = {
+    findVideo: () => video,
+    captureWithRetry: vi.fn(async () => stream),
+  };
+  window.LumeoKyma = {
+    endSession: vi.fn(),
+    heartbeat: vi.fn(),
+  };
+  window.LumeoRealtimePipeline = {
+    buildSession: vi.fn(async (opts) => ({
+      type: "realtime",
+      token: opts.token,
+      stream: opts.audioStream,
+      targetLanguage: opts.targetLanguage,
+      realtimeVoice: opts.realtimeVoice,
+      pc: { close: vi.fn() },
+      dc: { close: vi.fn() },
+      kymaSessionId: `kyma-${opts.token}`,
+      kymaKey: opts.kymaKey,
+    })),
+    handleEvent: vi.fn(),
+  };
+
+  loadService("services/session-manager.js", window);
+  const manager = window.LumeoSessionManager;
+  const callbacks = {
+    removeOverlay: vi.fn(),
+    buildOverlay: vi.fn(),
+    setStatusText: vi.fn(),
+    setOverlayState: vi.fn(),
+    applyTierToolbar: vi.fn(),
+    applySourceVisibility: vi.fn(),
+    emitState: vi.fn(),
+    emitEnded: vi.fn(),
+    showToast: vi.fn(),
+    notifyBackground: vi.fn(),
+    onHandoverSettingsApplied: vi.fn(),
+    startCaptionPoll: vi.fn(),
+    stopCaptionPoll: vi.fn(),
+  };
+
+  manager.init(callbacks);
+  manager.setSettings({
+    tier: "realtime",
+    targetLanguage: "vi",
+    realtimeVoice: "voice-a",
+    kymaKey: "test-key",
+  });
+  return { window, manager, callbacks, stream, track };
+}
+
+describe("services/session-manager.js realtime handover", () => {
+  it("keeps the shared MediaStream alive after switching language", async () => {
+    const { manager, stream, track } = await setupRealtime();
+    const started = await manager.startSession();
+    expect(started.ok).toBe(true);
+
+    const first = manager.getSession();
+    expect(first).toBeTruthy();
+
+    manager.applySettingsLive({ targetLanguage: "ja" });
+    await new Promise((r) => setTimeout(r, 20));
+
+    const second = manager.getSession();
+    expect(second).not.toBe(first);
+    expect(second.stream).toBe(stream);
+
+    // The old session is disposed after the overlap window, but it must not
+    // stop the stream tracks that the new session is using.
+    await new Promise((r) => setTimeout(r, 450));
+    expect(first.pc.close).toHaveBeenCalled();
+    expect(track.stop).not.toHaveBeenCalled();
+
+    manager.stopSession();
+    expect(track.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back settings and the page token when handover fails", async () => {
+    const { window, manager, callbacks } = await setupRealtime();
+    await manager.startSession();
+    const first = manager.getSession();
+    const tokenBefore = manager.getPageToken();
+
+    window.LumeoRealtimePipeline.buildSession.mockRejectedValueOnce(new Error("mint failed"));
+    manager.applySettingsLive({ targetLanguage: "ja" });
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(manager.getSession()).toBe(first);
+    expect(manager.getSettings().targetLanguage).toBe("vi");
+    expect(manager.getPageToken()).toBe(tokenBefore);
+    expect(callbacks.showToast).toHaveBeenCalled();
+  });
+});
+
+

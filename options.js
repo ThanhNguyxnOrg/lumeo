@@ -134,6 +134,34 @@
   const btnResetAll = document.getElementById("btnResetAll");
   const btnConfigureShortcuts = document.getElementById("btnConfigureShortcuts");
 
+  // Custom gateway / voice endpoints can point anywhere. The manifest keeps
+  // only known providers as install-time host permissions; arbitrary origins
+  // are requested at runtime from this options page, which has a user gesture.
+  const browserApi = globalThis.LumeoBrowserApi;
+
+  function originPatternForUrl(value) {
+    try {
+      const parsed = new URL(String(value || "").trim());
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return "";
+      return `${parsed.protocol}//${parsed.host}/*`;
+    } catch {
+      return "";
+    }
+  }
+
+  async function ensureEndpointAccess(value, label) {
+    const pattern = originPatternForUrl(value);
+    if (!pattern) {
+      throw new Error(`${label}: enter a valid http(s) base URL first.`);
+    }
+    if (!browserApi?.requestPermissions) return true;
+    const granted = await browserApi.requestPermissions({ origins: [pattern] });
+    if (!granted) {
+      throw new Error(`${label}: host access for ${pattern} was not granted.`);
+    }
+    return true;
+  }
+
   const TAB_METADATA = {
     providers: {
       title: "API Keys & AI Providers",
@@ -543,6 +571,21 @@
     });
   });
 
+  [
+    [customProxyBaseUrlInput, "Custom AI Gateway"],
+    [customTtsBaseUrlInput, "Custom voice engine"],
+  ].forEach(([input, label]) => {
+    input?.addEventListener("change", async () => {
+      const value = input.value.trim();
+      if (!value) return;
+      try {
+        await ensureEndpointAccess(value, label);
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  });
+
   function sendLiveVolumeUpdate() {
     const isMuted = !!muteOriginalInput?.checked;
     const origVol = isMuted ? 0 : (originalVolumeInput ? Number(originalVolumeInput.value) : 18);
@@ -626,6 +669,7 @@
           const base = customProxyBaseUrlInput.value.trim().replace(/\/+$/, "");
           if (!base) throw new Error("Base URL is required. Please enter your Custom AI Gateway URL.");
           if (!key) throw new Error("Please enter an API Key for Custom AI Gateway");
+          await ensureEndpointAccess(base, "Custom AI Gateway");
           const url = base.endsWith("/models") ? base : `${base}/models`;
           const res = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
           if (res.ok) { msg = "Custom AI Gateway connected successfully!"; }
@@ -636,6 +680,7 @@
           const base = customTtsBaseUrlInput.value.trim().replace(/\/+$/, "");
           if (!base) throw new Error("Base URL is required. Please enter your Custom Voice Gateway URL.");
           if (!voiceId) throw new Error("Please enter a Voice ID string");
+          await ensureEndpointAccess(base, "Custom voice engine");
           if (base.includes("elevenlabs")) {
             if (!key) throw new Error("Please enter your ElevenLabs API Key");
             const url = `${base}/text-to-speech/${encodeURIComponent(voiceId)}`;
@@ -692,6 +737,7 @@
     btnFetchCustomTtsVoices.disabled = true;
     try {
       const base = (customTtsBaseUrlInput?.value?.trim() || "https://api.elevenlabs.io/v1").replace(/\/+$/, "");
+      await ensureEndpointAccess(base, "Custom voice engine");
       const res = await fetch(`${base}/voices`, {
         headers: { "xi-api-key": key },
       });

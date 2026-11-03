@@ -12,55 +12,16 @@ if (-not $Version) {
   $manifest = Get-Content "manifest.json" -Raw | ConvertFrom-Json
   $Version = $manifest.version
 }
+$Version = $Version.TrimStart("v")
 $out = Join-Path $OutDir "lumeo-v$Version.zip"
+
+node scripts/build-targets.mjs --targets chrome --out dist --version $Version
 
 if (Test-Path $out) {
   Remove-Item $out -Force
 }
+Copy-Item "dist/lumeo-v$Version-chrome.zip" $out -Force
 
-$excludeNames = @(
-  ".git",
-  ".github",
-  "node_modules",
-  "_design_reference",
-  "_echoly_extracted",
-  "ext",
-  "output",
-  ".vscode",
-  ".idea",
-  ".DS_Store",
-  "Thumbs.db",
-  "source",
-  "tests",
-  "docs",
-  "store-assets",
-  "scripts"
-)
-
-$excludeFiles = @(
-  "pack.sh",
-  "pack.ps1",
-  "release.sh",
-  "vitest.config.mjs",
-  "package.json",
-  "package-lock.json"
-)
-
-$temp = Join-Path ([System.IO.Path]::GetTempPath()) ("lumeo-pack-" + [System.Guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $temp | Out-Null
-
-try {
-  Get-ChildItem -Force | ForEach-Object {
-    if ($excludeNames -contains $_.Name) { return }
-    if ($excludeFiles -contains $_.Name) { return }
-    if ($_.Extension -eq ".zip") { return }
-    Copy-Item $_.FullName -Destination $temp -Recurse -Force
-  }
-
-  Compress-Archive -Path (Join-Path $temp "*") -DestinationPath $out -Force
-  $itemCount = (Get-ChildItem -Recurse -File $temp | Measure-Object).Count
-  $size = "{0:N1} MB" -f ((Get-Item $out).Length / 1MB)
-  Write-Host "Packed $out ($size, $itemCount files)"
-} finally {
-  Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue
-}
+$item = Get-Item $out
+$size = "{0:N1} MB" -f ($item.Length / 1MB)
+Write-Host "Packed $out ($size)"

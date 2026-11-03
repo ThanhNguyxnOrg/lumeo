@@ -151,6 +151,7 @@ function pruneSettingsForContent(fullSettings) {
 
 globalThis.LumeoBackground = {
   pruneSettingsForContent,
+  ensureSniffer,
 };
 
 function broadcastToPopup() {
@@ -189,23 +190,42 @@ async function relayToContent(tabId, message, retries = 3) {
   }
 }
 
-async function fetchText(url) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.text();
+function isAllowedCaptionFetchUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return false;
+    if (parsed.hostname !== "youtube.com" && !parsed.hostname.endsWith(".youtube.com")) return false;
+    return parsed.pathname === "/api/timedtext";
+  } catch {
+    return false;
+  }
 }
 
-async function fetchJSON(url, init = {}) {
-  const response = await fetch(url, {
-    method: init.method || "GET",
-    headers: init.headers || {},
-    body: init.body || undefined,
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data?.error?.message || data?.error || `HTTP ${response.status}`);
+function isYouTubeSender(sender) {
+  const pageUrl = sender?.tab?.url || sender?.url || "";
+  try {
+    const parsed = new URL(pageUrl);
+    return parsed.protocol === "https:" &&
+      (parsed.hostname === "youtube.com" || parsed.hostname.endsWith(".youtube.com"));
+  } catch {
+    return false;
   }
-  return data;
+}
+
+async function fetchText(url) {
+  if (!isAllowedCaptionFetchUrl(url)) {
+    throw new Error("Blocked non-YouTube caption URL.");
+  }
+  const response = await fetch(url, { redirect: "follow" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!isAllowedCaptionFetchUrl(response.url)) {
+    throw new Error("Blocked caption redirect.");
+  }
+  const text = await response.text();
+  if (text.length > 2_000_000) {
+    throw new Error("Caption response too large.");
+  }
+  return text;
 }
 
 function isYouTubeUrl(url) {
@@ -262,12 +282,31 @@ const EXPECTED_CONTENT_VERSION = chrome.runtime.getManifest()?.version || "2.0.0
 const CAPTION_CACHE_KEY = "lumeoCaptionCacheV1";
 
 async function readCaptionCache() {
-  const stored = await chrome.storage.local.get(CAPTION_CACHE_KEY);
+  const stored = await browserApi.storageGet(CAPTION_CACHE_KEY);
   return stored[CAPTION_CACHE_KEY] || { entries: {} };
 }
 
 async function writeCaptionCache(cache) {
-  await chrome.storage.local.set({ [CAPTION_CACHE_KEY]: cache || { entries: {} } });
+  await browserApi.storageSet({ [CAPTION_CACHE_KEY]: cache || { entries: {} } });
+}
+
+// Inject the page-world sniffer through the scripting API. A page
+// <script src="chrome-extension://..."> is blocked by YouTube's CSP with
+// "Unsafe attempt to load URL ... Domains, protocols and ports must match",
+// and the manifest MAIN-world content script does not run on tabs that were
+// already open before the extension loaded.
+async function ensureSniffer(tabId) {
+  if (!tabId) return;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      files: ["services/sniffer.js"],
+    });
+  } catch {
+    // Firefox < 128 has no MAIN-world scripting support; the manifest
+    // document_start injection remains the primary path there.
+  }
 }
 
 // Ensure content script and its support modules are alive in the target tab.
@@ -343,6 +382,7 @@ async function ensureContentScript(tabId) {
       // If reset fails, the following injection still covers fresh tabs.
     }
   }
+  await ensureSniffer(tabId);
   await chrome.scripting.executeScript({
     target: { tabId },
     files: CONTENT_SCRIPT_FILES,
@@ -360,7 +400,7 @@ async function ensureContentScript(tabId) {
 }
 
 async function loadSettings() {
-  const stored = await chrome.storage.local.get(null);
+  const stored = await browserApi.storageGet(null);
   Object.assign(state, DEFAULT_SETTINGS, stored);
   return state;
 }
@@ -375,7 +415,7 @@ async function persistSettings(partial) {
     }
   }
   if (Object.keys(persistable).length) {
-    await chrome.storage.local.set(persistable);
+    await browserApi.storageSet(persistable);
   }
 }
 
@@ -495,8 +535,8 @@ async function handleUpdateVolume(originalVolume, voiceVolume) {
   if (typeof originalVolume === "number") state.originalVolume = originalVolume;
   if (typeof voiceVolume === "number") state.voiceVolume = voiceVolume;
   // Persist debounced — slider drag fires many times.
-  chrome.storage.local
-    .set({ originalVolume: state.originalVolume, voiceVolume: state.voiceVolume })
+  browserApi
+    .storageSet({ originalVolume: state.originalVolume, voiceVolume: state.voiceVolume })
     .catch(() => { });
   if (state.tabId) {
     try {
@@ -531,8 +571,8 @@ function handleContentEvent(message, senderTabId) {
     broadcastToPopup();
   }
   if (message.type === "OPEN_POPUP_TO_SLOT") {
-    chrome.runtime
-      .sendMessage({ type: "OPEN_POPUP_TO_SLOT", slot: message.slot || message.provider || "" })
+    browserApi
+      .sendRuntimeMessage({ type: "OPEN_POPUP_TO_SLOT", slot: message.slot || message.provider || "" })
       .catch(() => { });
   }
   if (message.type === "CONTENT_ENDED") {
@@ -608,32 +648,40 @@ function closeSonioxWebSocket() {
 }
 
 function forwardToSonioxTab(msg) {
-  if (sonioxTabId) chrome.tabs.sendMessage(sonioxTabId, msg).catch(() => { });
+  if (sonioxTabId) browserApi.sendTabMessage(sonioxTabId, msg).catch(() => { });
 }
 
 function handleLegacyCaptionMessage(message, sender, sendResponse) {
   switch (message?.action) {
     case "fetchUrl":
+      if (!isYouTubeSender(sender) || !isAllowedCaptionFetchUrl(message.url)) {
+        sendResponse({ ok: false, error: "Blocked caption URL." });
+        return false;
+      }
       fetchText(message.url)
         .then((text) => sendResponse({ ok: true, text }))
         .catch((err) => sendResponse({ ok: false, error: err.message }));
       return true;
-    case "fetchJSON":
-      fetchJSON(message.url, message)
-        .then((data) => sendResponse({ ok: true, data }))
-        .catch((err) => sendResponse({ ok: false, error: err.message }));
-      return true;
     case "startSonioxWs":
+      if (!isYouTubeSender(sender)) {
+        sendResponse({ ok: false, error: "Blocked non-YouTube sender." });
+        return false;
+      }
       sonioxTabId = sender.tab?.id || state.tabId;
       startSonioxWebSocket(message.apiKey, message.langHints);
       sendResponse({ ok: true });
       return false;
     case "sonioxAudio":
+      if (!isYouTubeSender(sender)) return false;
       if (sonioxWs?.readyState === WebSocket.OPEN) {
         sonioxWs.send(new Int16Array(message.samples).buffer);
       }
       return false;
     case "stopSonioxWs":
+      if (!isYouTubeSender(sender)) {
+        sendResponse({ ok: false, error: "Blocked non-YouTube sender." });
+        return false;
+      }
       closeSonioxWebSocket();
       sendResponse({ ok: true });
       return false;
@@ -788,6 +836,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const legacyHandled = handleLegacyCaptionMessage(message, sender, sendResponse);
   if (legacyHandled !== null) return legacyHandled;
 
+  if (message?.type === "ENSURE_SNIFFER") {
+    ensureSniffer(sender?.tab?.id || state.tabId)
+      .then(() => sendResponse?.({ ok: true }))
+      .catch((err) => sendResponse?.({ ok: false, error: err?.message || String(err) }));
+    return true;
+  }
+
+  if (message?.type === "GET_PROVIDER_KEY") {
+    if (!isYouTubeSender(sender)) {
+      sendResponse({ ok: false, error: "Blocked non-YouTube sender." });
+      return false;
+    }
+    const allowedKeys = new Set(["geminiKey", "openaiKey", "groqApiKey", "sonioxApiKey"]);
+    const keyName = String(message.key || "");
+    if (!allowedKeys.has(keyName)) {
+      sendResponse({ ok: false, error: "Unknown provider key." });
+      return false;
+    }
+    (async () => {
+      await loadSettings();
+      sendResponse({ ok: true, key: state[keyName] || "" });
+    })().catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
+    return true;
+  }
+
   if (message?.type === "SUMMARIZE_TRANSCRIPT") {
     handleSummarizeTranscript(message)
       .then((res) => sendResponse(res))
@@ -834,7 +907,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
       switch (message?.type) {
-        case "GET_STATE":
+        case "GET_STATE": {
           await loadSettings();
           if (!state.running && !state.connecting) {
             state.errorMessage = "";
@@ -843,8 +916,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             state.slotsMissingKeys = [];
             state.status = "Ready";
           }
-          sendResponse({ ok: true, state: snapshot() });
+          // Content scripts live on the untrusted YouTube tab. They may need
+          // the provider key for the active session, but they must never
+          // receive every stored provider key.
+          const contentSender = !!(sender?.tab && !isExtensionOrigin);
+          sendResponse({
+            ok: true,
+            state: contentSender ? pruneSettingsForContent(snapshot()) : snapshot(),
+          });
           break;
+        }
         case "START":
           sendResponse(await handleStart(message.settings, sender?.tab || null));
           break;
@@ -861,8 +942,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           ));
           break;
         case "OPEN_POPUP_TO_SLOT":
-          chrome.runtime
-            .sendMessage({ type: "OPEN_POPUP_TO_SLOT", slot: message.slot || message.provider || "" })
+          browserApi
+            .sendRuntimeMessage({ type: "OPEN_POPUP_TO_SLOT", slot: message.slot || message.provider || "" })
             .catch(() => { });
           sendResponse({ ok: true });
           break;

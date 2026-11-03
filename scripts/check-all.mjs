@@ -7,6 +7,7 @@ const SKIP_DIRS = new Set([
   ".git",
   ".sisyphus",
   "coverage",
+  "dist",
   "node_modules",
   "output",
 ]);

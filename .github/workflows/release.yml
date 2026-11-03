@@ -2,19 +2,21 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. v2.0.0)"
+        description: "Release tag (e.g. v2.0.7). Must match manifest.json."
         required: false
         default: ""
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -24,6 +26,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          # Manual runs must build the tag they were asked for, not the tip of
+          # the default branch.
+          ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
 
       - name: Setup Node
@@ -34,6 +39,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate version metadata
+        run: npm run check:versions
+
       - name: Determine release plan
         id: plan
         run: node scripts/prepare-release.mjs
@@ -41,17 +49,58 @@ jobs:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
           INPUT_TAG: ${{ inputs.tag }}
 
+      - name: Validate release tag
+        if: steps.plan.outputs.should_release == 'true'
+        run: node scripts/check-versions.mjs --tag "${{ steps.plan.outputs.tag }}"
+
       - name: Run verification checks
         if: steps.plan.outputs.should_release == 'true'
         run: |
           npm run check:all
           npm test
+          npm run check:manifest
 
-      - name: Package extension zip
+      - name: Build all store packages
+        if: steps.plan.outputs.should_release == 'true'
+        env:
+          GECKO_ID: ${{ vars.GECKO_ID || 'lumeo@thanhnguyxn.org' }}
+        run: |
+          node scripts/build-targets.mjs --out dist --version "${{ steps.plan.outputs.version }}"
+          for f in dist/*.zip; do unzip -t "$f" >/dev/null; done
+
+      - name: Verify packaged manifest versions
         if: steps.plan.outputs.should_release == 'true'
         run: |
-          chmod +x pack.sh
-          ./pack.sh "${{ steps.plan.outputs.version }}"
+          set -e
+          for f in dist/*.zip; do
+            VERSION=$(unzip -p "$f" manifest.json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")
+            test "$VERSION" = "${{ steps.plan.outputs.version }}" || {
+              echo "::error::$f contains manifest version $VERSION, expected ${{ steps.plan.outputs.version }}"
+              exit 1
+            }
+          done
+
+      # Firefox listed channel: web-ext creates the AMO listing on first run and
+      # adds the version on later runs. AMO hosts the signed XPI, so there is no
+      # XPI asset to attach to the GitHub release. This step is skipped until
+      # the free AMO API credentials are configured as repository secrets.
+      - name: Submit Firefox package to AMO
+        if: steps.plan.outputs.should_release == 'true'
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+        run: |
+          if [ -z "${WEB_EXT_API_KEY:-}" ] || [ -z "${WEB_EXT_API_SECRET:-}" ]; then
+            echo "::notice::Skipping AMO submission; add WEB_EXT_API_KEY and WEB_EXT_API_SECRET repository secrets to enable it."
+            exit 0
+          fi
+          npx --yes web-ext@10.8.0 sign \
+            --source-dir dist/firefox \
+            --channel listed \
+            --amo-metadata store-assets/amo-metadata.json \
+            --artifacts-dir dist/amo \
+            --approval-timeout 0 \
+            --no-input
 
       - name: Generate GitHub App Token
         if: steps.plan.outputs.should_release == 'true'
@@ -65,19 +114,18 @@ jobs:
         if: steps.plan.outputs.should_release == 'true'
         run: |
           TAG="${{ steps.plan.outputs.tag }}"
-          ZIP_FILE="$HOME/lumeo-${TAG}.zip"
-          
+          ASSETS=(dist/*.zip dist/SHA256SUMS.txt dist/build-metadata.json)
+
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists, updating asset and notes..."
-            gh release upload "$TAG" "$ZIP_FILE" --clobber
+            echo "Release $TAG already exists, updating assets and notes..."
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
             gh release edit "$TAG" --notes-file RELEASE_NOTES.md
           else
             echo "Creating release $TAG..."
-            gh release create "$TAG" "$ZIP_FILE" \
+            gh release create "$TAG" "${ASSETS[@]}" \
               --target "$GITHUB_SHA" \
               --title "$TAG" \
               --notes-file RELEASE_NOTES.md
           fi
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-

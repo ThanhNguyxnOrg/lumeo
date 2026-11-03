@@ -147,16 +147,19 @@
     }
   }
 
-  async function requestHandover(partial) {
+  async function requestHandover(partial, previousSettings = null) {
     if (!session) return;
-    const newSettings = { ...settings, ...partial };
+    const oldSession = session;
+    const oldSettings = previousSettings || settings;
+    const newSettings = { ...oldSettings, ...partial };
     const same =
-      newSettings.targetLanguage === session.targetLanguage &&
-      (newSettings.realtimeVoice || "") === (session.realtimeVoice || "");
+      newSettings.targetLanguage === oldSession.targetLanguage &&
+      (newSettings.realtimeVoice || "") === (oldSession.realtimeVoice || "");
     if (same) return;
 
     callbacks.setOverlayState?.("connecting");
 
+    const previousToken = pageToken;
     const newToken = ++pageToken;
     settings = newSettings;
     callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: newSettings });
@@ -164,33 +167,41 @@
 
     let newSession;
     try {
-      newSession = await buildRealtimeSession(newToken, session.stream, {
-        kymaKey: settings.kymaKey,
+      newSession = await buildRealtimeSession(newToken, oldSession.stream, {
+        kymaKey: newSettings.kymaKey,
         targetLanguage: newSettings.targetLanguage,
         realtimeVoice: newSettings.realtimeVoice,
       });
       if (newToken !== pageToken) {
-        try { newSession.pc.close(); } catch {}
+        // A newer handover (or stop) won the race. Discard this candidate
+        // without touching the stream still used by the live session.
+        disposeSession(newSession, { stopTracks: false });
         return;
       }
     } catch (err) {
       if (newToken !== pageToken) return;
+      // The old session is still live; restore its token and settings so its
+      // event stream and the UI stay coherent.
+      pageToken = previousToken;
+      settings = oldSettings;
+      callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: oldSettings });
+      callbacks.onHandoverSettingsApplied?.(oldSettings);
       callbacks.setStatusText?.("Switch failed — keeping current session");
       callbacks.setOverlayState?.("live");
       callbacks.showToast?.(err.message, { cta: err.cta, ctaLabel: err.ctaLabel }, 9000);
       return;
     }
 
-    prevSession = session;
+    prevSession = oldSession;
     session = newSession;
     callbacks.setStatusText?.("Translating");
     callbacks.setOverlayState?.("live");
 
     setTimeout(() => {
-      if (prevSession) {
-        disposeSession(prevSession);
-        prevSession = null;
-      }
+      // The new session reuses the same MediaStream tracks. Stopping them here
+      // would silently kill audio for the session that just went live.
+      disposeSession(oldSession, { stopTracks: false });
+      if (prevSession === oldSession) prevSession = null;
     }, 400);
 
     startHeartbeat(newSession.kymaSessionId, newSession.kymaKey);
@@ -514,8 +525,9 @@
     return { ok: true };
   }
 
-  function disposeSession(s) {
-    if (!s) return;
+  function disposeSession(s, options = {}) {
+    if (!s || s._lumeoDisposed) return;
+    s._lumeoDisposed = true;
     try { s.pipeline?.stop?.(); } catch {}
     try { s.sttLoop?.stop?.(); } catch {}
     if (s.captionTimer) {
@@ -546,7 +558,7 @@
     try { s.dc?.close(); } catch {}
     try { s.pc?.close(); } catch {}
     try {
-      if (s.stream) {
+      if (options.stopTracks !== false && s.stream) {
         s.stream.getTracks().forEach((t) => {
           try { t.stop(); } catch {}
         });
@@ -623,7 +635,7 @@
         ("targetLanguage" in newSettings && newSettings.targetLanguage !== prev.targetLanguage) ||
         ("realtimeVoice" in newSettings && newSettings.realtimeVoice !== prev.realtimeVoice)
       ) {
-        void requestHandover(newSettings);
+        void requestHandover(newSettings, prev);
       }
     }
     if ("originalVolume" in newSettings || "voiceVolume" in newSettings || "muteOriginal" in newSettings) {

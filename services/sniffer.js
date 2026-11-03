@@ -1,6 +1,12 @@
 (() => {
   'use strict';
 
+  // DOM marker readable from the isolated content-script world. The content
+  // script uses it to avoid asking the background to re-inject the sniffer.
+  try {
+    document.documentElement.dataset.lumeoSniffer = '1';
+  } catch {}
+
   const PATCH_FLAG = '__ytTransSnifferPatchedV2__';
   if (window[PATCH_FLAG]) {
     if (typeof window.__ytTransSnifferRepublish === 'function') {
@@ -34,10 +40,10 @@
   const CURRENT_SCRIPT = document.currentScript;
   let SNIFFER_NONCE = '';
   try {
-    // Dataset first: injectSniffer passes the nonce via dataset because a
-    // ?nonce= query on the script URL breaks web_accessible_resources
-    // matching ("Unsafe attempt to load URL"). Query fallback kept for
-    // robustness with any other loader.
+    // The manifest/scripting injection has no DOM script element with a
+    // dataset nonce (and no query is used: a ?nonce= query would break
+    // web_accessible_resources matching). Keep the read for any loader that
+    // still supplies one.
     if (CURRENT_SCRIPT && CURRENT_SCRIPT.dataset && CURRENT_SCRIPT.dataset.nonce) {
       SNIFFER_NONCE = CURRENT_SCRIPT.dataset.nonce;
     } else if (CURRENT_SCRIPT && CURRENT_SCRIPT.src) {

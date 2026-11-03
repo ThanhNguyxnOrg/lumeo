@@ -61,4 +61,15 @@ describe("Phase 1: Security Pruning & Shorts URL Support", () => {
     expect(adapter.getVideoId("https://youtu.be/dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
     expect(adapter.getVideoId("https://example.com/other")).toBe(null);
   });
+
+  it("injects the sniffer through the MAIN-world scripting API", async () => {
+    const bridge = globalThis.LumeoBackground;
+    await bridge.ensureSniffer(42);
+
+    expect(globalThis.chrome.scripting.executeScript).toHaveBeenCalledWith({
+      target: { tabId: 42 },
+      world: "MAIN",
+      files: ["services/sniffer.js"],
+    });
+  });
 });

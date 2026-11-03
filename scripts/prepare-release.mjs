@@ -57,6 +57,12 @@ export function determineReleasePlan({
 }) {
   let version = null;
 
+  // A manual run without an explicit tag must not fall back to the last commit
+  // message — that is how accidental releases happen.
+  if (eventName === "workflow_dispatch" && !tagInput) {
+    return { shouldRelease: false };
+  }
+
   // Case 1: Manual workflow_dispatch with explicit tag input
   if (eventName === "workflow_dispatch" && tagInput) {
     version = tagInput.replace(/^v/, "").trim();
@@ -124,6 +130,14 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
       writeFileSync(process.env.GITHUB_OUTPUT, "should_release=false\n", { flag: "a" });
     }
     process.exit(0);
+  }
+
+  if (plan.version !== manifest.version) {
+    console.error(
+      `::error::Release version ${plan.version} does not match manifest.json version ${manifest.version}. ` +
+      "Bump manifest.json (and package.json/content.js) or use the matching tag.",
+    );
+    process.exit(1);
   }
 
   console.log(`Release identified: ${plan.tag} (version ${plan.version})`);

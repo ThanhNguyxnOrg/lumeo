@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# pack.sh — bundle Lumeo into a zip ready for Web Store upload or beta sideload.
-# Reads the version from manifest.json so the output filename auto-tracks bumps.
+# pack.sh — build the Chrome package through the shared target builder.
+# The builder uses a tracked-file allowlist, so .env, tests, docs, and local
+# artefacts can never end up in the upload ZIP.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 VERSION="${1:-${VERSION:-$(node -p "require('./manifest.json').version")}}"
+VERSION="${VERSION#v}"
 OUT="$HOME/lumeo-v${VERSION}.zip"
 
+node scripts/build-targets.mjs --targets chrome --out dist --version "$VERSION"
+
 rm -f "$OUT"
-zip -rq "$OUT" . \
-  -x "*.DS_Store" "node_modules/*" ".git/*" ".github/*" "*.swp" "Thumbs.db" "pack.sh" \
-     "pack.ps1" "release.sh" "echoly-main.zip" "_echoly_extracted/*" "*.zip" "source/*" \
-     "tests/*" "docs/*" "store-assets/*" "scripts/*" "vitest.config.mjs" "package.json" "package-lock.json"
+cp "dist/lumeo-v${VERSION}-chrome.zip" "$OUT"
 
 SIZE=$(du -h "$OUT" | cut -f1)
 COUNT=$(unzip -l "$OUT" | tail -1 | awk '{print $2}')

@@ -61,7 +61,7 @@ describe("services/tts-browser.js", () => {
       .rejects.toThrow("OpenAI TTS service is not loaded");
   });
 
-  it("uses eleven_turbo_v2_5 as default model for ElevenLabs custom voice", async () => {
+  it("uses eleven_flash_v2_5 as default model for ElevenLabs custom voice", async () => {
     let capturedUrl = null;
     let capturedBody = null;
     window.fetch = vi.fn(async (url, init) => {
@@ -86,7 +86,7 @@ describe("services/tts-browser.js", () => {
     });
 
     expect(capturedUrl).toBe("https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM");
-    expect(capturedBody.model_id).toBe("eleven_turbo_v2_5");
+    expect(capturedBody.model_id).toBe("eleven_flash_v2_5");
   });
 
   it("fails-soft to browser speech when custom voice engine fails", async () => {
@@ -184,5 +184,71 @@ describe("services/tts-browser.js", () => {
     });
     expect(result).toBe(true);
     expect(window.speechSynthesis.cancel).toHaveBeenCalled();
+  });
+});
+
+describe("services/tts-browser.js queue", () => {
+  async function setupQueue() {
+    const { window } = await createSandboxWindow();
+    const utterances = [];
+    window.speechSynthesis = {
+      cancel: vi.fn(),
+      speak: vi.fn(),
+      getVoices: () => [{ name: "Test Voice", lang: "en-US" }],
+    };
+    window.SpeechSynthesisUtterance = function SpeechSynthesisUtterance(text) {
+      this.text = text;
+      utterances.push(this);
+    };
+    loadService("services/tts-browser.js", window);
+    return { window, api: window.LumeoTTS, utterances };
+  }
+
+  it("lets the current utterance finish before starting the next cue", async () => {
+    const { api, utterances } = await setupQueue();
+    const first = api.speakQueued("first line", "en", {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(utterances).toHaveLength(1);
+
+    const second = api.speakQueued("second line", "en", {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(utterances).toHaveLength(1);
+
+    utterances[0].onend();
+    await expect(first).resolves.toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(utterances).toHaveLength(2);
+    expect(utterances[1].text).toBe("second line");
+
+    utterances[1].onend();
+    await expect(second).resolves.toBe(true);
+  });
+
+  it("drops the oldest pending cue and reports it when the backlog grows", async () => {
+    const { api, utterances } = await setupQueue();
+    const first = api.speakQueued("first line", "en", {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const skipped = vi.fn();
+    const second = api.speakQueued("second line", "en", { onSkip: skipped });
+    const third = api.speakQueued("third line", "en", {});
+    const fourth = api.speakQueued("fourth line", "en", {});
+    await expect(second).resolves.toBe(false);
+    expect(skipped).toHaveBeenCalledWith(expect.objectContaining({ reason: "backlog" }));
+
+    utterances[0].onend();
+    await expect(first).resolves.toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(utterances).toHaveLength(2);
+    expect(utterances[1].text).toBe("third line");
+
+    utterances[1].onend();
+    await expect(third).resolves.toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(utterances).toHaveLength(3);
+    expect(utterances[2].text).toBe("fourth line");
+
+    utterances[2].onend();
+    await expect(fourth).resolves.toBe(true);
   });
 });

@@ -47,7 +47,7 @@ footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid rgba(127,127
 <h3>Standard tier (Kyma key required)</h3>
 <ul>
   <li><strong>YouTube audio.</strong> When you press Start, Lumeo captures audio from the active video via <code>HTMLMediaElement.captureStream()</code>, splits it into ~5-second chunks, and uploads each chunk to Kyma which routes through Whisper (transcription) → Gemini (translation) → MiniMax (text-to-speech). The translated voice plays back over the original audio. Lumeo itself stores no audio.</li>
-  <li><strong>Kyma API key.</strong> Stored locally with <code>TRUSTED_CONTEXTS</code> access level so that page scripts on youtube.com cannot read it.</li>
+  <li><strong>Kyma API key.</strong> Stored locally in <code>chrome.storage.local</code>, which page scripts cannot read. Only the key for the provider in use is loaded into the YouTube tab for that session.</li>
 </ul>
 
 <h3>Realtime tier (Kyma key required)</h3>

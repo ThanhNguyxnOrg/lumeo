@@ -144,10 +144,28 @@
   };
 
   const MAX_GOOGLE_AUDIO_CACHE = 100;
+  const SPEECH_QUEUE_LIMIT = 2;
   const googleAudioCache = new Map();
+  const speechQueue = [];
+  let queuePumping = false;
   let currentAudio = null;
   let lastCustomVoiceUrl = null;
   let cachedVoices = [];
+
+  function clampRate(value, min = 0.5, max = 2.0) {
+    const rate = Number(value);
+    if (!Number.isFinite(rate) || rate <= 0) return 1.0;
+    return Math.min(max, Math.max(min, rate));
+  }
+
+  function drainSpeechQueue() {
+    while (speechQueue.length) {
+      const task = speechQueue.shift();
+      try {
+        task.resolve(false);
+      } catch {}
+    }
+  }
 
   function populateVoices() {
     try {
@@ -260,6 +278,7 @@
   }
 
   function stop() {
+    drainSpeechQueue();
     try { speechSynthesis.cancel(); } catch {}
     activeUtterance = null;
     if (currentAudio) {
@@ -272,6 +291,69 @@
     }
   }
 
+  function speakTaskAndWait(text, lang, options = {}) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const cleanLength = String(text || "").length;
+      const timer = setTimeout(
+        () => finish(false),
+        Math.min(30000, Math.max(8000, cleanLength * 140)),
+      );
+      function finish(ok) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(ok);
+      }
+      const taskOptions = {
+        ...options,
+        onEnd: () => finish(true),
+      };
+      Promise.resolve(speak(text, lang, taskOptions))
+        .then((ok) => { if (!ok) finish(false); })
+        .catch(() => finish(false));
+    });
+  }
+
+  async function pumpSpeechQueue() {
+    if (queuePumping) return;
+    queuePumping = true;
+    try {
+      while (speechQueue.length) {
+        const task = speechQueue.shift();
+        let ok = false;
+        try {
+          ok = await speakTaskAndWait(task.text, task.lang, task.options);
+        } catch {}
+        try {
+          task.resolve(ok);
+        } catch {}
+      }
+    } finally {
+      queuePumping = false;
+    }
+  }
+
+  // Queue a spoken line so a new cue never cuts off the line already playing.
+  // When the backlog exceeds the limit, the oldest pending line is dropped and
+  // the caller's onSkip callback is notified.
+  function speakQueued(text, lang, options = {}) {
+    return new Promise((resolve) => {
+      const task = { text, lang, options, resolve };
+      if (speechQueue.length >= SPEECH_QUEUE_LIMIT) {
+        const dropped = speechQueue.shift();
+        try {
+          dropped.options.onSkip?.({ text: dropped.text, reason: "backlog" });
+        } catch {}
+        try {
+          dropped.resolve(false);
+        } catch {}
+      }
+      speechQueue.push(task);
+      void pumpSpeechQueue();
+    });
+  }
+
   async function speakBrowser(text, lang, options = {}) {
     const clean = stripTtsNoise(text);
     const langVoices = getVoicesForLang(lang);
@@ -279,18 +361,29 @@
       ? window.LumeoVoicePicker.autoPairVoice(lang, langVoices)
       : langVoices[0];
     const voice = getVoiceByName(options.voiceName) || autoVoice || null;
-    stop();
+    if (currentAudio) {
+      try { currentAudio.pause(); } catch {}
+      currentAudio = null;
+    }
+    stopSpeechOnly();
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (activeUtterance === utterance) activeUtterance = null;
+      try { options.onEnd?.(); } catch {}
+    };
     const utterance = new SpeechSynthesisUtterance(clean);
     activeUtterance = utterance;
-    utterance.onend = () => { if (activeUtterance === utterance) activeUtterance = null; };
-    utterance.onerror = () => { if (activeUtterance === utterance) activeUtterance = null; };
+    utterance.onend = finish;
+    utterance.onerror = finish;
     if (voice) {
       utterance.voice = voice;
       utterance.lang = voice.lang || browserLang(lang);
     } else {
       utterance.lang = browserLang(lang);
     }
-    utterance.rate = Number(options.rate || 1.0);
+    utterance.rate = clampRate(options.rate, 0.5, 2.0);
     utterance.pitch = Number(options.pitch || 1);
     utterance.volume = Number(options.volume ?? 1);
     speechSynthesis.speak(utterance);
@@ -326,7 +419,7 @@
           },
           audioConfig: {
             audioEncoding: "MP3",
-            speakingRate: Number(options.rate || 1),
+            speakingRate: clampRate(options.rate, 0.25, 2.0),
           },
         }),
         signal: options.signal,
@@ -352,6 +445,9 @@
     stopSpeechOnly();
     currentAudio = new Audio(audioUrl);
     currentAudio.volume = Number(options.volume ?? 1);
+    if (typeof options.onEnd === "function") {
+      currentAudio.addEventListener("ended", options.onEnd, { once: true });
+    }
     await currentAudio.play();
     return true;
   }
@@ -375,7 +471,7 @@
       if (apiKey) headers["xi-api-key"] = apiKey;
       body = JSON.stringify({
         text: clean,
-        model_id: modelId || "eleven_turbo_v2_5",
+        model_id: modelId || "eleven_flash_v2_5",
         voice_settings: { stability: 0.5, similarity_boost: 0.75 },
       });
     } else {
@@ -412,8 +508,12 @@
     stopSpeechOnly();
     currentAudio = new Audio(audioUrl);
     currentAudio.volume = Number(options.volume ?? 1);
-    // ElevenLabs/custom has no synthesis speed param: apply fitted rate post-hoc (0.90-1.10) so network voices keep up without re-synthesis.
-    currentAudio.playbackRate = Math.min(1.1, Math.max(0.9, Number(options.rate || 1)));
+    // ElevenLabs/custom synthesis speed is best-effort; apply the fitted rate
+    // post-hoc so spoken lines keep up without re-synthesis.
+    currentAudio.playbackRate = clampRate(options.rate, 0.9, 1.6);
+    if (typeof options.onEnd === "function") {
+      currentAudio.addEventListener("ended", options.onEnd, { once: true });
+    }
     await currentAudio.play();
     return true;
   }
@@ -464,6 +564,7 @@
     browserLang,
     getVoicesForLang,
     speak,
+    speakQueued,
     speakBrowser,
     speakGoogleCloud,
     speakCustomVoice,

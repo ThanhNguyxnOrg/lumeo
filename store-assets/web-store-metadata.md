@@ -56,7 +56,7 @@ Standard and Realtime dub
 
 Privacy
 • No account, no telemetry, no analytics, no Lumeo-operated server.
-• Any API key you save (Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox) stays on your device with TRUSTED_CONTEXTS access level so page scripts can't read it.
+• Any API key you save (Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox) stays on your device in `chrome.storage.local`, which page scripts cannot read. Only the key for the provider in use is loaded into the YouTube tab for that session.
 • Audio and subtitle text are sent only to the provider you pick to produce the requested translation. Provider retention follows that provider's terms.
 
 Get a Kyma key (only needed for Standard + Realtime tiers): kymaapi.com — free starter credit on signup; pay-as-you-go after that.
@@ -82,7 +82,7 @@ Used by the background service worker to inject the content script into a YouTub
 
 ### `storage`
 ```
-Used to remember the user's settings (tier, target language, voice, volume, subtitle style) and any optional API keys (Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox) across sessions. Keys are stored at TRUSTED_CONTEXTS access level so that page scripts on youtube.com cannot read them. We do not store any video, audio, transcript, or browsing history.
+Used to remember the user's settings (tier, target language, voice, volume, subtitle style) and any optional API keys (Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox) across sessions. Keys are stored locally in `chrome.storage.local`, which page scripts cannot read. The YouTube tab receives only the key required by the provider selected for that session. We do not store any video, audio, transcript, or browsing history.
 ```
 
 ### `host_permissions: https://*.youtube.com/*` and `https://youtube.com/*`
