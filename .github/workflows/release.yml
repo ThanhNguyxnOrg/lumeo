@@ -90,11 +90,14 @@ jobs:
         # A store API hiccup must not block the GitHub Release assets.
         continue-on-error: true
         env:
-          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
-          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+          # Org-level names stay store-specific and symmetric with EDGE_*.
+          # web-ext itself expects WEB_EXT_API_KEY / WEB_EXT_API_SECRET, so we
+          # map them here. The old names are still accepted as a fallback.
+          WEB_EXT_API_KEY: ${{ secrets.AMO_API_KEY || secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_API_SECRET || secrets.WEB_EXT_API_SECRET }}
         run: |
           if [ -z "${WEB_EXT_API_KEY:-}" ] || [ -z "${WEB_EXT_API_SECRET:-}" ]; then
-            echo "::notice::Skipping AMO submission; add WEB_EXT_API_KEY and WEB_EXT_API_SECRET repository secrets to enable it."
+            echo "::notice::Skipping AMO submission; add AMO_API_KEY and AMO_API_SECRET organization secrets to enable it."
             exit 0
           fi
           npx --yes web-ext@10.8.0 sign \

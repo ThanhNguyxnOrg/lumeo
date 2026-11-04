@@ -23,29 +23,41 @@ The workflow reads `secrets.*`, so **organization secrets work as-is** — creat
 repository access in the org secret settings. Repository-level secrets with the same names would also work; org-level
 is the better choice if several repos will reuse them.
 
-| Secret | Used by | Required for |
-|---|---|---|
-| `WEB_EXT_API_KEY` | Firefox AMO | listed/unlisted submission |
-| `WEB_EXT_API_SECRET` | Firefox AMO | listed/unlisted submission |
-| `EDGE_PRODUCT_ID` | Microsoft Edge | update after the first manual listing |
-| `EDGE_API_KEY` | Microsoft Edge | Edge API v1.1 authentication |
-| `EDGE_CLIENT_ID` | Microsoft Edge | Edge API v1.1 authentication |
-| `BOT_APP_ID` | GitHub release | GitHub App token for publishing the release |
-| `BOT_PRIVATE_KEY` | GitHub release | GitHub App token for publishing the release |
+| Secret | Used by | Level | Required for |
+|---|---|---|---|
+| `AMO_API_KEY` | Firefox AMO | org (shared) | AMO account JWT issuer |
+| `AMO_API_SECRET` | Firefox AMO | org (shared) | AMO account JWT secret |
+| `EDGE_API_KEY` | Microsoft Edge | org (shared) | Partner Center account API key |
+| `EDGE_CLIENT_ID` | Microsoft Edge | org (shared) | Partner Center account client ID |
+| `EDGE_PRODUCT_ID` | Microsoft Edge | **repo** | unique product GUID per extension |
+| `BOT_APP_ID` | GitHub release | org (shared) | GitHub App token |
+| `BOT_PRIVATE_KEY` | GitHub release | org (shared) | GitHub App token |
+
+The Firefox and Edge credentials are **account-wide**: one pair works for every extension published under the same
+account, so they belong at the organization level. The Edge `Product ID` is per-extension, so keep that one in the
+repository (or in a per-repo variable named `EDGE_PRODUCT_ID`).
 
 Optional repository/organization variable: `GECKO_ID` (default `lumeo@thanhnguyxn.org`). Do not change it after the
 first AMO submission.
+
+**Do not set `GECKO_ID` as an organization-wide variable.** Each extension must have its own add-on identity; a shared
+org variable would make a future extension reuse Lumeo's ID. Keep `GECKO_ID` as a repository variable for this repo
+(or rely on the code default). The AMO API credentials are account-level and can be shared across add-ons, but the
+add-on identity is per-extension.
 
 ## Firefox AMO (listed) — automated
 
 Registration: free AMO account, no fee.
 
 1. Create an account at <https://addons.mozilla.org/>.
-2. Generate API credentials at <https://addons.mozilla.org/developers/addon/api/key/>. Copy the JWT issuer as
-   `WEB_EXT_API_KEY` and the JWT secret as `WEB_EXT_API_SECRET`; the secret is shown only once.
-3. Add repository secrets:
-   - `WEB_EXT_API_KEY`
-   - `WEB_EXT_API_SECRET`
+2. Generate API credentials at <https://addons.mozilla.org/developers/addon/api/key/>. Copy the **JWT issuer** as
+   `AMO_API_KEY` and the **JWT secret** as `AMO_API_SECRET`; the secret is shown only once.
+3. Add organization secrets (shared by every Firefox extension under the same AMO account):
+   - `AMO_API_KEY`
+   - `AMO_API_SECRET`
+
+   The workflow maps them to `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` for the `web-ext` CLI. The old
+   `WEB_EXT_*` secret names still work as a fallback.
 4. Optional repository variable: `GECKO_ID` (defaults to `lumeo@thanhnguyxn.org`; changing it makes a different
    add-on identity, so only set it before the first submission).
 5. The first submission uses `store-assets/amo-metadata.json` (summary, category, MIT license). Later tags only
