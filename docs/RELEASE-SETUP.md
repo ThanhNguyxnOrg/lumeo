@@ -41,7 +41,8 @@ first AMO submission.
 Registration: free AMO account, no fee.
 
 1. Create an account at <https://addons.mozilla.org/>.
-2. Generate API credentials at <https://addons.mozilla.org/developers/addon/api/key/>.
+2. Generate API credentials at <https://addons.mozilla.org/developers/addon/api/key/>. Copy the JWT issuer as
+   `WEB_EXT_API_KEY` and the JWT secret as `WEB_EXT_API_SECRET`; the secret is shown only once.
 3. Add repository secrets:
    - `WEB_EXT_API_KEY`
    - `WEB_EXT_API_SECRET`
@@ -62,6 +63,8 @@ Registration: free Partner Center account. Microsoft documents "There is no regi
    available through the API.
 2. Copy the **Product ID** from the extension overview page.
 3. On the Partner Center **Publish API** page, enable the v1.1 experience and click **Create API credentials**.
+   Copy the **Client ID** and **API key** immediately: the key is shown only once and has an expiry date. Rotate it
+   before that date and update the `EDGE_API_KEY` secret.
 4. Add repository secrets:
    - `EDGE_PRODUCT_ID`
    - `EDGE_API_KEY`
