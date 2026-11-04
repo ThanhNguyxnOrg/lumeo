@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/version-2.0.7-ff7a45?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/Chrome-MV3-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome MV3">
-  <img src="https://img.shields.io/badge/tests-274%20passed-2ea043?style=for-the-badge" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-278%20passed-2ea043?style=for-the-badge" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-2ea043?style=for-the-badge" alt="License">
 </p>
 
