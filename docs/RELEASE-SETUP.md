@@ -73,7 +73,8 @@ Registration: free Partner Center account. Microsoft documents "There is no regi
 1. Register at <https://partner.microsoft.com/dashboard/microsoftedge/public/login?ref=dd> and publish the first
    version manually (metadata, screenshots, privacy page). Initial publication and metadata changes are not
    available through the API.
-2. Copy the **Product ID** from the extension overview page.
+2. Copy the **Product ID** from the extension overview page. The Product ID already exists while the submission is
+   in draft; keep that draft and use its GUID. Discarding and recreating the draft can change it.
 3. On the Partner Center **Publish API** page, enable the v1.1 experience and click **Create API credentials**.
    Copy the **Client ID** and **API key** immediately: the key is shown only once and has an expiry date. Rotate it
    before that date and update the `EDGE_API_KEY` secret.
