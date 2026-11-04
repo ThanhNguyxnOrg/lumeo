@@ -87,6 +87,17 @@ Registration: free Partner Center account. Microsoft documents "There is no regi
 
 API reference: <https://learn.microsoft.com/en-us/microsoft-edge/extensions/update/api/using-addons-api>
 
+### Example mapping
+
+| GitHub secret | Example value | Where it comes from |
+|---|---|---|
+| `EDGE_CLIENT_ID` (org) | `ad56c2f2-fccf-49f5-a6c3-436aa6f9aebe` | Publish API page → Client ID |
+| `EDGE_API_KEY` (org) | `fRD4…` (new key after rotation) | Publish API page → New API key |
+| `EDGE_PRODUCT_ID` (repo) | `641ea3c7-9cfd-4bf1-a919-eee5d8f48c1e` | Extension overview → Product ID |
+
+Account-wide values (`Client ID`, API keys) are shared by every Edge extension under the account. The `Product ID`
+is unique per extension and stays stable for that extension.
+
 ## Opera Add-ons — manual
 
 Registration: free Opera developer account.
