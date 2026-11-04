@@ -29,7 +29,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - Added version, manifest-reference, and AMO-metadata checks to CI (`check:versions`, `check:manifest`).
   - Custom AI gateway and custom TTS endpoints can request host access at runtime; `api.elevenlabs.io` and `api.deepseek.com` are install-time defaults. The canonical `web_accessible_resources` list shrank to the AudioWorklet only.
 - **TTS Queue, Key Isolation & Firefox Release Readiness:**
-  - Spoken captions are queued instead of preempted: a new cue waits for the line already playing, the backlog is capped, and the oldest pending line is skipped with a toast when audio falls behind. Rate fitting now stretches to `1.6×` instead of `1.1×`, and ElevenLabs defaults to `eleven_flash_v2_5`.
+  - Spoken captions are queued instead of preempted: a new cue waits for the line already playing, the backlog is capped, and past cues are skipped with a toast when audio falls behind. Rate fitting stretches toward `2.0×` to catch the subtitles instead of drifting, and ElevenLabs defaults to `eleven_flash_v2_5`.
+  - Firefox builds now require Firefox 140+ (Android 142+) so the `data_collection_permissions` disclosure is actually supported; `web-ext lint` reports 0 errors and 0 warnings.
   - Content scripts no longer read the whole `chrome.storage.local` area. They receive only non-secret preferences, and fallback paths request a single provider key from the background through `GET_PROVIDER_KEY` (YouTube senders only). `GET_STATE` returns a pruned snapshot to content senders.
   - Soniox WebSocket messages (`startSonioxWs`, `sonioxAudio`, `stopSonioxWs`) now require a YouTube sender.
   - Privacy/store documents now describe the real storage protection instead of claiming `TRUSTED_CONTEXTS`.

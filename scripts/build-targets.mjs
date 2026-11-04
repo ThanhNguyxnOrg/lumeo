@@ -164,13 +164,19 @@ export function transformManifest(baseManifest, target) {
     manifest.browser_specific_settings = {
       gecko: {
         id: GECKO_ID,
-        strict_min_version: "128.0",
+        // Firefox 140 introduced browser_specific_settings.gecko.data_collection_permissions;
+        // a lower minimum would ship the manifest key to browsers that ignore it.
+        strict_min_version: "140.0",
         data_collection_permissions: {
           // websiteContent: captions/audio sent to the user's chosen provider.
           // authenticationInfo: the user's own provider API keys are stored
           // locally and transmitted only to that provider.
           required: ["websiteContent", "authenticationInfo"],
         },
+      },
+      // Android got data_collection_permissions support in Firefox 142.
+      gecko_android: {
+        strict_min_version: "142.0",
       },
     };
   } else if (target !== "chrome") {

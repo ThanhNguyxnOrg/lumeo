@@ -23,8 +23,28 @@
       return `${m}:${rem.toString().padStart(2, "0")}`;
     }
 
-    function svgIcon(inner, viewBox = "0 0 16 16") {
-      return `<svg viewBox="${viewBox}" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${inner}</svg>`;
+    // Build the static icon as real DOM nodes so no HTML string is assigned to
+    // a live element (keeps the AMO/web-ext linter and the page CSP happy).
+    function svgNode(inner, viewBox = "0 0 16 16") {
+      const wrapper = new win.DOMParser().parseFromString(
+        `<svg xmlns="http://www.w3.org/2000/svg">${inner}</svg>`,
+        "image/svg+xml",
+      );
+      const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", viewBox);
+      svg.setAttribute("width", "12");
+      svg.setAttribute("height", "12");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("stroke", "currentColor");
+      svg.setAttribute("stroke-width", "1.5");
+      svg.setAttribute("stroke-linecap", "round");
+      svg.setAttribute("stroke-linejoin", "round");
+      svg.setAttribute("aria-hidden", "true");
+      svg.setAttribute("focusable", "false");
+      for (const child of Array.from(wrapper.documentElement?.childNodes || [])) {
+        svg.appendChild(doc.importNode(child, true));
+      }
+      return svg;
     }
 
     const ICON_SPARK = '<path d="M8 1.5l1.6 4.2 4.2 1.6-4.2 1.6L8 13.1 6.4 8.9 2.2 7.3l4.2-1.6L8 1.5z" fill="currentColor" stroke="none"/>';
@@ -52,7 +72,9 @@
       summarizeBtn.type = "button";
       summarizeBtn.className = "lumeo-transcript-summarize";
       summarizeBtn.setAttribute("aria-label", "Summarize video with AI");
-      summarizeBtn.innerHTML = `${svgIcon(ICON_SPARK)}<span>Summarize</span>`;
+      const summarizeLabel = doc.createElement("span");
+      summarizeLabel.textContent = "Summarize";
+      summarizeBtn.append(svgNode(ICON_SPARK), summarizeLabel);
       summarizeBtn.addEventListener("click", () => {
         if (typeof onSummarize === "function") {
           onSummarize(cues);
@@ -63,7 +85,9 @@
       exportBtn.type = "button";
       exportBtn.className = "lumeo-transcript-export";
       exportBtn.setAttribute("aria-label", "Export subtitles as SRT");
-      exportBtn.innerHTML = `${svgIcon(ICON_DOWNLOAD)}<span>SRT</span>`;
+      const exportLabel = doc.createElement("span");
+      exportLabel.textContent = "SRT";
+      exportBtn.append(svgNode(ICON_DOWNLOAD), exportLabel);
       exportBtn.addEventListener("click", () => {
         if (!cues || cues.length === 0) return;
         if (win.LumeoSrtExport?.toSrt && win.LumeoSrtExport?.downloadText) {
@@ -188,11 +212,23 @@
       if (cues.length === 0) {
         const empty = doc.createElement("div");
         empty.className = "lumeo-transcript-empty";
-        empty.innerHTML = `
-          <div class="lumeo-transcript-empty-icon"><svg viewBox="0 0 16 16" width="30" height="30" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">${ICON_DOC}</svg></div>
-          <div class="lumeo-transcript-empty-title">No subtitles yet</div>
-          <div class="lumeo-transcript-empty-hint">Press Start Translation in the player to load bilingual subtitles here</div>
-        `;
+
+        const iconWrap = doc.createElement("div");
+        iconWrap.className = "lumeo-transcript-empty-icon";
+        const icon = svgNode(ICON_DOC);
+        icon.setAttribute("width", "30");
+        icon.setAttribute("height", "30");
+        iconWrap.appendChild(icon);
+
+        const emptyTitle = doc.createElement("div");
+        emptyTitle.className = "lumeo-transcript-empty-title";
+        emptyTitle.textContent = "No subtitles yet";
+
+        const emptyHint = doc.createElement("div");
+        emptyHint.className = "lumeo-transcript-empty-hint";
+        emptyHint.textContent = "Press Start Translation in the player to load bilingual subtitles here";
+
+        empty.append(iconWrap, emptyTitle, emptyHint);
         listEl.appendChild(empty);
         return;
       }
@@ -238,7 +274,10 @@
     function showSummaryLoading() {
       if (!summaryEl) build();
       summaryEl.hidden = false;
-      summaryEl.innerHTML = '<div class="lumeo-summary-loading">Generating video summary…</div>';
+      const loading = doc.createElement("div");
+      loading.className = "lumeo-summary-loading";
+      loading.textContent = "Generating video summary…";
+      summaryEl.replaceChildren(loading);
     }
 
     function setSummary(summaryMarkdown) {

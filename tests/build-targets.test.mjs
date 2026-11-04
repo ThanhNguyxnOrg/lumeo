@@ -25,9 +25,10 @@ describe("scripts/build-targets.mjs", () => {
     expect(firefox.background.service_worker).toBeUndefined();
     expect(firefox.minimum_chrome_version).toBeUndefined();
     expect(firefox.browser_specific_settings.gecko.id).toBeTruthy();
-    expect(firefox.browser_specific_settings.gecko.strict_min_version).toBe("128.0");
+    expect(firefox.browser_specific_settings.gecko.strict_min_version).toBe("140.0");
     expect(firefox.browser_specific_settings.gecko.data_collection_permissions.required)
       .toEqual(["websiteContent", "authenticationInfo"]);
+    expect(firefox.browser_specific_settings.gecko_android.strict_min_version).toBe("142.0");
   });
 
   it("removes the Chrome-only minimum version from Edge and Opera", () => {

@@ -758,6 +758,25 @@
       return 1.0;
     },
 
+    // How much extra speed the voice needs to catch a cue that has already
+    // been on screen for `lagSeconds`. Capped at the product ceiling (2.0x).
+    catchUpRateForLag(lagSeconds) {
+      const lag = Number(lagSeconds);
+      if (!Number.isFinite(lag) || lag <= 0) return 1.0;
+      return Math.min(2.0, 1.0 + lag * 0.25);
+    },
+
+    // A cue is stale once the video has moved past its display window plus a
+    // short grace period. Skipping stale queued cues is what keeps the voice
+    // from drifting minutes behind the subtitles.
+    isCueStale(mediaNow, cue, graceSeconds = 0.75) {
+      const now = Number(mediaNow);
+      if (!Number.isFinite(now)) return false;
+      const start = Number(cue?.start) || 0;
+      const end = cue?.end != null && Number(cue.end) > start ? Number(cue.end) : start + 3.0;
+      return now > end + (Number(graceSeconds) || 0);
+    },
+
     updateCaptionProgress(progress = {}, ctx) {
       const completed = Number(progress.completed || 0);
       const total = Number(progress.total || 0);
@@ -917,17 +936,32 @@
 
         if (liveSettings.captionTtsProvider && liveSettings.captionTtsProvider !== "off") {
           const cue = current.cue;
+          const mediaNow = Number(video?.currentTime) || 0;
+          const cueLag = mediaNow - (Number(cue.start) || 0);
+          const orchestrator = window.LumeoCaptionOrchestrator;
+
+          // The previous line is allowed to finish, but do not start a line the
+          // video has already moved past: that is how audio and subtitles drift
+          // apart. Drop it and let the queue catch up to the current cue.
+          if (orchestrator.isCueStale(mediaNow, cue)) {
+            ctx.showToast("⚠️ Spoken audio caught up by skipping a past line.", 2500);
+            return;
+          }
+
           const duration = (cue.end != null && cue.start != null && cue.end > cue.start)
             ? (cue.end - cue.start)
             : 3.0;
           const textToSpeak = (cue.translated || cue.text || "").trim();
-          const calculatedRate = window.LumeoCaptionOrchestrator.fitRateForCue({
+          const calculatedRate = orchestrator.fitRateForCue({
             text: textToSpeak,
             targetLanguage: liveSettings.targetLanguage || "en",
             duration,
             playbackRate: video?.playbackRate || 1,
           });
-          const effectiveRate = liveSettings.ttsRate || calculatedRate;
+          // The longer a cue has already been on screen, the harder the voice
+          // has to push to stay with the video. 2.0x is the product cap.
+          const catchUpRate = orchestrator.catchUpRateForLag(cueLag);
+          const effectiveRate = Math.max(liveSettings.ttsRate || calculatedRate, catchUpRate);
 
           pipeline.speakCue(cue, {
             provider: liveSettings.captionTtsProvider,
@@ -941,6 +975,7 @@
             voiceName: liveSettings.standardVoice,
             rate: effectiveRate,
             volume: Math.min((liveSettings.voiceVolume ?? 100) / 100, 1),
+            isStale: () => orchestrator.isCueStale(Number(video?.currentTime) || 0, cue),
             onSkip: () => ctx.showToast("⚠️ Spoken audio is catching up; oldest line skipped.", 3500),
             onFailover: () => {
               ctx.showToast("⚠️ Custom voice error. Temporarily fell back to browser speech.", 5000);

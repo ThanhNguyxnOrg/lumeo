@@ -251,4 +251,15 @@ describe("services/tts-browser.js queue", () => {
     utterances[2].onend();
     await expect(fourth).resolves.toBe(true);
   });
+
+  it("never starts a line the video already moved past", async () => {
+    const { api } = await setupQueue();
+    const skipped = vi.fn();
+    const result = await api.speakQueued("old line", "en", {
+      isStale: () => true,
+      onSkip: skipped,
+    });
+    expect(result).toBe(false);
+    expect(skipped).toHaveBeenCalledWith(expect.objectContaining({ reason: "stale" }));
+  });
 });

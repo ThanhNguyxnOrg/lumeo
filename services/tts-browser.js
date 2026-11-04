@@ -321,6 +321,19 @@
     try {
       while (speechQueue.length) {
         const task = speechQueue.shift();
+        let stale = false;
+        try {
+          stale = task.options.isStale?.() === true;
+        } catch {}
+        if (stale) {
+          try {
+            task.options.onSkip?.({ text: task.text, reason: "stale" });
+          } catch {}
+          try {
+            task.resolve(false);
+          } catch {}
+          continue;
+        }
         let ok = false;
         try {
           ok = await speakTaskAndWait(task.text, task.lang, task.options);
@@ -339,7 +352,35 @@
   // the caller's onSkip callback is notified.
   function speakQueued(text, lang, options = {}) {
     return new Promise((resolve) => {
+      // Purge lines that were waiting when the video already moved past them.
+      for (let i = speechQueue.length - 1; i >= 0; i -= 1) {
+        const pending = speechQueue[i];
+        let stale = false;
+        try {
+          stale = pending.options.isStale?.() === true;
+        } catch {}
+        if (stale) {
+          speechQueue.splice(i, 1);
+          try {
+            pending.options.onSkip?.({ text: pending.text, reason: "stale" });
+          } catch {}
+          try {
+            pending.resolve(false);
+          } catch {}
+        }
+      }
       const task = { text, lang, options, resolve };
+      let alreadyStale = false;
+      try {
+        alreadyStale = options.isStale?.() === true;
+      } catch {}
+      if (alreadyStale) {
+        try {
+          options.onSkip?.({ text, reason: "stale" });
+        } catch {}
+        resolve(false);
+        return;
+      }
       if (speechQueue.length >= SPEECH_QUEUE_LIMIT) {
         const dropped = speechQueue.shift();
         try {
@@ -510,7 +551,7 @@
     currentAudio.volume = Number(options.volume ?? 1);
     // ElevenLabs/custom synthesis speed is best-effort; apply the fitted rate
     // post-hoc so spoken lines keep up without re-synthesis.
-    currentAudio.playbackRate = clampRate(options.rate, 0.9, 1.6);
+    currentAudio.playbackRate = clampRate(options.rate, 0.9, 2.0);
     if (typeof options.onEnd === "function") {
       currentAudio.addEventListener("ended", options.onEnd, { once: true });
     }

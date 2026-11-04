@@ -54,6 +54,21 @@ describe("caption fitRateForCue (multilingual)", () => {
     expect(rate).toBeGreaterThanOrEqual(0.9);
     expect(rate).toBeLessThanOrEqual(1.6);
   });
+
+  it("accelerates a late cue toward the 2.0x catch-up cap", () => {
+    expect(api.catchUpRateForLag(0)).toBe(1.0);
+    expect(api.catchUpRateForLag(-2)).toBe(1.0);
+    expect(api.catchUpRateForLag(1)).toBeCloseTo(1.25, 3);
+    expect(api.catchUpRateForLag(10)).toBe(2.0);
+  });
+
+  it("marks cues the video has already moved past as stale", () => {
+    const cue = { start: 10, end: 13 };
+    expect(api.isCueStale(13.5, cue)).toBe(false);
+    expect(api.isCueStale(13.8, cue)).toBe(true);
+    expect(api.isCueStale(5, { start: 10 })).toBe(false);
+    expect(api.isCueStale(14.5, { start: 10 })).toBe(true);
+  });
 });
 
 describe("standard backlog guard", () => {
