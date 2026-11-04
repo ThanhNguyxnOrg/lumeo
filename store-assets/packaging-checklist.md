@@ -46,11 +46,14 @@ The builder packages only tracked runtime files. `.env*`, `tests/`, `docs/`, `sc
 
 ## Automation
 
-Push a version tag (`v<version>`) or run the `Release` workflow manually with a tag. The workflow validates versions, runs tests and manifest checks, builds every target, verifies packaged manifest versions, submits Firefox to AMO when `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` exist, and publishes all ZIPs to GitHub Releases.
+Push a version tag (`v<version>`) or run the `Release` workflow manually with a tag. The workflow validates versions, runs tests and manifest checks, builds every target, verifies packaged manifest versions, submits Firefox to AMO when `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` exist, updates Microsoft Edge when `EDGE_PRODUCT_ID` / `EDGE_API_KEY` / `EDGE_CLIENT_ID` exist, and publishes all ZIPs to GitHub Releases.
+
+Account and secret setup is documented in [`docs/RELEASE-SETUP.md`](../docs/RELEASE-SETUP.md).
 
 ## Manual blocks
 
-- Edge Add-ons upload and certification.
+- Edge: first listing is manual in Partner Center; later versions are automated through the free Update REST API.
 - Opera Add-ons upload and review.
+- Naver Whale Store upload and review.
 - Chrome Web Store / Brave store listing (requires the paid Chrome Web Store developer registration).
 - AMO listing review is manual on Mozilla's side; the submission itself is automated.

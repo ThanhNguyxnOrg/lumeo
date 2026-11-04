@@ -85,7 +85,10 @@ jobs:
       # XPI asset to attach to the GitHub release. This step is skipped until
       # the free AMO API credentials are configured as repository secrets.
       - name: Submit Firefox package to AMO
+        id: amo
         if: steps.plan.outputs.should_release == 'true'
+        # A store API hiccup must not block the GitHub Release assets.
+        continue-on-error: true
         env:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
@@ -101,6 +104,89 @@ jobs:
             --artifacts-dir dist/amo \
             --approval-timeout 0 \
             --no-input
+
+      # Microsoft Edge Add-ons: first publication is manual in Partner Center;
+      # later versions use the free Update REST API v1.1. Skipped until the
+      # EDGE_PRODUCT_ID / EDGE_API_KEY / EDGE_CLIENT_ID secrets exist.
+      - name: Update Microsoft Edge Add-ons
+        id: edge
+        if: steps.plan.outputs.should_release == 'true'
+        # A store API hiccup must not block the GitHub Release assets.
+        continue-on-error: true
+        env:
+          EDGE_PRODUCT_ID: ${{ secrets.EDGE_PRODUCT_ID }}
+          EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
+          EDGE_CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
+        run: |
+          if [ -z "${EDGE_PRODUCT_ID:-}" ] || [ -z "${EDGE_API_KEY:-}" ] || [ -z "${EDGE_CLIENT_ID:-}" ]; then
+            echo "::notice::Skipping Edge update; add EDGE_PRODUCT_ID, EDGE_API_KEY and EDGE_CLIENT_ID secrets to enable it."
+            exit 0
+          fi
+
+          EDGE_ZIP="$(ls dist/*-edge.zip | head -n1)"
+          API="https://api.addons.microsoftedge.microsoft.com/v1"
+          AUTH=(-H "Authorization: ApiKey ${EDGE_API_KEY}" -H "X-ClientID: ${EDGE_CLIENT_ID}")
+
+          read_status() {
+            local body="$1"
+            printf '%s' "$body" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).status||'InProgress')}catch{process.stdout.write('InProgress')}})"
+          }
+
+          upload_headers="$(mktemp)"
+          code="$(curl -sS -o /dev/null -D "$upload_headers" -w "%{http_code}" -X POST \
+            "${AUTH[@]}" -H "Content-Type: application/zip" -T "$EDGE_ZIP" \
+            "$API/products/${EDGE_PRODUCT_ID}/submissions/draft/package")"
+          if [ "$code" != "202" ]; then
+            echo "::error::Edge package upload returned HTTP $code"
+            cat "$upload_headers"
+            exit 1
+          fi
+          upload_op="$(grep -i '^location:' "$upload_headers" | tail -n1 | tr -d '\r' | awk '{print $2}' | awk -F/ '{print $NF}')"
+
+          upload_status="InProgress"
+          for _ in $(seq 1 30); do
+            upload_body="$(curl -sS "${AUTH[@]}" "$API/products/${EDGE_PRODUCT_ID}/submissions/draft/package/operations/${upload_op}")"
+            upload_status="$(read_status "$upload_body")"
+            [ "$upload_status" = "Succeeded" ] && break
+            if [ "$upload_status" = "Failed" ]; then
+              echo "::error::Edge package upload failed: $upload_body"
+              exit 1
+            fi
+            sleep 5
+          done
+          if [ "$upload_status" != "Succeeded" ]; then
+            echo "::error::Edge package upload did not finish (status: $upload_status)."
+            exit 1
+          fi
+
+          publish_headers="$(mktemp)"
+          code="$(curl -sS -o /dev/null -D "$publish_headers" -w "%{http_code}" -X POST \
+            "${AUTH[@]}" -H "Content-Type: application/json" \
+            -d '{"notes":"Automated update from the Lumeo release workflow."}' \
+            "$API/products/${EDGE_PRODUCT_ID}/submissions")"
+          if [ "$code" != "202" ]; then
+            echo "::error::Edge publish request returned HTTP $code"
+            cat "$publish_headers"
+            exit 1
+          fi
+          publish_op="$(grep -i '^location:' "$publish_headers" | tail -n1 | tr -d '\r' | awk '{print $2}' | awk -F/ '{print $NF}')"
+
+          publish_status="InProgress"
+          for _ in $(seq 1 30); do
+            publish_body="$(curl -sS "${AUTH[@]}" "$API/products/${EDGE_PRODUCT_ID}/submissions/operations/${publish_op}")"
+            publish_status="$(read_status "$publish_body")"
+            [ "$publish_status" = "Succeeded" ] && break
+            if [ "$publish_status" = "Failed" ]; then
+              echo "::error::Edge publish failed: $publish_body"
+              exit 1
+            fi
+            sleep 5
+          done
+          if [ "$publish_status" != "Succeeded" ]; then
+            echo "::error::Edge publish did not finish (status: $publish_status)."
+            exit 1
+          fi
+          echo "Edge Add-ons update submitted."
 
       - name: Generate GitHub App Token
         if: steps.plan.outputs.should_release == 'true'
@@ -129,3 +215,12 @@ jobs:
           fi
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Store submission summary
+        if: always() && steps.plan.outputs.should_release == 'true'
+        run: |
+          echo "Firefox AMO step: ${{ steps.amo.outcome || 'skipped' }}"
+          echo "Microsoft Edge step: ${{ steps.edge.outcome || 'skipped' }}"
+          if [ "${{ steps.amo.outcome }}" = "failure" ] || [ "${{ steps.edge.outcome }}" = "failure" ]; then
+            echo "::warning::One or more store submissions failed; the GitHub Release assets were still published."
+          fi

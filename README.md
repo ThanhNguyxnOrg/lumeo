@@ -234,7 +234,7 @@ lumeo/
 │   ├── browser-api.js              # Cross-browser API abstraction
 │   └── token-guard.js              # Page-level async token guard
 │
-├── tests/                          # 274 unit tests across 35 test suites (Vitest)
+├── tests/                          # 278 unit tests across 36 test suites (Vitest)
 │   ├── helpers/
 │   │   ├── chrome-mock.mjs         # Chrome API mock for testing
 │   │   └── load-service.mjs        # Service loader helper
@@ -254,7 +254,7 @@ lumeo/
 ## Testing
 
 ```bash
-# Run all 274 unit tests across 35 suites
+# Run all 278 unit tests across 36 suites
 npm test
 
 # Syntax check all JavaScript files
@@ -290,7 +290,7 @@ npm run build:targets
 - `lumeo-v<version>-opera.zip`
 - `SHA256SUMS.txt` and `build-metadata.json`
 
-The builder reads `manifest.json`, packages only tracked runtime files (`.env`, tests, docs, and local artifacts can never leak in), writes per-target manifest transforms, and produces deterministic ZIP bytes. The same ZIPs are published automatically on every version tag by [`.github/workflows/release.yml`](.github/workflows/release.yml). Firefox is submitted to AMO when the `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` repository secrets are configured; Edge and Opera uploads remain manual.
+The builder reads `manifest.json`, packages only tracked runtime files (`.env`, tests, docs, and local artifacts can never leak in), writes per-target manifest transforms, and produces deterministic ZIP bytes. The same ZIPs are published automatically on every version tag by [`.github/workflows/release.yml`](.github/workflows/release.yml). Firefox is submitted to AMO when the `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` secrets are configured, and Microsoft Edge is updated when the `EDGE_PRODUCT_ID` / `EDGE_API_KEY` / `EDGE_CLIENT_ID` secrets exist. Opera and Naver Whale uploads stay manual. Account and secret setup: [`docs/RELEASE-SETUP.md`](docs/RELEASE-SETUP.md).
 
 ---
 
