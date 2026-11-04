@@ -948,8 +948,15 @@
             return;
           }
 
-          const duration = (cue.end != null && cue.start != null && cue.end > cue.start)
-            ? (cue.end - cue.start)
+          // Slot widening: a line may use the natural gap until the next cue
+          // starts, not only its own display window. This avoids unnecessary
+          // speed-ups and keeps more lines at a natural pace.
+          const nextCue = pipeline.cues?.[current.index + 1];
+          const slotEnd = nextCue?.start != null && Number(nextCue.start) > Number(cue.end)
+            ? Number(nextCue.start)
+            : cue.end;
+          const duration = (slotEnd != null && cue.start != null && slotEnd > cue.start)
+            ? (slotEnd - cue.start)
             : 3.0;
           const textToSpeak = (cue.translated || cue.text || "").trim();
           const calculatedRate = orchestrator.fitRateForCue({

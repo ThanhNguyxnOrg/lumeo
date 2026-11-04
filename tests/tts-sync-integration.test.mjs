@@ -5,7 +5,7 @@ const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Simulates speechSynthesis with a deterministic duration per utterance so the
 // queue/catch-up behavior can be tested without a browser.
-async function setupTts({ msPerChar = 2 } = {}) {
+async function setupTts({ msPerChar = 30 } = {}) {
   const { window } = await createSandboxWindow();
   const utterances = [];
   let active = 0;
@@ -17,7 +17,7 @@ async function setupTts({ msPerChar = 2 } = {}) {
       active += 1;
       maxActive = Math.max(maxActive, active);
       const rate = Math.max(0.1, Number(utterance.rate) || 1);
-      const duration = Math.max(2, Math.min(80, Math.round(String(utterance.text || "").length * msPerChar / rate)));
+      const duration = Math.max(5, Math.min(600, Math.round(String(utterance.text || "").length * msPerChar / rate)));
       window.setTimeout(() => {
         active = Math.max(0, active - 1);
         try {
@@ -115,5 +115,68 @@ describe("TTS sync behavior (integration)", () => {
     expect(skipped).toHaveBeenCalledWith(expect.objectContaining({ reason: "stale" }));
     await expect(first).resolves.toBe(true);
     await expect(newest).resolves.toBe(true);
+  });
+
+  it("never plays a cloud line whose fetch finishes after stop", async () => {
+    const { window, api } = await setupTts();
+    let releaseFetch;
+    const play = vi.fn(() => Promise.resolve());
+    window.fetch = vi.fn(() => new Promise((resolve) => {
+      releaseFetch = () => resolve({ ok: true, blob: async () => ({}) });
+    }));
+    window.URL = { createObjectURL: () => "blob:cloud", revokeObjectURL: () => {} };
+    window.Audio = class {
+      constructor() { this.play = play; }
+      addEventListener() {}
+      pause() {}
+    };
+
+    const task = api.speakQueued("cloud line", "en", {
+      provider: "custom-voice-engine",
+      customTtsBaseUrl: "https://api.example.com/v1",
+      customTtsVoiceId: "voice-1",
+      stallTimeoutMs: 200,
+    });
+    await tick(5);
+    api.stop();
+    releaseFetch();
+    await expect(task).resolves.toBe(false);
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("treats a speech error as failed so the queue does not stall", async () => {
+    const { window, api, utterances } = await setupTts();
+    window.speechSynthesis.speak = vi.fn(() => {
+      const utterance = utterances[utterances.length - 1];
+      window.setTimeout(() => utterance.onerror?.({ error: "not-allowed" }), 2);
+    });
+    const result = await api.speakQueued("blocked line", "en", {});
+    expect(result).toBe(false);
+  });
+
+  it("advances the queue when an utterance never ends", async () => {
+    const { window, api } = await setupTts();
+    window.speechSynthesis.speak = vi.fn();
+    const result = await api.speakQueued("stuck line", "en", { stallTimeoutMs: 20 });
+    expect(result).toBe(false);
+  });
+
+  it("stop() drains queued lines and a late end starts nothing new", async () => {
+    const { window, api, utterances } = await setupTts();
+    const first = api.speakQueued("first line", "en", { stallTimeoutMs: 200 });
+    await tick(5);
+    const second = api.speakQueued("second line", "en", { stallTimeoutMs: 200 });
+    const third = api.speakQueued("third line", "en", { stallTimeoutMs: 200 });
+
+    api.stop();
+    await expect(first).resolves.toBe(false);
+    await expect(second).resolves.toBe(false);
+    await expect(third).resolves.toBe(false);
+
+    const count = utterances.length;
+    utterances[0]?.onend?.();
+    await tick(10);
+    expect(utterances.length).toBe(count);
+    expect(window.speechSynthesis.speak).toHaveBeenCalledTimes(count);
   });
 });

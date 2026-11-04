@@ -89,6 +89,7 @@
   async function speak(text, lang, options = {}) {
     const url = await synthesize(text, options);
     if (!url) return false;
+    if (options.signal?.aborted) return false;
     stop();
     // Preempt any in-flight browser speech so network audio never overlaps it.
     try {

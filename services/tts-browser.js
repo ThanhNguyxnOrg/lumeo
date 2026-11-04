@@ -148,6 +148,8 @@
   const googleAudioCache = new Map();
   const speechQueue = [];
   let queuePumping = false;
+  let speechGeneration = 0;
+  let activeAbortController = null;
   let currentAudio = null;
   let lastCustomVoiceUrl = null;
   let cachedVoices = [];
@@ -278,6 +280,9 @@
   }
 
   function stop() {
+    speechGeneration += 1;
+    try { activeAbortController?.abort(); } catch {}
+    activeAbortController = null;
     drainSpeechQueue();
     try { speechSynthesis.cancel(); } catch {}
     activeUtterance = null;
@@ -293,24 +298,34 @@
 
   function speakTaskAndWait(text, lang, options = {}) {
     return new Promise((resolve) => {
+      const generation = speechGeneration;
+      const controller = new AbortController();
+      activeAbortController = controller;
       let settled = false;
       const cleanLength = String(text || "").length;
-      const timer = setTimeout(
-        () => finish(false),
-        Math.min(30000, Math.max(8000, cleanLength * 140)),
-      );
+      const defaultTimeout = Math.min(30000, Math.max(8000, cleanLength * 140));
+      const timeoutMs = Number(options.stallTimeoutMs) > 0
+        ? Number(options.stallTimeoutMs)
+        : defaultTimeout;
+      const timer = setTimeout(() => finish(false), timeoutMs);
       function finish(ok) {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        if (activeAbortController === controller) activeAbortController = null;
         resolve(ok);
       }
+      controller.signal.addEventListener("abort", () => finish(false), { once: true });
       const taskOptions = {
         ...options,
-        onEnd: () => finish(true),
+        signal: options.signal || controller.signal,
+        onEnd: (ok) => finish(ok !== false),
       };
       Promise.resolve(speak(text, lang, taskOptions))
-        .then((ok) => { if (!ok) finish(false); })
+        .then((ok) => {
+          if (generation !== speechGeneration || controller.signal.aborted) finish(false);
+          else if (!ok) finish(false);
+        })
         .catch(() => finish(false));
     });
   }
@@ -408,16 +423,16 @@
     }
     stopSpeechOnly();
     let finished = false;
-    const finish = () => {
+    const finish = (ok = true) => {
       if (finished) return;
       finished = true;
       if (activeUtterance === utterance) activeUtterance = null;
-      try { options.onEnd?.(); } catch {}
+      try { options.onEnd?.(ok); } catch {}
     };
     const utterance = new SpeechSynthesisUtterance(clean);
     activeUtterance = utterance;
-    utterance.onend = finish;
-    utterance.onerror = finish;
+    utterance.onend = () => finish(true);
+    utterance.onerror = (event) => finish(event?.error ? false : true);
     if (voice) {
       utterance.voice = voice;
       utterance.lang = voice.lang || browserLang(lang);
@@ -465,6 +480,7 @@
         }),
         signal: options.signal,
       });
+      if (options.signal?.aborted) return false;
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data?.error?.message || `Google TTS HTTP ${response.status}`);
@@ -479,6 +495,7 @@
       }
       googleAudioCache.set(cacheKey, audioUrl);
     }
+    if (options.signal?.aborted) return false;
     if (currentAudio) {
       try { currentAudio.pause(); } catch {}
       currentAudio = null;
@@ -535,8 +552,10 @@
       const errData = await response.json().catch(() => ({}));
       throw new Error(errData?.detail?.message || errData?.error?.message || `Custom Voice HTTP ${response.status}`);
     }
+    if (options.signal?.aborted) return false;
 
     const blob = await response.blob();
+    if (options.signal?.aborted) return false;
     const audioUrl = URL.createObjectURL(blob);
     if (currentAudio) {
       try { currentAudio.pause(); } catch {}
@@ -545,6 +564,7 @@
     if (lastCustomVoiceUrl) {
       try { URL.revokeObjectURL(lastCustomVoiceUrl); } catch {}
     }
+    if (options.signal?.aborted) return false;
     lastCustomVoiceUrl = audioUrl;
     stopSpeechOnly();
     currentAudio = new Audio(audioUrl);
@@ -587,6 +607,8 @@
           voice: options.openaiVoice || "alloy",
           speed: options.rate || 1,
           volume: options.volume ?? 1,
+          signal: options.signal,
+          onEnd: options.onEnd,
         });
       } catch (err) {
         console.warn("[TTS] OpenAI TTS failed, falling back to browser TTS:", err);
