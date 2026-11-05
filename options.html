@@ -195,6 +195,27 @@
 
           <div class="key-field">
             <div class="key-label-row">
+              <label>Speech Timing</label>
+              <span class="badge badge-neutral">Auto recommended</span>
+            </div>
+            <div class="custom-gateway-grid">
+              <div class="key-sub-options">
+                <label for="ttsSpeedMode">Speed mode:</label>
+                <select id="ttsSpeedMode" class="form-select">
+                  <option value="auto">Auto (finish each line, speed up only when behind)</option>
+                  <option value="manual">Manual (fixed speed, never exceeded)</option>
+                </select>
+              </div>
+              <div class="key-sub-options" id="ttsSpeedWrap" style="display: none;">
+                <label for="ttsSpeed">Manual speed: <span id="ttsSpeedVal">1.0x</span></label>
+                <input type="range" id="ttsSpeed" class="form-range" min="0.75" max="2" step="0.05" value="1" />
+              </div>
+            </div>
+            <p class="custom-tts-desc" style="margin-top: 6px;">Auto keeps spoken audio close to the subtitles. Manual fixes the rate; if the video outruns it, past lines are skipped instead of drifting.</p>
+          </div>
+
+          <div class="key-field">
+            <div class="key-label-row">
               <label for="geminiKey">Google Gemini API Key</label>
               <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="get-key-link">Get Free Key ↗</a>
             </div>

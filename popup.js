@@ -137,6 +137,8 @@ let state = {
   customTtsVoiceId: "",
   realtimeVoice: "marin",
   standardVoice: "English_magnetic_voiced_man",
+  ttsSpeedMode: "auto",
+  ttsSpeed: 1.0,
   originalVolume: 18,
   voiceVolume: 100,
   showSource: true,

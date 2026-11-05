@@ -62,6 +62,21 @@ describe("caption fitRateForCue (multilingual)", () => {
     expect(api.catchUpRateForLag(10)).toBe(2.0);
   });
 
+  it("uses adaptive rate in auto mode and a fixed capped rate in manual mode", () => {
+    expect(api.resolveSpeechRate({ calculatedRate: 1.2, catchUpRate: 1.5 })).toBe(1.5);
+    expect(api.resolveSpeechRate({ calculatedRate: 0.9, catchUpRate: 1 })).toBe(1);
+    expect(api.resolveSpeechRate({ calculatedRate: 1, catchUpRate: 5 })).toBe(2.0);
+    expect(api.resolveSpeechRate({
+      calculatedRate: 1.2,
+      catchUpRate: 1.5,
+      settings: { ttsSpeedMode: "manual", ttsSpeed: 0.9 },
+    })).toBe(0.9);
+    expect(api.resolveSpeechRate({
+      calculatedRate: 1.2,
+      settings: { ttsRate: 1.7 },
+    })).toBe(1.7);
+  });
+
   it("marks cues the video has already moved past as stale", () => {
     const cue = { start: 10, end: 13 };
     expect(api.isCueStale(13.5, cue)).toBe(false);

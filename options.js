@@ -50,6 +50,8 @@
     smartSkipNative: false,
     autoPauseOnHover: false,
     navHotkeys: false,
+    ttsSpeedMode: "auto",
+    ttsSpeed: 1.0,
     voiceVolume: 100,
     originalVolume: 18,
     muteOriginal: false,
@@ -121,6 +123,16 @@
   const smartSkipNativeInput = document.getElementById("smartSkipNative");
   const autoPauseOnHoverInput = document.getElementById("autoPauseOnHover");
   const navHotkeysInput = document.getElementById("navHotkeys");
+  const ttsSpeedModeInput = document.getElementById("ttsSpeedMode");
+  const ttsSpeedInput = document.getElementById("ttsSpeed");
+  const ttsSpeedWrap = document.getElementById("ttsSpeedWrap");
+  const ttsSpeedVal = document.getElementById("ttsSpeedVal");
+
+  function updateSpeechTimingVisibility() {
+    const manual = ttsSpeedModeInput?.value === "manual";
+    if (ttsSpeedWrap) ttsSpeedWrap.style.display = manual ? "block" : "none";
+    if (ttsSpeedInput && ttsSpeedVal) ttsSpeedVal.textContent = `${Number(ttsSpeedInput.value).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}x`;
+  }
 
   // Preview elements
   const previewSubBox = document.getElementById("previewSubBox");
@@ -349,6 +361,9 @@
     if (shouldUpdate(smartSkipNativeInput)) smartSkipNativeInput.checked = !!currentSettings.smartSkipNative;
     if (shouldUpdate(autoPauseOnHoverInput)) autoPauseOnHoverInput.checked = !!currentSettings.autoPauseOnHover;
     if (shouldUpdate(navHotkeysInput)) navHotkeysInput.checked = !!currentSettings.navHotkeys;
+    if (shouldUpdate(ttsSpeedModeInput)) ttsSpeedModeInput.value = currentSettings.ttsSpeedMode || "auto";
+    if (shouldUpdate(ttsSpeedInput)) ttsSpeedInput.value = currentSettings.ttsSpeed ?? 1;
+    updateSpeechTimingVisibility();
 
     if (shouldUpdate(voiceVolumeInput)) {
       voiceVolumeInput.value = currentSettings.voiceVolume ?? 100;
@@ -464,6 +479,8 @@
     if (smartSkipNativeInput) currentSettings.smartSkipNative = smartSkipNativeInput.checked;
     if (autoPauseOnHoverInput) currentSettings.autoPauseOnHover = autoPauseOnHoverInput.checked;
     if (navHotkeysInput) currentSettings.navHotkeys = navHotkeysInput.checked;
+    if (ttsSpeedModeInput) currentSettings.ttsSpeedMode = ttsSpeedModeInput.value;
+    if (ttsSpeedInput) currentSettings.ttsSpeed = Number(ttsSpeedInput.value);
 
     if (voiceVolumeInput) {
       currentSettings.voiceVolume = Number(voiceVolumeInput.value);
@@ -556,7 +573,8 @@
     voiceVolumeInput, originalVolumeInput, muteOriginalInput,
     fontSizeInput, bottomOffsetInput, layoutPresetInput, highContrastInput,
     subtitleOrderInput, subShadowStyleInput, subBackgroundOpacityInput,
-    autoStartInput, smartSkipNativeInput, autoPauseOnHoverInput, navHotkeysInput
+    autoStartInput, smartSkipNativeInput, autoPauseOnHoverInput, navHotkeysInput,
+    ttsSpeedModeInput, ttsSpeedInput
   ];
 
   allInputs.forEach((input) => {
@@ -570,6 +588,9 @@
       saveImmediately();
     });
   });
+
+  ttsSpeedModeInput?.addEventListener("change", updateSpeechTimingVisibility);
+  ttsSpeedInput?.addEventListener("input", updateSpeechTimingVisibility);
 
   [
     [customProxyBaseUrlInput, "Custom AI Gateway"],

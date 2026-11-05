@@ -76,6 +76,8 @@ const DEFAULT_SETTINGS = {
   smartSkipNative: false,
   autoPauseOnHover: false,
   navHotkeys: false,
+  ttsSpeedMode: "auto",
+  ttsSpeed: 1.0,
 };
 
 // In-memory state. Resets when the service worker cold-starts; that's

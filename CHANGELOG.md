@@ -33,6 +33,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - Firefox builds now require Firefox 140+ (Android 142+) so the `data_collection_permissions` disclosure is actually supported; `web-ext lint` reports 0 errors and 0 warnings.
   - Synthetic and cloud speech now share a generation/abort guard: Stop aborts an in-flight fetch so a stopped session never plays late audio, browser speech errors advance the queue instead of stalling it, and a stall watchdog skips an utterance that never ends.
   - Rate fitting uses the natural gap until the next cue (slot widening), which avoids unnecessary speed-ups on normally paced lines.
+  - Options now expose **Speech timing**: Auto (adaptive, recommended) or Manual (fixed speed, never exceeded). Auto/manual applies to the timed caption queue and the live STT/YouTube-CC fallbacks; the old numeric `ttsRate` migrates to Manual.
   - Content scripts no longer read the whole `chrome.storage.local` area. They receive only non-secret preferences, and fallback paths request a single provider key from the background through `GET_PROVIDER_KEY` (YouTube senders only). `GET_STATE` returns a pruned snapshot to content senders.
   - Soniox WebSocket messages (`startSonioxWs`, `sonioxAudio`, `stopSonioxWs`) now require a YouTube sender.
   - Privacy/store documents now describe the real storage protection instead of claiming `TRUSTED_CONTEXTS`.

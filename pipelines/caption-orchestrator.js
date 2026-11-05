@@ -113,7 +113,7 @@
           customTtsApiKey: settings.customTtsApiKey,
           customTtsModelId: settings.customTtsModelId,
           voiceName: settings.standardVoice,
-          rate: settings.ttsRate || 1,
+          rate: window.LumeoCaptionOrchestrator.resolveSpeechRate({ settings }),
           volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
           onSkip: () => ctx.showToast("⚠️ Spoken audio is catching up; oldest line skipped.", 3500),
           onFailover: () => {
@@ -410,7 +410,7 @@
             customTtsVoiceId: liveSettings.customTtsVoiceId,
             customTtsApiKey: liveSettings.customTtsApiKey,
             voiceName: liveSettings.standardVoice,
-            rate: liveSettings.ttsRate || 1,
+            rate: window.LumeoCaptionOrchestrator.resolveSpeechRate({ settings: liveSettings }),
             volume: Math.min((liveSettings.voiceVolume ?? 100) / 100, 1),
             onSkip: () => ctx.showToast("⚠️ Spoken audio is catching up; oldest line skipped.", 3500),
           }).catch(() => { });
@@ -777,6 +777,21 @@
       return now > end + (Number(graceSeconds) || 0);
     },
 
+    // Auto mode adapts to the line and the lag; manual mode is a fixed user
+    // speed (the old numeric `ttsRate` migrates to manual). Both clamp to the
+    // 0.5-2.0 product band.
+    resolveSpeechRate({ calculatedRate = 1, catchUpRate = 1, settings = {} } = {}) {
+      const legacy = Number(settings.ttsRate);
+      const isManual = settings.ttsSpeedMode === "manual"
+        || (!settings.ttsSpeedMode && Number.isFinite(legacy) && legacy > 0);
+      if (isManual) {
+        const manual = Number(settings.ttsSpeed) > 0 ? Number(settings.ttsSpeed) : legacy;
+        return Math.min(2.0, Math.max(0.5, Number.isFinite(manual) && manual > 0 ? manual : 1));
+      }
+      const desired = Math.max(Number(calculatedRate) || 1, Number(catchUpRate) || 1);
+      return Math.min(2.0, Math.max(0.5, desired));
+    },
+
     updateCaptionProgress(progress = {}, ctx) {
       const completed = Number(progress.completed || 0);
       const total = Number(progress.total || 0);
@@ -968,7 +983,11 @@
           // The longer a cue has already been on screen, the harder the voice
           // has to push to stay with the video. 2.0x is the product cap.
           const catchUpRate = orchestrator.catchUpRateForLag(cueLag);
-          const effectiveRate = Math.max(liveSettings.ttsRate || calculatedRate, catchUpRate);
+          const effectiveRate = orchestrator.resolveSpeechRate({
+            calculatedRate,
+            catchUpRate,
+            settings: liveSettings,
+          });
 
           pipeline.speakCue(cue, {
             provider: liveSettings.captionTtsProvider,
