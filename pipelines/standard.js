@@ -22,6 +22,73 @@
     return Number(blob?.size || 0) >= MIN_CHUNK_BYTES;
   }
 
+  const MAX_READY_CHUNKS = 3;
+  const MAX_WAIT_MS = 2200;
+
+  function getDubState(sessionRef, startIndex) {
+    if (!sessionRef.dubState) {
+      const fallback = Number.isFinite(Number(startIndex)) ? Number(startIndex) : 0;
+      sessionRef.dubState = {
+        nextIndex: fallback,
+        ready: new Map(),
+        skipped: 0,
+        dropped: 0,
+      };
+    }
+    return sessionRef.dubState;
+  }
+
+  function enqueueOrderedDub(sessionRef, meta, audioBuffer, context) {
+    const state = getDubState(sessionRef, sessionRef.dubStartIndex ?? meta.index);
+    if (meta.index < state.nextIndex) {
+      state.dropped += 1;
+      return;
+    }
+    if (state.ready.has(meta.index)) {
+      state.dropped += 1;
+      return;
+    }
+    state.ready.set(meta.index, { meta, audioBuffer, context });
+    if (state.ready.size > MAX_READY_CHUNKS) {
+      const keys = [...state.ready.keys()].sort((a, b) => a - b);
+      while (keys.length > MAX_READY_CHUNKS) {
+        const dropIndex = keys.pop();
+        if (dropIndex === state.nextIndex) break;
+        state.ready.delete(dropIndex);
+        state.skipped += 1;
+      }
+    }
+    drainOrderedDub(sessionRef, context);
+  }
+
+  function drainOrderedDub(sessionRef, context) {
+    const state = sessionRef.dubState;
+    if (!state) return;
+    let progress = true;
+    while (progress) {
+      progress = false;
+      while (!state.ready.has(state.nextIndex)) {
+        // Wait a bounded time for the missing chunk; after that the video has
+        // moved past its slot, so skip it instead of blocking later audio.
+        const videoNowMs = Math.max(0, (Number(context.getVideo?.()?.currentTime) || 0) * 1000);
+        const waitUntil = (state.lastEndMs || 0) + MAX_WAIT_MS;
+        if (videoNowMs > waitUntil) {
+          state.nextIndex += 1;
+          state.skipped += 1;
+          progress = true;
+          continue;
+        }
+        return;
+      }
+      const item = state.ready.get(state.nextIndex);
+      state.ready.delete(state.nextIndex);
+      state.nextIndex += 1;
+      state.lastEndMs = Number(item.meta.sourceEndMs) || state.lastEndMs;
+      playDubItem(sessionRef, item.audioBuffer, item.context || context, item.meta);
+      progress = true;
+    }
+  }
+
   function runChunkLoop(sessionRef, options = {}) {
     const {
       getActiveSession = () => null,
@@ -33,6 +100,7 @@
       chunkMs = DEFAULT_CHUNK_MS,
       retryPausedMs = 400,
       retryErrorMs = 1000,
+      getVideoTime = () => 0,
     } = options;
 
     const cycle = () => {
@@ -63,6 +131,14 @@
         if (sessionRef !== getActiveSession() || sessionRef.stopFlag) return;
         if (parts.length) {
           const blob = new BlobCtor(parts, { type: sessionRef.recorderMime });
+          const index = Number(sessionRef.nextChunkIndex) || 0;
+          sessionRef.nextChunkIndex = index + 1;
+          const sourceStartMs = Math.max(0, Math.round((Number(getVideoTime()) || 0) * 1000));
+          blob.__lumeoChunk = {
+            index,
+            sourceStartMs,
+            sourceEndMs: sourceStartMs + chunkMs,
+          };
           processChunk(sessionRef, blob).catch(() => {});
         }
         cycle();
@@ -101,7 +177,11 @@
     const fetchFn = context.fetch || fetch;
     const FormDataCtor = context.FormData || FormData;
     const parseKymaError = context.parseKymaError || ((status, body) => ({ status, user: body || "Pipeline error" }));
-    const isCurrent = () => sessionRef === context.getActiveSession?.() && sessionRef.token === context.getPageToken?.();
+    const chunkMeta = blob?.__lumeoChunk || { index: 0, sourceStartMs: 0, sourceEndMs: DEFAULT_CHUNK_MS };
+    const generation = Number(sessionRef.dubGeneration) || 0;
+    const isCurrent = () => sessionRef === context.getActiveSession?.()
+      && sessionRef.token === context.getPageToken?.()
+      && (Number(sessionRef.dubGeneration) || 0) === generation;
 
     let wavBlob;
     try {
@@ -227,6 +307,12 @@
     }
     if (!isCurrent()) return;
 
+    enqueueOrderedDub(sessionRef, chunkMeta, audioBuffer, context);
+    context.onChunkDone?.();
+  }
+
+  function playDubItem(sessionRef, audioBuffer, context = {}, meta = {}) {
+    if (!sessionRef || !audioBuffer || !sessionRef.audioCtx) return;
     if (sessionRef.nextPlayAt < sessionRef.audioCtx.currentTime) sessionRef.nextPlayAt = 0;
     // Backlog guard: tighter 1.10 cap trades chipmunking for queue drift under sustained
     // expansion (e.g. 6s speech per 5s chunk drifts +0.45s/chunk). Fast-forward instead of
@@ -238,9 +324,11 @@
     const source = sessionRef.audioCtx.createBufferSource();
     source.buffer = audioBuffer;
 
+    const settings = context.getSettings?.() || {};
     const video = typeof context.getVideo === "function" ? context.getVideo() : null;
     const fitPlaybackRate = Number(video?.playbackRate) || 1;
-    const targetDuration = 5.0 / fitPlaybackRate;
+    const chunkSeconds = (Number(meta.sourceEndMs) - Number(meta.sourceStartMs)) / 1000;
+    const targetDuration = (chunkSeconds > 0 ? chunkSeconds : 5.0) / fitPlaybackRate;
     const ttsDuration = audioBuffer.duration;
     const speedRatio = ttsDuration / targetDuration;
     let rate = 1.0;
@@ -302,8 +390,6 @@
         }, delayToEnd);
       }
     }
-
-    context.onChunkDone?.();
   }
 
   window.LumeoStandardPipeline = {
@@ -313,7 +399,11 @@
     RECORDER_MIMES,
     pickRecorderMime,
     shouldProcessChunk,
+    MAX_READY_CHUNKS,
     runChunkLoop,
     processChunk,
+    enqueueOrderedDub,
+    drainOrderedDub,
+    playDubItem,
   };
 })();

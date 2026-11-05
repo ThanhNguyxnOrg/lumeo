@@ -235,4 +235,88 @@ describe("pipelines/standard.js", () => {
     expect(chatBody.messages[0].content).toContain("first line");
     expect(session.contextLines).toEqual(["first line", "second line"]);
   });
+
+  it("plays out-of-order chunks in sequence order", () => {
+    const starts = [];
+    const audioCtx = {
+      currentTime: 100,
+      createBufferSource: vi.fn(() => ({
+        connect: vi.fn(),
+        start: vi.fn((at) => starts.push(at)),
+        playbackRate: { value: 1 },
+      })),
+    };
+    const session = {
+      token: 1,
+      audioCtx,
+      outputGain: {},
+      nextPlayAt: 0,
+      activeSources: new Set(),
+      dubStartIndex: 0,
+      dubGeneration: 0,
+    };
+    const context = { getVideo: () => ({ currentTime: 0, playbackRate: 1 }), getSettings: () => ({}) };
+
+    api.enqueueOrderedDub(session, { index: 1, sourceStartMs: 5000, sourceEndMs: 10000 }, { duration: 1 }, context);
+    expect(starts).toHaveLength(0);
+
+    api.enqueueOrderedDub(session, { index: 0, sourceStartMs: 0, sourceEndMs: 5000 }, { duration: 1 }, context);
+    expect(starts).toHaveLength(2);
+    expect(starts[0]).toBeLessThanOrEqual(starts[1]);
+  });
+
+  it("skips a missing chunk after the video has moved past its slot", () => {
+    const starts = [];
+    const audioCtx = {
+      currentTime: 10,
+      createBufferSource: vi.fn(() => ({
+        connect: vi.fn(),
+        start: vi.fn((at) => starts.push(at)),
+        playbackRate: { value: 1 },
+      })),
+    };
+    const session = {
+      token: 1,
+      audioCtx,
+      outputGain: {},
+      nextPlayAt: 0,
+      activeSources: new Set(),
+      dubStartIndex: 0,
+      dubGeneration: 0,
+    };
+    const context = { getVideo: () => ({ currentTime: 5, playbackRate: 1 }), getSettings: () => ({}) };
+
+    api.enqueueOrderedDub(session, { index: 1, sourceStartMs: 5000, sourceEndMs: 10000 }, { duration: 1 }, context);
+
+    expect(starts).toHaveLength(1);
+    expect(session.dubState.skipped).toBe(1);
+  });
+
+  it("drops a late duplicate chunk instead of playing twice", () => {
+    const starts = [];
+    const audioCtx = {
+      currentTime: 100,
+      createBufferSource: vi.fn(() => ({
+        connect: vi.fn(),
+        start: vi.fn((at) => starts.push(at)),
+        playbackRate: { value: 1 },
+      })),
+    };
+    const session = {
+      token: 1,
+      audioCtx,
+      outputGain: {},
+      nextPlayAt: 0,
+      activeSources: new Set(),
+      dubStartIndex: 0,
+      dubGeneration: 0,
+    };
+    const context = { getVideo: () => ({ currentTime: 0, playbackRate: 1 }), getSettings: () => ({}) };
+
+    api.enqueueOrderedDub(session, { index: 0, sourceStartMs: 0, sourceEndMs: 5000 }, { duration: 1 }, context);
+    api.enqueueOrderedDub(session, { index: 0, sourceStartMs: 0, sourceEndMs: 5000 }, { duration: 1 }, context);
+
+    expect(starts).toHaveLength(1);
+    expect(session.dubState.dropped).toBe(1);
+  });
 });

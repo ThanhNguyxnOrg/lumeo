@@ -269,6 +269,9 @@
       activeRecorder: null,
       nextPlayAt: 0,
       contextLines: [],
+      nextChunkIndex: 0,
+      dubStartIndex: 0,
+      dubGeneration: 0,
       stopFlag: false,
       abortController: new AbortController(),
     };
@@ -308,6 +311,9 @@
       if (session) {
         session.nextPlayAt = 0;
         session.duckUntil = 0;
+        session.dubGeneration = (Number(session.dubGeneration) || 0) + 1;
+        session.dubState = null;
+        session.dubStartIndex = Number(session.nextChunkIndex) || 0;
       }
       if (video) {
         if (settings?.muteOriginal) {
@@ -329,6 +335,7 @@
     window.LumeoStandardPipeline.runChunkLoop(newSession, {
       getActiveSession: () => session,
       isVideoPaused: () => !!videoEl?.paused,
+      getVideoTime: () => videoEl?.currentTime || 0,
       processChunk: (sessionRef, blob) => window.LumeoStandardPipeline.processChunk(sessionRef, blob, standardPipelineContext()),
       chunkMs: window.LumeoStandardPipeline.DEFAULT_CHUNK_MS || 5000,
     });
