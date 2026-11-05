@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.8] - 2026-11-05 — Ordered Dub Scheduler, Key Isolation & Multi-Store Release
+
+### Added
+
+- **Multi-target release pipeline:** one canonical `manifest.json` plus per-target transforms for Chrome, Edge, Firefox, and Opera. `scripts/build-targets.mjs` produces deterministic ZIPs, SHA-256 checksums, and a tracked-file allowlist so `.env`, tests, docs, store assets, scripts, and untracked files cannot leak into a store package. `pack.sh` and `pack.ps1` use the same builder.
+- **Tag-driven publishing:** GitHub Actions builds and verifies every package, creates the GitHub Release, submits the Firefox build to AMO listed when `AMO_API_KEY` / `AMO_API_SECRET` exist, and updates Microsoft Edge when `EDGE_PRODUCT_ID` / `EDGE_API_KEY` / `EDGE_CLIENT_ID` exist. A store API failure does not block the GitHub assets.
+- **Version, manifest, and AMO checks:** `check:versions`, `check:manifest`, and AMO metadata validation run in CI and in the release workflow.
+- **Speech timing controls:** Options expose Auto (adaptive, recommended) and Manual (fixed speed, never exceeded) for timed captions and the live STT/YouTube-CC fallbacks. The legacy numeric `ttsRate` migrates to Manual.
+- **Custom voice presets:** ElevenLabs free tier, OpenAI paid, Kyma MiniMax paid, and local Kokoro/Piper free presets fill base URL, model, and voice while every field stays editable.
+- **Translation context / glossary:** Standard dubbing sends a rolling transcript window (last 4 lines) plus the user's glossary to Kyma so pronouns and product names stay consistent across chunks.
+- **Runtime host access for custom endpoints:** custom AI gateway and custom TTS endpoints request permission for their exact origin from the Options page. `api.elevenlabs.io` and `api.deepseek.com` remain install-time defaults, and the canonical `web_accessible_resources` list shrank to the AudioWorklet only.
+
+### Fixed
+
+- **Ordered Standard dub queue:** each captured chunk carries `index` and source start/end time; completed audio plays in index order, a missing chunk is skipped after a bounded wait once the video passes its slot, late or duplicate results are dropped, and seeking resets the queue generation so old chunks cannot play after a scrub.
+- **TTS queue and catch-up:** spoken captions are queued instead of preempted, the backlog is capped, stale cues are skipped with a toast, rate fitting stretches toward `2.0×` and uses the natural gap to the next cue, and ElevenLabs defaults to `eleven_flash_v2_5`.
+- **Stop and error safety:** synthetic and cloud speech share a generation/abort guard, Stop aborts in-flight fetches, browser speech errors advance the queue, and a stall watchdog skips an utterance that never ends.
+- **Firefox and AMO readiness:** the Firefox build uses `background.scripts` with Gecko metadata and a data-collection disclosure, requires Firefox 140+ (Android 142+), and passes `web-ext lint` with 0 errors, 0 warnings, and 0 notices.
+- **Realtime language handover:** switching language no longer stops the previous session's shared audio stream; failed handovers restore the previous token and settings, and stale candidates are disposed.
+- **Sniffer injection:** page `<script src>` injection is gone; the sniffer is injected with `chrome.scripting.executeScript({ world: "MAIN" })` for tabs that were already open.
+- **Security hardening:** content scripts read only non-secret preferences; content-origin `GET_STATE` and command responses are pruned; `GET_PROVIDER_KEY` is limited to the active session tab and current provider; Soniox start/audio messages require the session tab and use the stored key; the caption-fetch proxy accepts only YouTube `/api/timedtext` URLs from YouTube senders, caps response size, and rejects off-host redirects; non-owner tabs cannot stop or update the session; the auto-merge workflow routes Dependabot metadata through `env:`.
+- **Privacy accuracy:** privacy and store documents now describe the real default storage access and active-provider key release instead of claiming `TRUSTED_CONTEXTS`.
+- **Transcript drawer polish:** SVG icons replace emoji, the export button is unified, fallback lines are marked, and the loading state respects reduced motion.
+
 ## [2.0.7] - 2026-10-12 — Translation Anti-Stall, Free All-Language Voices & Caption Fetch Bounds
 
 ### Fixed & Improved
@@ -15,38 +39,13 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - **Caption Fetch Bounds ("Loading captions..." spin):**
   - Every caption-fetch leg now has a timeout (12s direct, 15s background proxy, 60s overall cascade deadline) with parallel watch-HTML discovery, so loading always resolves to subtitles or a loud error.
   - The session toggle button now cancels while loading instead of restarting; the gear button falls back to opening the options page directly when the background does not ack.
-  - Fixed `sniffer.js` injection blocked by YouTube's CSP as "Unsafe attempt to load URL": the page `<script src>` fallback is gone and the sniffer is injected through `chrome.scripting.executeScript({ world: "MAIN" })` from the background for already-open tabs.
+  - Fixed `sniffer.js` injection blocked as "Unsafe attempt to load URL" by moving the nonce from URL query to `dataset`, with a live-scope nonce handoff.
 - **Free Voices for All Languages:**
   - Browser TTS language map covers every caption language; utterance language stays BCP-47; voice matching is full-tag-first with `fil/tl`, `no/nb/nn`, `zh/cmn/yue` aliases.
   - Popup voice list auto-filters to the selected translation language with an explicit empty state and stale-pick reset.
   - Spoken rate auto-fits each subtitle window (0.90–1.10×, per-language triggers) instead of the old 1.15–1.4× speedup; Standard dub caps at 1.10× with backlog fast-forward.
 - **Transcript Drawer Polish:**
   - Replaced emoji-as-icons with SVG, unified ghost export button, fallback-line marker, reduced-motion-safe loading state.
-- **Cross-Browser & Release Engineering:**
-  - Added `scripts/build-targets.mjs`: one canonical `manifest.json` plus per-target transforms, deterministic ZIPs, SHA-256 checksums, and a tracked-file allowlist so `.env`, tests, docs, and local artifacts cannot leak into a store package. `pack.sh` / `pack.ps1` now use it.
-  - Firefox build uses `background.scripts` with Gecko metadata and AMO data-collection disclosure; `browser.*` promise APIs (including `storage`) are used on Firefox instead of callback calls.
-  - Tag releases now build Chrome, Edge, Firefox, and Opera packages in GitHub Actions, verify every packaged manifest version, and publish them together. AMO listed submission runs from the same workflow when `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` are configured.
-  - Added version, manifest-reference, and AMO-metadata checks to CI (`check:versions`, `check:manifest`).
-  - Custom AI gateway and custom TTS endpoints can request host access at runtime; `api.elevenlabs.io` and `api.deepseek.com` are install-time defaults. The canonical `web_accessible_resources` list shrank to the AudioWorklet only.
-- **TTS Queue, Key Isolation & Firefox Release Readiness:**
-  - Spoken captions are queued instead of preempted: a new cue waits for the line already playing, the backlog is capped, and past cues are skipped with a toast when audio falls behind. Rate fitting stretches toward `2.0×` to catch the subtitles instead of drifting, and ElevenLabs defaults to `eleven_flash_v2_5`.
-  - Firefox builds now require Firefox 140+ (Android 142+) so the `data_collection_permissions` disclosure is actually supported; `web-ext lint` reports 0 errors and 0 warnings.
-  - Synthetic and cloud speech now share a generation/abort guard: Stop aborts an in-flight fetch so a stopped session never plays late audio, browser speech errors advance the queue instead of stalling it, and a stall watchdog skips an utterance that never ends.
-  - Rate fitting uses the natural gap until the next cue (slot widening), which avoids unnecessary speed-ups on normally paced lines.
-  - Options now expose **Speech timing**: Auto (adaptive, recommended) or Manual (fixed speed, never exceeded). Auto/manual applies to the timed caption queue and the live STT/YouTube-CC fallbacks; the old numeric `ttsRate` migrates to Manual.
-  - Custom voice setup gained provider presets (ElevenLabs free tier, OpenAI paid, Kyma MiniMax paid, local Kokoro/Piper free) that fill base URL/model/voice while every field stays editable.
-  - Standard dubbing now sends a rolling transcript window (last 4 lines) plus the user's **Translation context / glossary** setting to Kyma, keeping pronouns and product names consistent across chunks.
-  - Standard dubbing got an ordered, timestamped audio queue: each captured chunk carries `index` + source start/end time, completed audio is played in index order, a missing chunk is skipped after a bounded wait once the video has passed its slot, late/duplicate results are dropped, and seeking resets the queue generation so old chunks can never play after a scrub.
-  - Content scripts no longer read the whole `chrome.storage.local` area. They receive only non-secret preferences, and fallback paths request a single provider key from the background through `GET_PROVIDER_KEY` (YouTube senders only). `GET_STATE` returns a pruned snapshot to content senders.
-  - Soniox WebSocket messages (`startSonioxWs`, `sonioxAudio`, `stopSonioxWs`) now require a YouTube sender.
-  - Privacy/store documents now describe the real storage protection instead of claiming `TRUSTED_CONTEXTS`.
-  - Auto-merge workflow passes Dependabot metadata through `env:` instead of interpolating it into shell code.
-
-- **Realtime / Session Fixes:**
-  - Switching language during a realtime session no longer stops the previous session's shared audio stream; failed handovers restore the previous token/settings and stale candidates are disposed.
-- **Security Hardening:**
-  - The background caption-fetch proxy accepts only YouTube `/api/timedtext` URLs from YouTube senders, caps response size, and rejects redirects outside that host.
-  - Dynamic `innerHTML` label rendering in the overlay toolbar was replaced with DOM APIs to keep page data out of markup parsing.
 
 ## [2.0.6] - 2026-10-09 — Bilingual Layout Sync & Cache Resume Guard
 

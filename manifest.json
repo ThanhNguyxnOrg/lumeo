@@ -2,12 +2,16 @@
   "manifest_version": 3,
   "name": "Lumeo — Captions & AI Dub for YouTube",
   "short_name": "Lumeo",
-  "version": "2.0.7",
-  "version_name": "2.0.7",
+  "version": "2.0.8",
+  "version_name": "2.0.8",
   "description": "Bilingual captions and live AI dubbing for YouTube. Three tiers, one click: free caption translation, Standard dub (~5s), Realtime dub (<1s).",
   "homepage_url": "https://github.com/ThanhNguyxnOrg/lumeo",
   "minimum_chrome_version": "116",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'"
   },
@@ -66,22 +70,63 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*.youtube.com/*", "https://youtube.com/*"],
-      "js": ["services/sniffer.js"],
+      "matches": [
+        "https://*.youtube.com/*",
+        "https://youtube.com/*"
+      ],
+      "js": [
+        "services/sniffer.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://*.youtube.com/*", "https://youtube.com/*"],
-      "js": ["lib/browser-api.js", "lib/platform-adapters.js", "lib/token-guard.js", "lib/audio-utils.js", "ui/overlay.js", "ui/subtitle-overlay.js", "ui/transcript.js", "ui/voice-picker.js", "ui/caption-fallback-choice.js", "services/providers.js", "services/translate.js", "services/srt-export.js", "services/tts-browser.js", "services/tts-openai.js", "services/stt-soniox.js", "services/stt-groq.js", "services/stt-gemini.js", "services/captions.js", "services/kyma-client.js", "pipelines/caption.js", "pipelines/caption-orchestrator.js", "pipelines/realtime.js", "pipelines/standard.js", "services/session-manager.js", "content.js"],
-      "css": ["content.css"],
+      "matches": [
+        "https://*.youtube.com/*",
+        "https://youtube.com/*"
+      ],
+      "js": [
+        "lib/browser-api.js",
+        "lib/platform-adapters.js",
+        "lib/token-guard.js",
+        "lib/audio-utils.js",
+        "ui/overlay.js",
+        "ui/subtitle-overlay.js",
+        "ui/transcript.js",
+        "ui/voice-picker.js",
+        "ui/caption-fallback-choice.js",
+        "services/providers.js",
+        "services/translate.js",
+        "services/srt-export.js",
+        "services/tts-browser.js",
+        "services/tts-openai.js",
+        "services/stt-soniox.js",
+        "services/stt-groq.js",
+        "services/stt-gemini.js",
+        "services/captions.js",
+        "services/kyma-client.js",
+        "pipelines/caption.js",
+        "pipelines/caption-orchestrator.js",
+        "pipelines/realtime.js",
+        "pipelines/standard.js",
+        "services/session-manager.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["services/audio-processor.js"],
-      "matches": ["https://*.youtube.com/*", "https://youtube.com/*"]
+      "resources": [
+        "services/audio-processor.js"
+      ],
+      "matches": [
+        "https://*.youtube.com/*",
+        "https://youtube.com/*"
+      ]
     }
   ]
 }
