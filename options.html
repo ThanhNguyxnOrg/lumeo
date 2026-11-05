@@ -164,6 +164,16 @@
               <label for="customTtsApiKey">Custom Voice Gateway (ElevenLabs / Compatible Speech)</label>
               <span class="badge badge-neutral">Vendor-Neutral</span>
             </div>
+            <div class="key-sub-options" style="margin-bottom: 8px;">
+              <label for="customTtsPreset">Provider preset (fields below stay editable):</label>
+              <select id="customTtsPreset" class="form-select">
+                <option value="custom">Custom endpoint (any OpenAI-compatible / ElevenLabs URL)</option>
+                <option value="elevenlabs">ElevenLabs — free tier available; Flash model</option>
+                <option value="openai">OpenAI TTS — paid key; tts-1</option>
+                <option value="kyma">Kyma MiniMax — paid; same Kyma key as Standard</option>
+                <option value="local">Local Kokoro / Piper — free, no key (http://localhost)</option>
+              </select>
+            </div>
             <div class="custom-gateway-grid">
               <div class="key-sub-options">
                 <label for="customTtsBaseUrl">Base URL (Required, e.g. ElevenLabs, local Kokoro/Piper, or custom endpoint):</label>

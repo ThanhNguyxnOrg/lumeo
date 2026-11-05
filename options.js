@@ -42,6 +42,7 @@
     customProxyModelId: "",
     captionTtsProvider: "off",
     standardVoice: "",
+    customTtsPreset: "custom",
     customTtsBaseUrl: "",
     customTtsApiKey: "",
     customTtsVoiceId: "",
@@ -93,6 +94,7 @@
   const browserVoiceWrap = document.getElementById("browserVoiceWrap");
   const browserVoiceInput = document.getElementById("browserVoice");
   const customVoiceEngineWrap = document.getElementById("customVoiceEngineWrap");
+  const customTtsPresetInput = document.getElementById("customTtsPreset");
   const customTtsBaseUrlInput = document.getElementById("customTtsBaseUrl");
   const customTtsVoiceIdInput = document.getElementById("customTtsVoiceId");
   const customTtsApiKeyInput = document.getElementById("customTtsApiKey");
@@ -132,6 +134,25 @@
     const manual = ttsSpeedModeInput?.value === "manual";
     if (ttsSpeedWrap) ttsSpeedWrap.style.display = manual ? "block" : "none";
     if (ttsSpeedInput && ttsSpeedVal) ttsSpeedVal.textContent = `${Number(ttsSpeedInput.value).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}x`;
+  }
+
+  // Presets only fill the generic fields; users can edit every value after.
+  // "Free" means the provider offers a free API key or a local server.
+  const CUSTOM_TTS_PRESETS = {
+    elevenlabs: { baseUrl: "https://api.elevenlabs.io/v1", modelId: "eleven_flash_v2_5", voiceId: "21m00Tcm4TlvDq8ikWAM" },
+    openai: { baseUrl: "https://api.openai.com/v1", modelId: "tts-1", voiceId: "alloy" },
+    kyma: { baseUrl: "https://api.kymaapi.com/v1", modelId: "minimax-speech-turbo", voiceId: "female-shaonv" },
+    local: { baseUrl: "http://localhost:8880/v1", modelId: "kokoro", voiceId: "af_heart" },
+  };
+
+  function applyCustomTtsPreset() {
+    const preset = CUSTOM_TTS_PRESETS[customTtsPresetInput?.value];
+    if (!preset) return;
+    if (customTtsBaseUrlInput) customTtsBaseUrlInput.value = preset.baseUrl;
+    if (customTtsModelIdInput) customTtsModelIdInput.value = preset.modelId;
+    if (customTtsVoiceIdInput) customTtsVoiceIdInput.value = preset.voiceId;
+    scheduleSave();
+    ensureEndpointAccess(preset.baseUrl, "Custom voice engine").catch((err) => alert(err.message));
   }
 
   // Preview elements
@@ -352,6 +373,7 @@
 
     if (shouldUpdate(captionTtsProviderInput)) captionTtsProviderInput.value = currentSettings.captionTtsProvider || "off";
     if (shouldUpdate(browserVoiceInput) && currentSettings.standardVoice) browserVoiceInput.value = currentSettings.standardVoice;
+    if (shouldUpdate(customTtsPresetInput)) customTtsPresetInput.value = currentSettings.customTtsPreset || "custom";
     if (shouldUpdate(customTtsBaseUrlInput)) customTtsBaseUrlInput.value = currentSettings.customTtsBaseUrl || "";
     if (shouldUpdate(customTtsVoiceIdInput)) customTtsVoiceIdInput.value = currentSettings.customTtsVoiceId || "";
     if (shouldUpdate(customTtsModelIdInput)) customTtsModelIdInput.value = currentSettings.customTtsModelId || "";
@@ -470,6 +492,7 @@
 
     if (captionTtsProviderInput) currentSettings.captionTtsProvider = captionTtsProviderInput.value;
     if (browserVoiceInput) currentSettings.standardVoice = browserVoiceInput.value;
+    if (customTtsPresetInput) currentSettings.customTtsPreset = customTtsPresetInput.value;
     if (customTtsBaseUrlInput) currentSettings.customTtsBaseUrl = customTtsBaseUrlInput.value.trim();
     if (customTtsVoiceIdInput) currentSettings.customTtsVoiceId = customTtsVoiceIdInput.value.trim();
     if (customTtsModelIdInput) currentSettings.customTtsModelId = customTtsModelIdInput.value.trim();
@@ -569,7 +592,7 @@
     groqApiKeyInput, kymaKeyInput,
     customProxyBaseUrlInput, customProxyApiKeyInput, customProxyModelIdInput,
     captionTtsProviderInput, browserVoiceInput,
-    customTtsBaseUrlInput, customTtsVoiceIdInput, customTtsApiKeyInput, customTtsModelIdInput,
+    customTtsPresetInput, customTtsBaseUrlInput, customTtsVoiceIdInput, customTtsApiKeyInput, customTtsModelIdInput,
     voiceVolumeInput, originalVolumeInput, muteOriginalInput,
     fontSizeInput, bottomOffsetInput, layoutPresetInput, highContrastInput,
     subtitleOrderInput, subShadowStyleInput, subBackgroundOpacityInput,
@@ -591,6 +614,7 @@
 
   ttsSpeedModeInput?.addEventListener("change", updateSpeechTimingVisibility);
   ttsSpeedInput?.addEventListener("input", updateSpeechTimingVisibility);
+  customTtsPresetInput?.addEventListener("change", applyCustomTtsPreset);
 
   [
     [customProxyBaseUrlInput, "Custom AI Gateway"],
