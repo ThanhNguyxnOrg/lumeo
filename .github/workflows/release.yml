@@ -286,9 +286,31 @@ jobs:
 
       - name: Store submission summary
         if: always() && steps.plan.outputs.should_release == 'true'
+        env:
+          AMO_OUTCOME: ${{ steps.amo.outcome }}
+          EDGE_OUTCOME: ${{ steps.edge.outcome }}
+          AMO_PLANNED: ${{ steps.stores.outputs.amo }}
+          EDGE_PLANNED: ${{ steps.stores.outputs.edge }}
         run: |
-          echo "Firefox AMO step: ${{ steps.amo.outcome || 'skipped' }}"
-          echo "Microsoft Edge step: ${{ steps.edge.outcome || 'skipped' }}"
-          if [ "${{ steps.amo.outcome }}" = "failure" ] || [ "${{ steps.edge.outcome }}" = "failure" ]; then
+          # Store steps use continue-on-error so the GitHub Release is not
+          # blocked by a store API. Surface their real outcome anyway: the job
+          # stays green, but the run summary shows exactly which store failed.
+          amo="${AMO_OUTCOME:-not-run}"
+          edge="${EDGE_OUTCOME:-not-run}"
+          if [ "$AMO_PLANNED" != "true" ]; then amo="skipped"; fi
+          if [ "$EDGE_PLANNED" != "true" ]; then edge="skipped"; fi
+          echo "Firefox AMO: $amo"
+          echo "Microsoft Edge: $edge"
+          {
+            echo "## Store submissions"
+            echo ""
+            echo "| Store | Result |"
+            echo "|---|---|"
+            echo "| Firefox AMO | $amo |"
+            echo "| Microsoft Edge | $edge |"
+            echo ""
+            echo "GitHub Release assets are published independently of store results."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$amo" = "failure" ] || [ "$edge" = "failure" ]; then
             echo "::warning::One or more store submissions failed; the GitHub Release assets were still published."
           fi
