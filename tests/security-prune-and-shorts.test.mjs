@@ -62,6 +62,15 @@ describe("Phase 1: Security Pruning & Shorts URL Support", () => {
     expect(adapter.getVideoId("https://example.com/other")).toBe(null);
   });
 
+  it("matches only real YouTube hostnames, not look-alike domains", () => {
+    const adapter = globalThis.LumeoPlatformAdapters?.getAdapter("https://www.youtube.com");
+    expect(adapter.isMatch("https://www.youtube.com/watch?v=x")).toBe(true);
+    expect(adapter.isMatch("https://youtube.com/watch?v=x")).toBe(true);
+    expect(adapter.isMatch("https://notyoutube.com/watch?v=x")).toBe(false);
+    expect(adapter.isMatch("https://evil-youtube.com/watch?v=x")).toBe(false);
+    expect(adapter.isMatch("https://youtube.com.evil.example/watch?v=x")).toBe(false);
+  });
+
   it("injects the sniffer through the MAIN-world scripting API", async () => {
     const bridge = globalThis.LumeoBackground;
     await bridge.ensureSniffer(42);

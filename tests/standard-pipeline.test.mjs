@@ -236,6 +236,94 @@ describe("pipelines/standard.js", () => {
     expect(session.contextLines).toEqual(["first line", "second line"]);
   });
 
+  it("captures the chunk slot start when recording begins, not when it stops", () => {
+    let recorder;
+    let videoTime = 10;
+    class FakeRecorder {
+      constructor() {
+        this.listeners = new Map();
+        this.state = "inactive";
+        recorder = this;
+      }
+      addEventListener(type, handler) {
+        this.listeners.set(type, handler);
+      }
+      start() {
+        this.state = "recording";
+        this.listeners.get("dataavailable")?.({ data: new Blob(["abcd"], { type: "audio/webm" }) });
+      }
+      stop() {
+        this.state = "inactive";
+        this.listeners.get("stop")?.();
+      }
+    }
+    const processChunk = vi.fn(async () => {});
+    const session = { token: 1, stream: {}, recorderMime: "audio/webm", stopFlag: false };
+    api.runChunkLoop(session, {
+      getActiveSession: () => session,
+      isVideoPaused: () => false,
+      MediaRecorder: FakeRecorder,
+      setTimeout: () => 1,
+      getVideoTime: () => videoTime,
+      processChunk,
+    });
+
+    videoTime = 15;
+    recorder.stop();
+
+    expect(processChunk).toHaveBeenCalledOnce();
+    const blob = processChunk.mock.calls[0][1];
+    expect(blob.__lumeoChunk).toEqual({
+      index: 0,
+      sourceStartMs: 10000,
+      sourceEndMs: 15000,
+    });
+    session.stopFlag = true;
+  });
+
+  it("discards an in-flight chunk that straddles a seek", () => {
+    let recorder;
+    class FakeRecorder {
+      constructor() {
+        this.listeners = new Map();
+        this.state = "inactive";
+        recorder = this;
+      }
+      addEventListener(type, handler) {
+        this.listeners.set(type, handler);
+      }
+      start() {
+        this.state = "recording";
+        this.listeners.get("dataavailable")?.({ data: new Blob(["abcd"], { type: "audio/webm" }) });
+      }
+      stop() {
+        this.state = "inactive";
+        this.listeners.get("stop")?.();
+      }
+    }
+    const processChunk = vi.fn(async () => {});
+    const session = {
+      token: 1,
+      stream: {},
+      recorderMime: "audio/webm",
+      stopFlag: false,
+      chunkGeneration: 0,
+    };
+    api.runChunkLoop(session, {
+      getActiveSession: () => session,
+      isVideoPaused: () => false,
+      MediaRecorder: FakeRecorder,
+      setTimeout: () => 1,
+      processChunk,
+    });
+
+    session.chunkGeneration += 1;
+    recorder.stop();
+
+    expect(processChunk).not.toHaveBeenCalled();
+    session.stopFlag = true;
+  });
+
   it("plays out-of-order chunks in sequence order", () => {
     const starts = [];
     const audioCtx = {
@@ -259,10 +347,13 @@ describe("pipelines/standard.js", () => {
 
     api.enqueueOrderedDub(session, { index: 1, sourceStartMs: 5000, sourceEndMs: 10000 }, { duration: 1 }, context);
     expect(starts).toHaveLength(0);
+    // A later chunk is buffered, so a drain timer must keep the gap bounded.
+    expect(session.dubState.drainTimer).toBeTruthy();
 
     api.enqueueOrderedDub(session, { index: 0, sourceStartMs: 0, sourceEndMs: 5000 }, { duration: 1 }, context);
     expect(starts).toHaveLength(2);
     expect(starts[0]).toBeLessThanOrEqual(starts[1]);
+    expect(session.dubState.drainTimer).toBeFalsy();
   });
 
   it("skips a missing chunk after the video has moved past its slot", () => {
@@ -284,9 +375,98 @@ describe("pipelines/standard.js", () => {
       dubStartIndex: 0,
       dubGeneration: 0,
     };
-    const context = { getVideo: () => ({ currentTime: 5, playbackRate: 1 }), getSettings: () => ({}) };
+    const context = { getVideo: () => ({ currentTime: 8, playbackRate: 1 }), getSettings: () => ({}) };
 
     api.enqueueOrderedDub(session, { index: 1, sourceStartMs: 5000, sourceEndMs: 10000 }, { duration: 1 }, context);
+
+    expect(starts).toHaveLength(1);
+    expect(session.dubState.skipped).toBe(1);
+  });
+
+  it("resets the queue after a seek and anchors the first new chunk to its own start", () => {
+    const starts = [];
+    const audioCtx = {
+      currentTime: 100,
+      createBufferSource: vi.fn(() => ({
+        connect: vi.fn(),
+        start: vi.fn((at) => starts.push(at)),
+        playbackRate: { value: 1 },
+      })),
+    };
+    const session = {
+      token: 1,
+      audioCtx,
+      outputGain: {},
+      nextPlayAt: 0,
+      activeSources: new Set(),
+      dubStartIndex: 0,
+      dubGeneration: 0,
+    };
+    const video = { currentTime: 5, playbackRate: 1 };
+    const context = { getVideo: () => video, getSettings: () => ({}) };
+
+    api.enqueueOrderedDub(session, { index: 1, sourceStartMs: 5000, sourceEndMs: 10000 }, { duration: 1 }, context);
+    expect(session.dubState.drainTimer).toBeTruthy();
+
+    session.dubGeneration += 1;
+    api.resetDubState(session, 3);
+    expect(session.dubState).toBeNull();
+    expect(session.dubStartIndex).toBe(3);
+
+    video.currentTime = 15;
+    api.enqueueOrderedDub(session, { index: 3, sourceStartMs: 15000, sourceEndMs: 20000 }, { duration: 1 }, context);
+
+    expect(starts).toHaveLength(1);
+    expect(session.dubState.skipped).toBe(0);
+    expect(session.dubState.nextIndex).toBe(4);
+  });
+
+  it("skips a buffered gap on its own drain timer without a new enqueue", async () => {
+    const { window } = await createSandboxWindow();
+    const pending = [];
+    window.setTimeout = (fn, ms) => {
+      pending.push({ fn, ms });
+      return pending.length;
+    };
+    window.clearTimeout = (id) => {
+      const timer = pending[id - 1];
+      if (timer) timer.cancelled = true;
+    };
+    loadService("pipelines/standard.js", window);
+    const localApi = window.LumeoStandardPipeline;
+    const starts = [];
+    const audioCtx = {
+      currentTime: 100,
+      createBufferSource: vi.fn(() => ({
+        connect: vi.fn(),
+        start: vi.fn((at) => starts.push(at)),
+        playbackRate: { value: 1 },
+      })),
+    };
+    const session = {
+      token: 1,
+      audioCtx,
+      outputGain: {},
+      nextPlayAt: 0,
+      activeSources: new Set(),
+      dubStartIndex: 0,
+      dubGeneration: 0,
+      stopFlag: false,
+    };
+    const video = { currentTime: 5, playbackRate: 1 };
+    const context = {
+      getActiveSession: () => session,
+      getVideo: () => video,
+      getSettings: () => ({ muteOriginal: true }),
+    };
+
+    localApi.enqueueOrderedDub(session, { index: 1, sourceStartMs: 5000, sourceEndMs: 10000 }, { duration: 1 }, context);
+    expect(starts).toHaveLength(0);
+    const drainTimer = pending.find((timer) => timer.ms === localApi.DRAIN_TICK_MS);
+    expect(drainTimer).toBeTruthy();
+
+    video.currentTime = 8;
+    drainTimer.fn();
 
     expect(starts).toHaveLength(1);
     expect(session.dubState.skipped).toBe(1);

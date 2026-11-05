@@ -272,6 +272,7 @@
       nextChunkIndex: 0,
       dubStartIndex: 0,
       dubGeneration: 0,
+      chunkGeneration: 0,
       stopFlag: false,
       abortController: new AbortController(),
     };
@@ -312,8 +313,15 @@
         session.nextPlayAt = 0;
         session.duckUntil = 0;
         session.dubGeneration = (Number(session.dubGeneration) || 0) + 1;
-        session.dubState = null;
+        session.chunkGeneration = (Number(session.chunkGeneration) || 0) + 1;
         session.dubStartIndex = Number(session.nextChunkIndex) || 0;
+        window.LumeoStandardPipeline?.resetDubState?.(session, session.dubStartIndex);
+        // Drop the in-flight chunk: it may straddle the seek boundary.
+        try {
+          if (session.activeRecorder && session.activeRecorder.state !== "inactive") {
+            session.activeRecorder.stop();
+          }
+        } catch {}
       }
       if (video) {
         if (settings?.muteOriginal) {
@@ -543,6 +551,7 @@
       s.captionTimer = null;
     }
     s.stopFlag = true;
+    window.LumeoStandardPipeline?.resetDubState?.(s, s.nextChunkIndex);
     try { s.abortController?.abort(); } catch {}
     try {
       if (s.activeRecorder && s.activeRecorder.state !== "inactive") {

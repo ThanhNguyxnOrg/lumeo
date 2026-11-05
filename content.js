@@ -383,6 +383,7 @@
     "customTtsVoiceId",
     "customTtsModelId",
   ];
+  const CONTENT_STORAGE_KEY_SET = new Set(CONTENT_STORAGE_KEYS);
 
   // Load from chrome.storage.local on startup
   try {
@@ -407,11 +408,14 @@
 
       chrome.storage.onChanged.addListener((changes, area) => {
         if (area === "local") {
+          const allowedKeys = CONTENT_STORAGE_KEY_SET;
           const updated = {};
           for (const [key, change] of Object.entries(changes)) {
-            if (!IGNORED_STORAGE_KEYS.has(key)) {
-              updated[key] = change.newValue;
-            }
+            if (IGNORED_STORAGE_KEYS.has(key)) continue;
+            // Never merge provider keys, endpoint credentials, or unrelated
+            // extension state into the content-script realm.
+            if (!allowedKeys.has(key)) continue;
+            updated[key] = change.newValue;
           }
           if (Object.keys(updated).length > 0) {
             settings = { ...(settings || {}), ...updated };
@@ -491,8 +495,10 @@
     const currentSettings = stored?.state || settings || { tier: "caption", targetLanguage: "en", translateProvider: "google-free" };
     settings = currentSettings;
     LumeoSessionManager.setSettings(currentSettings);
-    // Delegate START to background service worker which will ensureContentScript and send CONTENT_START
-    browserApi.sendRuntimeMessage({ type: "START", settings: currentSettings }).catch(() => {});
+    // Delegate START to background service worker which will ensureContentScript
+    // and send CONTENT_START. Do not echo this pruned snapshot back: the
+    // background owns provider keys and the persisted provider selection.
+    browserApi.sendRuntimeMessage({ type: "START" }).catch(() => {});
   }
 
   function handleStopSession() {

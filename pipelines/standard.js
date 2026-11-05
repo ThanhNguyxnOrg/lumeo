@@ -24,22 +24,49 @@
 
   const MAX_READY_CHUNKS = 3;
   const MAX_WAIT_MS = 2200;
+  const DRAIN_TICK_MS = 250;
 
-  function getDubState(sessionRef, startIndex) {
+  function clearDrainTimer(state) {
+    if (!state?.drainTimer) return;
+    try { clearTimeout(state.drainTimer); } catch {}
+    state.drainTimer = null;
+  }
+
+  function getDubState(sessionRef, startIndex, startMs) {
     if (!sessionRef.dubState) {
       const fallback = Number.isFinite(Number(startIndex)) ? Number(startIndex) : 0;
+      const anchor = Number(startMs);
       sessionRef.dubState = {
         nextIndex: fallback,
+        // Anchor the first wait window to where the chunk actually started.
+        // Without this, the first post-seek chunk looks stale and is skipped.
+        lastEndMs: Number.isFinite(anchor) && anchor >= 0 ? anchor : 0,
         ready: new Map(),
         skipped: 0,
         dropped: 0,
+        drainTimer: null,
       };
     }
     return sessionRef.dubState;
   }
 
+  function scheduleDrain(sessionRef, context) {
+    const state = sessionRef.dubState;
+    if (!state || state.drainTimer) return;
+    state.drainTimer = setTimeout(() => {
+      state.drainTimer = null;
+      if (sessionRef !== context.getActiveSession?.() || sessionRef.stopFlag) return;
+      if (sessionRef.dubState !== state) return;
+      drainOrderedDub(sessionRef, context);
+    }, DRAIN_TICK_MS);
+  }
+
   function enqueueOrderedDub(sessionRef, meta, audioBuffer, context) {
-    const state = getDubState(sessionRef, sessionRef.dubStartIndex ?? meta.index);
+    const state = getDubState(
+      sessionRef,
+      sessionRef.dubStartIndex ?? meta.index,
+      meta.sourceStartMs,
+    );
     if (meta.index < state.nextIndex) {
       state.dropped += 1;
       return;
@@ -78,6 +105,13 @@
           progress = true;
           continue;
         }
+        // A later chunk is already buffered: keep a timer alive so the gap is
+        // skipped even when no further chunk arrives to trigger drain again.
+        if (state.ready.size > 0) {
+          scheduleDrain(sessionRef, context);
+        } else {
+          clearDrainTimer(state);
+        }
         return;
       }
       const item = state.ready.get(state.nextIndex);
@@ -86,6 +120,16 @@
       state.lastEndMs = Number(item.meta.sourceEndMs) || state.lastEndMs;
       playDubItem(sessionRef, item.audioBuffer, item.context || context, item.meta);
       progress = true;
+    }
+  }
+
+  function resetDubState(sessionRef, startIndex) {
+    const state = sessionRef?.dubState;
+    clearDrainTimer(state);
+    if (!sessionRef) return;
+    sessionRef.dubState = null;
+    if (Number.isFinite(Number(startIndex))) {
+      sessionRef.dubStartIndex = Number(startIndex);
     }
   }
 
@@ -122,6 +166,7 @@
         }
       }
 
+      const chunkGeneration = Number(sessionRef.chunkGeneration) || 0;
       sessionRef.activeRecorder = recorder;
       const parts = [];
       recorder.addEventListener("dataavailable", (event) => {
@@ -129,22 +174,34 @@
       });
       recorder.addEventListener("stop", () => {
         if (sessionRef !== getActiveSession() || sessionRef.stopFlag) return;
+        // A seek bumps chunkGeneration and stops the in-flight recorder so a
+        // chunk that straddles the seek boundary is discarded instead of being
+        // transcribed and played at the wrong timestamp.
+        if ((Number(sessionRef.chunkGeneration) || 0) !== chunkGeneration) {
+          cycle();
+          return;
+        }
         if (parts.length) {
           const blob = new BlobCtor(parts, { type: sessionRef.recorderMime });
           const index = Number(sessionRef.nextChunkIndex) || 0;
           sessionRef.nextChunkIndex = index + 1;
-          const sourceStartMs = Math.max(0, Math.round((Number(getVideoTime()) || 0) * 1000));
+          const stoppedAtMs = Math.max(0, Math.round((Number(getVideoTime()) || 0) * 1000));
+          const sourceEndMs = stoppedAtMs > sourceStartMs ? stoppedAtMs : sourceStartMs + chunkMs;
           blob.__lumeoChunk = {
             index,
             sourceStartMs,
-            sourceEndMs: sourceStartMs + chunkMs,
+            sourceEndMs,
           };
           processChunk(sessionRef, blob).catch(() => {});
         }
         cycle();
       });
 
+      let sourceStartMs = 0;
       try {
+        // Capture the slot start before recording begins. Reading the video
+        // clock after the 5s stop put every chunk one chunk-length late.
+        sourceStartMs = Math.max(0, Math.round((Number(getVideoTime()) || 0) * 1000));
         recorder.start();
       } catch {
         setTimer(cycle, retryErrorMs);
@@ -400,10 +457,13 @@
     pickRecorderMime,
     shouldProcessChunk,
     MAX_READY_CHUNKS,
+    MAX_WAIT_MS,
+    DRAIN_TICK_MS,
     runChunkLoop,
     processChunk,
     enqueueOrderedDub,
     drainOrderedDub,
+    resetDubState,
     playDubItem,
   };
 })();

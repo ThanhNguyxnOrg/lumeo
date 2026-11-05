@@ -221,9 +221,12 @@ function listFilesFallback(root) {
 export function listRuntimeFiles(root = process.cwd()) {
   let files;
   try {
+    // Package only committed paths. `--others` would let an untracked local
+    // file under services/, lib/, or ui/ ride into a release ZIP even though it
+    // is absent from review and from the tag's source tree.
     const output = execFileSync(
       "git",
-      ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+      ["ls-files", "--cached", "-z"],
       { cwd: root, encoding: "buffer" },
     );
     files = output.toString("utf8").split("\0").filter(Boolean);

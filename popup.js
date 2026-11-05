@@ -653,7 +653,7 @@ function getVideoIdFromUrl(url) {
     if (host === "youtu.be" || host.endsWith(".youtu.be")) {
       return parsed.pathname.replace(/^\/+/, "").split("/")[0] || null;
     }
-    if (!host.includes("youtube.com")) return null;
+    if (host !== "youtube.com" && !host.endsWith(".youtube.com")) return null;
     return (
       parsed.searchParams.get("v") ||
       parsed.pathname.match(/\/(shorts|live)\/([a-zA-Z0-9_-]+)/)?.[2] ||

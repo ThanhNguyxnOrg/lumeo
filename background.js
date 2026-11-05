@@ -116,13 +116,26 @@ const SENSITIVE_KEY_FIELDS = [
   "kymaKey"
 ];
 
-function pruneSettingsForContent(fullSettings) {
-  const safe = { ...fullSettings };
+// Fields a content script may write back. Provider selection and every key or
+// endpoint field stay background-owned so a YouTube tab cannot switch the
+// active provider and then ask the background for a different stored key.
+const CONTENT_WRITABLE_SETTINGS = new Set([
+  "targetLanguage",
+  "sttProvider",
+  "captionTtsProvider",
+  "standardVoice",
+  "realtimeVoice",
+  "originalVolume",
+  "voiceVolume",
+]);
+
+function providerKeyFieldsForSettings(fullSettings) {
+  const safe = { ...(fullSettings || {}) };
   const providerRegistry = globalThis.LumeoProviders;
   const neededKeys = new Set();
 
   if (providerRegistry) {
-    const tier = safe.tier || "caption";
+    const tier = ["caption", "standard", "realtime"].includes(safe.tier) ? safe.tier : "caption";
     for (const slot of providerRegistry.slotsForMode(tier)) {
       const provider = providerRegistry.selectedProviderForSlot(slot.id, safe);
       if (provider) {
@@ -143,6 +156,14 @@ function pruneSettingsForContent(fullSettings) {
     if (safe.sttProvider === "soniox") neededKeys.add("sonioxApiKey");
   }
 
+  return neededKeys;
+}
+
+function pruneSettingsForContent(fullSettings, options = {}) {
+  const safe = { ...(fullSettings || {}) };
+  const includeActiveKeys = options.includeActiveKeys !== false;
+  const neededKeys = includeActiveKeys ? providerKeyFieldsForSettings(safe) : new Set();
+
   for (const k of SENSITIVE_KEY_FIELDS) {
     if (!neededKeys.has(k)) {
       safe[k] = "";
@@ -151,9 +172,41 @@ function pruneSettingsForContent(fullSettings) {
   return safe;
 }
 
+function filterContentSettings(partial) {
+  const filtered = {};
+  if (!partial || typeof partial !== "object" || Array.isArray(partial)) return filtered;
+
+  for (const [key, value] of Object.entries(partial)) {
+    if (!CONTENT_WRITABLE_SETTINGS.has(key)) continue;
+
+    if (key === "originalVolume" || key === "voiceVolume") {
+      const volume = Number(value);
+      if (Number.isFinite(volume)) filtered[key] = Math.max(0, Math.min(100, Math.round(volume)));
+      continue;
+    }
+    if (typeof value === "string") {
+      filtered[key] = value.slice(0, 200);
+    }
+  }
+
+  return filtered;
+}
+
+// Broadcast state intentionally omits provider keys: runtime broadcasts can
+// reach content scripts, and the popup already has the key values it needs
+// from its own GET_STATE request.
+function stateForBroadcast() {
+  const safe = snapshot();
+  for (const key of SENSITIVE_KEY_FIELDS) delete safe[key];
+  return safe;
+}
+
 globalThis.LumeoBackground = {
   pruneSettingsForContent,
+  providerKeyFieldsForSettings,
+  filterContentSettings,
   ensureSniffer,
+  isYouTubeUrl,
 };
 
 function broadcastToPopup() {
@@ -163,7 +216,7 @@ function broadcastToPopup() {
       broadcastTimer = setTimeout(() => {
         broadcastTimer = null;
         lastBroadcastAt = Date.now();
-        browserApi.sendRuntimeMessage({ type: "BACKGROUND_STATE_UPDATE", state: snapshot() }).catch(() => { });
+        browserApi.sendRuntimeMessage({ type: "BACKGROUND_STATE_UPDATE", state: stateForBroadcast() }).catch(() => { });
       }, BROADCAST_DEBOUNCE_MS);
     }
     return;
@@ -173,7 +226,7 @@ function broadcastToPopup() {
     broadcastTimer = null;
   }
   lastBroadcastAt = now;
-  browserApi.sendRuntimeMessage({ type: "BACKGROUND_STATE_UPDATE", state: snapshot() }).catch(() => { });
+  browserApi.sendRuntimeMessage({ type: "BACKGROUND_STATE_UPDATE", state: stateForBroadcast() }).catch(() => { });
 }
 
 async function relayToContent(tabId, message, retries = 3) {
@@ -230,8 +283,23 @@ async function fetchText(url) {
   return text;
 }
 
+function isExtensionPageSender(sender) {
+  const url = String(sender?.url || "");
+  try {
+    return !!url && url.startsWith(chrome.runtime.getURL(""));
+  } catch {
+    return false;
+  }
+}
+
 function isYouTubeUrl(url) {
-  return typeof url === "string" && /^https?:\/\/[^/]*youtube\.com\//.test(url);
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" &&
+      (parsed.hostname === "youtube.com" || parsed.hostname.endsWith(".youtube.com"));
+  } catch {
+    return false;
+  }
 }
 
 async function activeYouTubeTab() {
@@ -534,8 +602,12 @@ async function handleUpdateSettings(settings) {
 }
 
 async function handleUpdateVolume(originalVolume, voiceVolume) {
-  if (typeof originalVolume === "number") state.originalVolume = originalVolume;
-  if (typeof voiceVolume === "number") state.voiceVolume = voiceVolume;
+  if (typeof originalVolume === "number" && Number.isFinite(originalVolume)) {
+    state.originalVolume = Math.max(0, Math.min(100, Math.round(originalVolume)));
+  }
+  if (typeof voiceVolume === "number" && Number.isFinite(voiceVolume)) {
+    state.voiceVolume = Math.max(0, Math.min(100, Math.round(voiceVolume)));
+  }
   // Persist debounced — slider drag fires many times.
   browserApi
     .storageSet({ originalVolume: state.originalVolume, voiceVolume: state.voiceVolume })
@@ -560,7 +632,10 @@ function handleContentEvent(message, senderTabId) {
     return; // Ignore events from other inactive YouTube tabs
   }
   if (message.type === "UPDATE_SETTINGS" && message.settings && typeof message.settings === "object") {
-    void persistSettings(message.settings).then(() => broadcastToPopup());
+    const filtered = filterContentSettings(message.settings);
+    if (Object.keys(filtered).length) {
+      void persistSettings(filtered).then(() => broadcastToPopup());
+    }
   }
   if (message.type === "CONTENT_STATE") {
     if (typeof message.running === "boolean") state.running = message.running;
@@ -665,16 +740,27 @@ function handleLegacyCaptionMessage(message, sender, sendResponse) {
         .catch((err) => sendResponse({ ok: false, error: err.message }));
       return true;
     case "startSonioxWs":
-      if (!isYouTubeSender(sender)) {
-        sendResponse({ ok: false, error: "Blocked non-YouTube sender." });
+      // The background owns the stored Soniox key. A content script must not
+      // be able to open a keyed provider socket with a caller-supplied key,
+      // and only the tab that owns the live session may start one.
+      if (!isYouTubeSender(sender) || !state.tabId || sender.tab?.id !== state.tabId
+        || !(state.running || state.connecting)) {
+        sendResponse({ ok: false, error: "No active Lumeo session for this tab." });
         return false;
       }
-      sonioxTabId = sender.tab?.id || state.tabId;
-      startSonioxWebSocket(message.apiKey, message.langHints);
-      sendResponse({ ok: true });
-      return false;
+      sonioxTabId = sender.tab.id;
+      (async () => {
+        await loadSettings();
+        if (!state.sonioxApiKey) {
+          sendResponse({ ok: false, error: "Soniox API key is missing." });
+          return;
+        }
+        startSonioxWebSocket(state.sonioxApiKey, message.langHints);
+        sendResponse({ ok: true });
+      })().catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
+      return true;
     case "sonioxAudio":
-      if (!isYouTubeSender(sender)) return false;
+      if (!isYouTubeSender(sender) || !state.tabId || sender.tab?.id !== state.tabId) return false;
       if (sonioxWs?.readyState === WebSocket.OPEN) {
         sonioxWs.send(new Int16Array(message.samples).buffer);
       }
@@ -688,16 +774,28 @@ function handleLegacyCaptionMessage(message, sender, sendResponse) {
       sendResponse({ ok: true });
       return false;
     case "captionCacheGet":
+      if (!isYouTubeSender(sender) && !isExtensionPageSender(sender)) {
+        sendResponse({ ok: false, error: "Blocked sender." });
+        return false;
+      }
       readCaptionCache()
         .then((cache) => sendResponse({ ok: true, cache }))
         .catch((err) => sendResponse({ ok: false, error: err.message }));
       return true;
     case "captionCacheSet":
+      if (!isYouTubeSender(sender) && !isExtensionPageSender(sender)) {
+        sendResponse({ ok: false, error: "Blocked sender." });
+        return false;
+      }
       writeCaptionCache(message.cache)
         .then(() => sendResponse({ ok: true }))
         .catch((err) => sendResponse({ ok: false, error: err.message }));
       return true;
     case "captionCacheClear":
+      if (!isYouTubeSender(sender) && !isExtensionPageSender(sender)) {
+        sendResponse({ ok: false, error: "Blocked sender." });
+        return false;
+      }
       writeCaptionCache({ entries: {}, stats: { bytes: 0, count: 0, clearedAt: Date.now() } })
         .then(() => sendResponse({ ok: true }))
         .catch((err) => sendResponse({ ok: false, error: err.message }));
@@ -713,19 +811,19 @@ const MAX_AI_CACHE_SIZE = 250;
 async function handleExplainWordContext(message) {
   await loadSettings();
 
-  const word = String(message?.word || "").trim();
-  const sentence = String(message?.sentence || "").trim();
-  const targetLanguage = message?.targetLanguage || state.targetLanguage || "en";
+  const word = String(message?.word || "").trim().slice(0, 120);
+  const sentence = String(message?.sentence || "").trim().slice(0, 600);
+  const targetLanguage = String(message?.targetLanguage || state.targetLanguage || "en").slice(0, 32);
 
   if (!word) {
     return { ok: false, error: "No word provided." };
   }
 
-  let provider = message?.provider;
-  if (!provider) {
-    if (["gemini", "groq", "openai", "openrouter", "custom-gateway"].includes(state.translateProvider)) {
-      provider = state.translateProvider;
-    } else if (state.geminiKey) {
+  // The provider is background-owned. A content script must not be able to
+  // spend any stored AI key by naming a different provider in the message.
+  let provider = state.translateProvider;
+  if (!["gemini", "groq", "openai", "openrouter", "custom-gateway"].includes(provider)) {
+    if (state.geminiKey) {
       provider = "gemini";
     } else if (state.groqApiKey) {
       provider = "groq";
@@ -833,12 +931,29 @@ async function handleSummarizeTranscript(message) {
   return { ok: true, summary: result.summary, provider: result.provider };
 }
 
+function contentSafeResult(result, contentSender) {
+  if (!contentSender || !result || typeof result !== "object" || !result.state) return result;
+  // Strip every provider key/non-writable field before a state snapshot crosses
+  // back into the YouTube tab.
+  return {
+    ...result,
+    state: pruneSettingsForContent(result.state, { includeActiveKeys: false }),
+  };
+}
+
 // Popup → background → content router.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const legacyHandled = handleLegacyCaptionMessage(message, sender, sendResponse);
   if (legacyHandled !== null) return legacyHandled;
 
+  const isExtensionOrigin = isExtensionPageSender(sender);
+  const contentSender = !!(sender?.tab && !isExtensionOrigin);
+
   if (message?.type === "ENSURE_SNIFFER") {
+    if (!isYouTubeSender(sender)) {
+      sendResponse({ ok: false, error: "Blocked non-YouTube sender." });
+      return false;
+    }
     ensureSniffer(sender?.tab?.id || state.tabId)
       .then(() => sendResponse?.({ ok: true }))
       .catch((err) => sendResponse?.({ ok: false, error: err?.message || String(err) }));
@@ -850,6 +965,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, error: "Blocked non-YouTube sender." });
       return false;
     }
+    if (!state.tabId || sender?.tab?.id !== state.tabId || !(state.running || state.connecting)) {
+      sendResponse({ ok: false, error: "No active Lumeo session for this tab." });
+      return false;
+    }
     const allowedKeys = new Set(["geminiKey", "openaiKey", "groqApiKey", "sonioxApiKey"]);
     const keyName = String(message.key || "");
     if (!allowedKeys.has(keyName)) {
@@ -858,12 +977,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     (async () => {
       await loadSettings();
+      const neededKeys = providerKeyFieldsForSettings(state);
+      if (!neededKeys.has(keyName)) {
+        sendResponse({ ok: false, error: "Provider key is not in use." });
+        return;
+      }
       sendResponse({ ok: true, key: state[keyName] || "" });
     })().catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
     return true;
   }
 
   if (message?.type === "SUMMARIZE_TRANSCRIPT") {
+    if (!isExtensionOrigin && !isYouTubeSender(sender)) {
+      sendResponse({ ok: false, error: "Blocked sender." });
+      return false;
+    }
     handleSummarizeTranscript(message)
       .then((res) => sendResponse(res))
       .catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
@@ -871,6 +999,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "EXPLAIN_WORD_CONTEXT") {
+    if (!isExtensionOrigin && !isYouTubeSender(sender)) {
+      sendResponse({ ok: false, error: "Blocked sender." });
+      return false;
+    }
     handleExplainWordContext(message)
       .then((res) => sendResponse(res))
       .catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
@@ -878,6 +1010,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "OPEN_OPTIONS_PAGE") {
+    if (!isExtensionOrigin && !isYouTubeSender(sender)) {
+      sendResponse?.({ ok: false, error: "Blocked sender." });
+      return false;
+    }
     if (typeof chrome !== "undefined" && chrome.runtime?.openOptionsPage) {
       chrome.runtime.openOptionsPage();
     } else if (typeof chrome !== "undefined" && chrome.tabs?.create) {
@@ -888,19 +1024,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "OPEN_CHROME_ACCESSIBILITY_SETTINGS") {
+    if (!isExtensionOrigin && !isYouTubeSender(sender)) {
+      sendResponse?.({ ok: false, error: "Blocked sender." });
+      return false;
+    }
     if (typeof chrome !== "undefined" && chrome.tabs?.create) {
       chrome.tabs.create({ url: "chrome://settings/accessibility" });
     }
-    sendResponse?.({ ok: true });
+    sendResponse?.( { ok: true });
     return false;
   }
 
   // Content-originated messages (have sender.tab from non-extension origin).
-  const isExtensionOrigin = !!(sender.url && sender.url.startsWith(chrome.runtime.getURL("")));
-  if (sender.tab && !isExtensionOrigin) {
+  if (contentSender) {
+    if (!isYouTubeSender(sender)) {
+      sendResponse({ ok: false, error: "Blocked non-YouTube sender." });
+      return false;
+    }
     if (!["START", "STOP", "GET_STATE", "UPDATE_SETTINGS", "UPDATE_VOLUME"].includes(message?.type)) {
       handleContentEvent(message, sender.tab.id);
       sendResponse?.({ ok: true });
+      return false;
+    }
+    // Only the tab that owns the live session may mutate or stop it. A second
+    // YouTube tab must not cancel another tab's translation.
+    if (["STOP", "UPDATE_SETTINGS", "UPDATE_VOLUME"].includes(message?.type)
+      && state.tabId
+      && sender.tab.id !== state.tabId) {
+      sendResponse({ ok: true, ignored: true });
       return false;
     }
   }
@@ -918,25 +1069,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             state.slotsMissingKeys = [];
             state.status = "Ready";
           }
-          // Content scripts live on the untrusted YouTube tab. They may need
-          // the provider key for the active session, but they must never
-          // receive every stored provider key.
-          const contentSender = !!(sender?.tab && !isExtensionOrigin);
+          // Content scripts live on the untrusted YouTube tab. They read only
+          // non-secret preferences; active provider keys travel through
+          // CONTENT_START and the on-demand GET_PROVIDER_KEY path.
           sendResponse({
             ok: true,
-            state: contentSender ? pruneSettingsForContent(snapshot()) : snapshot(),
+            state: contentSender
+              ? pruneSettingsForContent(snapshot(), { includeActiveKeys: false })
+              : snapshot(),
           });
           break;
         }
-        case "START":
-          sendResponse(await handleStart(message.settings, sender?.tab || null));
+        case "START": {
+          const settings = contentSender ? filterContentSettings(message.settings) : message.settings;
+          sendResponse(contentSafeResult(
+            await handleStart(settings, sender?.tab || null),
+            contentSender,
+          ));
           break;
+        }
         case "STOP":
-          sendResponse(await handleStop());
+          sendResponse(contentSafeResult(await handleStop(), contentSender));
           break;
-        case "UPDATE_SETTINGS":
-          sendResponse(await handleUpdateSettings(message.settings));
+        case "UPDATE_SETTINGS": {
+          const settings = contentSender ? filterContentSettings(message.settings) : message.settings;
+          sendResponse(contentSafeResult(await handleUpdateSettings(settings), contentSender));
           break;
+        }
         case "UPDATE_VOLUME":
           sendResponse(await handleUpdateVolume(
             message.originalVolume,
@@ -982,14 +1141,16 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 });
 
 chrome.action?.onClicked?.addListener(async (tab) => {
-  if (
-    tab?.id &&
-    tab.url &&
-    (tab.url.includes("youtube.com/watch") ||
-      tab.url.includes("youtube.com/shorts") ||
-      tab.url.includes("youtube.com/live/") ||
-      tab.url.includes("youtu.be/"))
-  ) {
+  let youtubeVideoTab = false;
+  try {
+    const parsed = new URL(tab?.url || "");
+    const hostOk = parsed.protocol === "https:" &&
+      (parsed.hostname === "youtube.com" || parsed.hostname.endsWith(".youtube.com"));
+    youtubeVideoTab = hostOk && /^\/(watch|shorts|live)(\/|$)/.test(parsed.pathname);
+  } catch {
+    youtubeVideoTab = false;
+  }
+  if (tab?.id && youtubeVideoTab) {
     try {
       await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_OVERLAY" });
       return;

@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import {
   buildTargets,
   createZip,
   isRuntimeFile,
+  listRuntimeFiles,
   transformManifest,
 } from "../scripts/build-targets.mjs";
 
@@ -43,6 +44,16 @@ describe("scripts/build-targets.mjs", () => {
     expect(isRuntimeFile("tests/session-manager.test.mjs")).toBe(false);
     expect(isRuntimeFile("docs/research/multi-platform-release.md")).toBe(false);
     expect(isRuntimeFile(".env")).toBe(false);
+  });
+
+  it("excludes untracked runtime files from release packages", () => {
+    const probe = "services/__untracked_probe.js";
+    try {
+      writeFileSync(probe, "// local probe\n", "utf8");
+      expect(listRuntimeFiles(process.cwd())).not.toContain(probe);
+    } finally {
+      rmSync(probe, { force: true });
+    }
   });
 
   it("produces deterministic ZIP bytes", () => {

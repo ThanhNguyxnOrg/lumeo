@@ -56,7 +56,7 @@ Standard and Realtime dub
 
 Privacy
 • No account, no telemetry, no analytics, no Lumeo-operated server.
-• Any API key you save (Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox) stays on your device in `chrome.storage.local`, which page scripts cannot read. Only the key for the provider in use is loaded into the YouTube tab for that session.
+• Any API key you save (Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox) stays on your device in `chrome.storage.local`, which page scripts cannot read. Content scripts read only non-secret preferences; only the key for the provider selected for the running session is sent to that YouTube tab, and other stored keys stay in the extension background.
 • Audio and subtitle text are sent only to the provider you pick to produce the requested translation. Provider retention follows that provider's terms.
 
 Get a Kyma key (only needed for Standard + Realtime tiers): kymaapi.com — free starter credit on signup; pay-as-you-go after that.
