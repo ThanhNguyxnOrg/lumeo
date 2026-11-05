@@ -17,6 +17,12 @@ Push a `v*` tag (or run the `Release` workflow manually with a tag). `.github/wo
 
 No store secrets are required for the GitHub Release itself.
 
+Manual `workflow_dispatch` runs accept two extra inputs:
+
+- `source_ref` — build from a branch while keeping the same version tag. Use it to repackage a store fix (for example a
+  manifest issue) without moving the release tag.
+- `stores` — `both` (default), `amo`, `edge`, or `none`. Use it to retry only one store after a partial failure.
+
 ## Org-level secrets
 
 The workflow reads `secrets.*`, so **organization secrets work as-is** — create them at the org level and grant this
@@ -87,6 +93,9 @@ Registration: free Partner Center account. Microsoft documents "There is no regi
    The workflow reads `vars.EDGE_PRODUCT_ID` first and falls back to `secrets.EDGE_PRODUCT_ID`.
 5. Subsequent tags upload `dist/lumeo-v<version>-edge.zip` to the draft submission, publish it, and poll the
    operation status. If any secret is missing, the step is skipped with a notice.
+6. Edge validates the package manifest before accepting a version. The manifest `description` must be **132
+   characters or fewer** (Chrome has the same limit), so the canonical `manifest.json` keeps it short. Keep longer
+   marketing copy in the store listing text.
 
 API reference: <https://learn.microsoft.com/en-us/microsoft-edge/extensions/update/api/using-addons-api>
 

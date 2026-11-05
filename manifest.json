@@ -4,7 +4,7 @@
   "short_name": "Lumeo",
   "version": "2.0.8",
   "version_name": "2.0.8",
-  "description": "Bilingual captions and live AI dubbing for YouTube. Three tiers, one click: free caption translation, Standard dub (~5s), Realtime dub (<1s).",
+  "description": "Bilingual captions and live AI dubbing for YouTube: free caption translation, Standard dub (~5s), Realtime dub (<1s).",
   "homepage_url": "https://github.com/ThanhNguyxnOrg/lumeo",
   "minimum_chrome_version": "116",
   "permissions": [
