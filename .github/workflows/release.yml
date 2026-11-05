@@ -96,10 +96,31 @@ jobs:
           WEB_EXT_API_KEY: ${{ secrets.AMO_API_KEY || secrets.WEB_EXT_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.AMO_API_SECRET || secrets.WEB_EXT_API_SECRET }}
         run: |
+          # Secrets pasted from a store console can carry a trailing CR/LF or
+          # spaces. Trim before signing; otherwise the HMAC key differs and AMO
+          # answers with the misleading "Error decoding signature".
+          trim() {
+            local value="$1"
+            value="$(printf '%s' "$value" | tr -d '\r')"
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+            printf '%s' "$value"
+          }
+          WEB_EXT_API_KEY="$(trim "${WEB_EXT_API_KEY:-}")"
+          WEB_EXT_API_SECRET="$(trim "${WEB_EXT_API_SECRET:-}")"
+          export WEB_EXT_API_KEY WEB_EXT_API_SECRET
           if [ -z "${WEB_EXT_API_KEY:-}" ] || [ -z "${WEB_EXT_API_SECRET:-}" ]; then
             echo "::notice::Skipping AMO submission; add AMO_API_KEY and AMO_API_SECRET organization secrets to enable it."
             exit 0
           fi
+          case "$WEB_EXT_API_KEY" in
+            user:*)
+              echo "AMO credential shape: issuer-like key, key_length=${#WEB_EXT_API_KEY}, secret_length=${#WEB_EXT_API_SECRET}"
+              ;;
+            *)
+              echo "::warning::AMO_API_KEY does not look like a JWT issuer (expected user:<id>:<id>); confirm the key and secret are not swapped."
+              ;;
+          esac
           npx --yes web-ext@10.8.0 sign \
             --source-dir dist/firefox \
             --channel listed \
@@ -117,13 +138,29 @@ jobs:
         # A store API hiccup must not block the GitHub Release assets.
         continue-on-error: true
         env:
-          EDGE_PRODUCT_ID: ${{ secrets.EDGE_PRODUCT_ID }}
+          EDGE_PRODUCT_ID: ${{ vars.EDGE_PRODUCT_ID || secrets.EDGE_PRODUCT_ID }}
           EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
           EDGE_CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
         run: |
+          # Same copy/paste guard as the AMO step: a trailing newline in the
+          # Product ID makes curl reject the API URL with exit code 3.
+          trim() {
+            local value="$1"
+            value="$(printf '%s' "$value" | tr -d '\r')"
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+            printf '%s' "$value"
+          }
+          EDGE_PRODUCT_ID="$(trim "${EDGE_PRODUCT_ID:-}")"
+          EDGE_API_KEY="$(trim "${EDGE_API_KEY:-}")"
+          EDGE_CLIENT_ID="$(trim "${EDGE_CLIENT_ID:-}")"
           if [ -z "${EDGE_PRODUCT_ID:-}" ] || [ -z "${EDGE_API_KEY:-}" ] || [ -z "${EDGE_CLIENT_ID:-}" ]; then
             echo "::notice::Skipping Edge update; add EDGE_PRODUCT_ID, EDGE_API_KEY and EDGE_CLIENT_ID secrets to enable it."
             exit 0
+          fi
+          if ! printf '%s' "$EDGE_PRODUCT_ID" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
+            echo "::error::EDGE_PRODUCT_ID is not a GUID after trimming; copy the Product ID from Partner Center."
+            exit 1
           fi
 
           EDGE_ZIP="$(ls dist/*-edge.zip | head -n1)"
@@ -196,7 +233,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.BOT_APP_ID }}
+          client-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_PRIVATE_KEY }}
 
       - name: Publish GitHub Release

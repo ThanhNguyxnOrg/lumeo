@@ -78,10 +78,13 @@ Registration: free Partner Center account. Microsoft documents "There is no regi
 3. On the Partner Center **Publish API** page, enable the v1.1 experience and click **Create API credentials**.
    Copy the **Client ID** and **API key** immediately: the key is shown only once and has an expiry date. Rotate it
    before that date and update the `EDGE_API_KEY` secret.
-4. Add repository secrets:
-   - `EDGE_PRODUCT_ID`
-   - `EDGE_API_KEY`
-   - `EDGE_CLIENT_ID`
+4. Add the Product ID as a repository **variable** `EDGE_PRODUCT_ID` (preferred), or as a repository secret with the
+   same name. Add the account-wide credentials as organization secrets:
+   - `EDGE_PRODUCT_ID` (repo variable or repo secret)
+   - `EDGE_API_KEY` (org secret)
+   - `EDGE_CLIENT_ID` (org secret)
+
+   The workflow reads `vars.EDGE_PRODUCT_ID` first and falls back to `secrets.EDGE_PRODUCT_ID`.
 5. Subsequent tags upload `dist/lumeo-v<version>-edge.zip` to the draft submission, publish it, and poll the
    operation status. If any secret is missing, the step is skipped with a notice.
 
@@ -139,3 +142,15 @@ off-AMO updates.
 - [ ] `npx web-ext lint --source-dir dist/firefox` reports no errors/warnings
 - [ ] CHANGELOG has a `## [<version>]` section and the README badge matches
 - [ ] AMO and Edge secrets are configured if those steps should run
+
+## Troubleshooting store credentials
+
+- **AMO `Upload failed: Unauthorized` / `Error decoding signature`:** the JWT issuer and secret do not match. Re-copy
+  both from the AMO API credentials page. The issuer must look like `user:<id>:<id>`. The release workflow trims
+  trailing CR/LF and spaces before signing, and logs only the credential lengths and the issuer shape.
+- **Edge `curl: (3) URL rejected: Malformed input`:** usually a trailing newline or space in `EDGE_PRODUCT_ID`. The
+  release workflow trims it and validates the GUID before calling the API.
+- **Checking secret configuration:** GitHub never returns secret values through the REST API or MCP. Use
+  `gh secret list --org <org>` and `gh secret list --repo <owner>/<repo>` to verify names, visibility, and update
+  time; use the workflow logs to verify formatting and delivery. Repository secrets shadow organization secrets with
+  the same name, so keep only one copy of each.
