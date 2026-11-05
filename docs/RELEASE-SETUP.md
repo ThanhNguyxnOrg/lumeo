@@ -144,6 +144,21 @@ off-AMO updates.
 - Cloudflare Pages free is a good secondary host for XPI/CRX (supports a `_headers` file for content types).
 - Netlify free is now credit-limited (~300 credits/month), so it is not recommended for release assets.
 
+## Store listing assets
+
+Sources live in `store-assets/` and are never packaged into the ZIPs.
+
+| Asset | Used by | Requirement |
+|---|---|---|
+| `edge-store-logo-300x300.png` | Microsoft Edge | **Required**, 1:1, recommended 300×300 (min 128×128) |
+| `promo-tile-440x280.png` (from `promo-tile-440x280.svg`) | Edge / Chrome small promo tile | Optional, 440×280 |
+| `amo-icon-64x64.png` + `icons/icon-32.png` | Firefox AMO listing icon | 32×32 and 64×64, PNG or JPEG |
+| `icons/icon-16/32/48/128.png` | All stores and `about:addons` | Manifest icons |
+| `screenshots/*.png` | Edge (max 6) / AMO | Optional; Edge accepts 640×480 or 1280×800, AMO recommends 1280×800 |
+
+The Edge listing logo and descriptions are per-language metadata entered in Partner Center, not part of the ZIP. Edge
+screenshots and promotional tiles are optional, but a first listing without screenshots is allowed.
+
 ## Checklist before tagging
 
 - [ ] `npm run check:all`, `npm test`, `npm run check:versions`, `npm run check:manifest`
@@ -151,6 +166,7 @@ off-AMO updates.
 - [ ] `npx web-ext lint --source-dir dist/firefox` reports no errors/warnings
 - [ ] CHANGELOG has a `## [<version>]` section and the README badge matches
 - [ ] AMO and Edge secrets are configured if those steps should run
+- [ ] `store-assets/edge-store-logo-300x300.png` and other listing assets are current
 
 ## Troubleshooting store credentials
 
@@ -163,3 +179,8 @@ off-AMO updates.
   `gh secret list --org <org>` and `gh secret list --repo <owner>/<repo>` to verify names, visibility, and update
   time; use the workflow logs to verify formatting and delivery. Repository secrets shadow organization secrets with
   the same name, so keep only one copy of each.
+- **Edge `"Can't create new extension."` / `errorCode: "CreateNotAllowed"`:** expected on the first release. The
+  update API cannot create a product; publish the first version manually in Partner Center (logo, description,
+  optional screenshots), then later tags update it through the API.
+- **Edge `PackageValidationError` / description over 132 characters:** the package manifest description must be ≤132
+  characters. `npm run check:manifest` now rejects a longer value before a release is built.

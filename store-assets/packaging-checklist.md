@@ -16,12 +16,11 @@ Status: automated by `scripts/build-targets.mjs` and `.github/workflows/release.
    ```bash
    node -e "const m=JSON.parse(require('fs').readFileSync('store-assets/amo-metadata.json','utf8')); if(!m.summary?.['en-US']||!m.categories?.length||!m.version?.license) throw new Error('bad AMO metadata');"
    ```
-4. Confirm hosted privacy policy URL and screenshots are current:
-   - `01-popup-idle.png`
-   - `02-panel-caption.png`
-   - `03-realtime-dub.png`
-   - `04-standard-tier.png`
-   - `05-style-export.png`
+4. Confirm hosted privacy policy URL and store listing assets are current:
+   - `edge-store-logo-300x300.png` (Edge, required 1:1)
+   - `promo-tile-440x280.png` (official Edge/Chrome small promo tile)
+   - `amo-icon-64x64.png` + `icons/icon-32.png` (AMO listing icons)
+   - `screenshots/01-popup-idle.png` … `05-style-export.png` (optional; Edge 640×480 or 1280×800, AMO 1280×800)
 
 ## Required local checks
 
