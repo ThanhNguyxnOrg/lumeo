@@ -35,6 +35,7 @@
     replicateKey: "",
     huggingFaceToken: "",
     googleCloudKey: "",
+    translationContext: "",
     libreTranslateUrl: "",
     libreTranslateKey: "",
     customProxyBaseUrl: "",
@@ -79,6 +80,7 @@
   // Providers & Keys Inputs
   const translateProviderInput = document.getElementById("translateProvider");
   const targetLanguageInput = document.getElementById("targetLanguage");
+  const translationContextInput = document.getElementById("translationContext");
   const geminiKeyInput = document.getElementById("geminiKey");
   const geminiModelInput = document.getElementById("geminiModel");
   const openaiKeyInput = document.getElementById("openaiKey");
@@ -361,6 +363,7 @@
 
     if (shouldUpdate(translateProviderInput)) translateProviderInput.value = currentSettings.translateProvider || "google-free";
     if (shouldUpdate(targetLanguageInput)) targetLanguageInput.value = currentSettings.targetLanguage || "en";
+    if (shouldUpdate(translationContextInput)) translationContextInput.value = currentSettings.translationContext || "";
     if (shouldUpdate(geminiKeyInput)) geminiKeyInput.value = currentSettings.geminiKey || "";
     if (shouldUpdate(geminiModelInput)) geminiModelInput.value = currentSettings.geminiModel || "gemini-2.5-flash-lite";
     if (shouldUpdate(openaiKeyInput)) openaiKeyInput.value = currentSettings.openaiKey || "";
@@ -480,6 +483,7 @@
   function readInputs() {
     if (translateProviderInput) currentSettings.translateProvider = translateProviderInput.value;
     if (targetLanguageInput) currentSettings.targetLanguage = targetLanguageInput.value;
+    if (translationContextInput) currentSettings.translationContext = translationContextInput.value.trim();
     if (geminiKeyInput) currentSettings.geminiKey = geminiKeyInput.value.trim();
     if (geminiModelInput) currentSettings.geminiModel = geminiModelInput.value;
     if (openaiKeyInput) currentSettings.openaiKey = openaiKeyInput.value.trim();
@@ -586,7 +590,7 @@
 
   // 7. Input Listeners
   const allInputs = [
-    translateProviderInput, targetLanguageInput,
+    translateProviderInput, targetLanguageInput, translationContextInput,
     geminiKeyInput, geminiModelInput,
     openaiKeyInput, openaiModelInput,
     groqApiKeyInput, kymaKeyInput,

@@ -139,6 +139,18 @@
     if (!sourceText || sourceText.length < 2) return;
     context.onSourceText?.(sourceText);
 
+    const glossary = String(settings.translationContext || "").trim();
+    const priorLines = Array.isArray(sessionRef.contextLines)
+      ? sessionRef.contextLines.slice(-4)
+      : [];
+    const systemPrompt = [
+      `You are a live dubbing translator. Translate the user's sentence into ${languageName}. Output ONLY the translation. No quotes, no commentary, no explanation, no labels. Preserve names, brand names, and technical terms verbatim.`,
+      glossary ? `Glossary / user context: ${glossary}` : "",
+      priorLines.length
+        ? `Previous transcript (context only, do not translate it):\n${priorLines.join("\n")}`
+        : "",
+    ].filter(Boolean).join("\n");
+
     let translationResponse;
     try {
       translationResponse = await fetchFn(`${kymaBase}/chat/completions`, {
@@ -150,10 +162,7 @@
         body: JSON.stringify({
           model: settings.geminiModel || "gemini-2.5-flash",
           messages: [
-            {
-              role: "system",
-              content: `You are a live dubbing translator. Translate the user's sentence into ${languageName}. Output ONLY the translation. No quotes, no commentary, no explanation, no labels. Preserve names, brand names, and technical terms verbatim.`,
-            },
+            { role: "system", content: systemPrompt },
             { role: "user", content: sourceText },
           ],
           temperature: 0.2,
@@ -174,6 +183,12 @@
     const targetText = String(translation?.choices?.[0]?.message?.content || "").trim();
     if (!targetText) return;
     context.onTargetText?.(targetText);
+
+    if (!Array.isArray(sessionRef.contextLines)) sessionRef.contextLines = [];
+    sessionRef.contextLines.push(sourceText);
+    if (sessionRef.contextLines.length > 8) {
+      sessionRef.contextLines.splice(0, sessionRef.contextLines.length - 8);
+    }
 
     let speechResponse;
     try {

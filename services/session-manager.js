@@ -268,6 +268,7 @@
       recorderMime,
       activeRecorder: null,
       nextPlayAt: 0,
+      contextLines: [],
       stopFlag: false,
       abortController: new AbortController(),
     };

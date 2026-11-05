@@ -187,4 +187,52 @@ describe("pipelines/standard.js", () => {
 
     vi.useRealTimers();
   });
+
+  it("sends the glossary and rolling transcript context to translation", async () => {
+    const sourceNode = { connect: vi.fn(), start: vi.fn() };
+    const audioCtx = {
+      currentTime: 3,
+      decodeAudioData: vi.fn(async () => ({ duration: 1.0 })),
+      createBufferSource: vi.fn(() => sourceNode),
+    };
+    const session = {
+      token: 21,
+      kymaKey: "kyma-test",
+      audioCtx,
+      outputGain: {},
+      nextPlayAt: 0,
+      contextLines: ["first line"],
+      abortController: new AbortController(),
+    };
+    let chatBody = null;
+    const fetch = vi.fn(async (url, init) => {
+      if (url.endsWith("/audio/transcriptions")) return { ok: true, json: async () => ({ text: "second line" }) };
+      if (url.endsWith("/chat/completions")) {
+        chatBody = JSON.parse(init.body);
+        return { ok: true, json: async () => ({ choices: [{ message: { content: "dòng hai" } }] }) };
+      }
+      if (url.endsWith("/audio/speech")) return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
+      throw new Error("unexpected url");
+    });
+
+    await api.processChunk(session, { size: 3000 }, {
+      getActiveSession: () => session,
+      getPageToken: () => 21,
+      getSettings: () => ({ targetLanguage: "vi", translationContext: "Keep the brand Lumeo." }),
+      langNameByCode: { vi: "Vietnamese" },
+      kymaBase: "https://kyma.test/v1",
+      audioUtils: { webmBlobToWav: vi.fn(async () => new Blob(["wav"])) },
+      fetch,
+      FormData: vi.fn(function() { return { append: vi.fn() }; }),
+      parseKymaError: vi.fn(),
+      onSourceText: vi.fn(),
+      onTargetText: vi.fn(),
+      onChunkDone: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(chatBody.messages[0].content).toContain("Keep the brand Lumeo.");
+    expect(chatBody.messages[0].content).toContain("first line");
+    expect(session.contextLines).toEqual(["first line", "second line"]);
+  });
 });
