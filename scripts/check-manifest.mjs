@@ -52,6 +52,17 @@ export function checkManifest(manifestPath = "manifest.json") {
   if (!manifest.name) errors.push("name is required.");
   if (!manifest.version) errors.push("version is required.");
 
+  // Chrome and Microsoft Edge reject a manifest description longer than 132
+  // characters during package validation, so catch it before a release.
+  const MAX_DESCRIPTION_LENGTH = 132;
+  if (typeof manifest.description !== "string" || !manifest.description.trim()) {
+    errors.push("description is required.");
+  } else if (manifest.description.length > MAX_DESCRIPTION_LENGTH) {
+    errors.push(
+      `description is ${manifest.description.length} characters; Chrome and Edge allow at most ${MAX_DESCRIPTION_LENGTH}.`
+    );
+  }
+
   const seenHosts = new Set();
   for (const host of manifest.host_permissions || []) {
     if (seenHosts.has(host)) warnings.push(`duplicate host permission: ${host}`);
