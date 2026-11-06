@@ -1,10 +1,18 @@
 # Lumeo — Screenshot capture guide
 
-Web Store needs **5 screenshots** at **1280×800** OR **640×400** (PNG, no alpha). Use the bigger size — Web Store auto-resizes; bigger looks crisper on the listing.
+Every store accepts **1280×800**; use that size everywhere.
+
+| Store | Screenshots | Notes |
+|---|---|---|
+| Chrome Web Store | 1–5 required | 1280×800 preferred, 640×400 accepted |
+| Microsoft Edge | Optional, max 6 | Must be exactly 640×480 or 1280×800 |
+| Firefox AMO | Optional | 1280×800 recommended (1.6:1) |
+
+Use the bigger size — stores auto-resize; bigger looks crisper on the listing.
 
 Tool: macOS `Cmd+Shift+4` then drag a 1280×800 region. Or use CleanShot / Kap (mac) / ShareX (Windows) and pick a custom size. Output to `store-assets/screenshots/01-popup-idle.png`, `02-panel-caption.png`, etc.
 
-> **P5 status.** Screenshot capture is manual and currently blocked until a clean local Chrome run confirms the final UI states. Do not mark the roadmap screenshot task complete until all 5 PNGs exist and match current behavior.
+> **Status:** capture still pending — no PNGs exist yet. Chrome requires at least one screenshot; Edge and AMO can be submitted without them and updated later.
 
 ## The 5 screenshots
 
@@ -43,8 +51,9 @@ Tool: macOS `Cmd+Shift+4` then drag a 1280×800 region. Or use CleanShot / Kap (
 
 ---
 
-## Promo tile (separate field)
+## Promo tiles and logo (already prepared)
 
-Web Store wants a **440×280 PNG** "Small promo tile" used in search results.
-
-Base source included: `store-assets/promo-tile-440x280.svg`. Export that SVG to PNG at 440×280 before Web Store submission.
+- `edge-store-logo-300x300.png` — Microsoft Edge **required** listing logo (1:1, min 128×128).
+- `promo-tile-440x280.png` — Edge/Chrome small promo tile (optional). Exported from `promo-tile-440x280.svg`; re-export both if the artwork changes.
+- `amo-icon-64x64.png` + `icons/icon-32.png` — optional AMO listing icon.
+- Large Edge tile 1400×560 — optional, not created yet.

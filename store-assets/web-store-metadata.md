@@ -1,24 +1,33 @@
-# Lumeo — Chrome Web Store submission metadata
+# Lumeo — store submission metadata (Chrome Web Store + Microsoft Edge)
 
-> **Status:** v2.0 draft for reviewer approval. Re-validate string lengths, hosted privacy URL, screenshots, pricing, and any permission changes before submission. Lengths checked against current limits (description 16,000; short description 132).
+> **Status:** v2.0.8 copy. Privacy policy is live at <https://thanhnguyxnorg.github.io/lumeo/privacy.html>.
+> Lengths checked against current limits: long description 16,000; short description 132; **Edge/Chrome manifest
+> description 132**. The same name, short description, and long description are used on the Microsoft Edge Partner
+> Center listing. The manifest `name`/`description` are `__MSG_` placeholders resolved from
+> `_locales/en/messages.json`; that file is also what makes Edge Partner Center detect the listing language.
 
 ---
 
 ## Name (50 char max)
 
 ```
-Lumeo — YouTube AI Captions & Dub
+Lumeo — Captions & AI Dub for YouTube
 ```
 
 ## Short description (132 char max)
 
 ```
-Bilingual captions in 100+ languages and live AI dubbing for YouTube. Free Caption tier; Standard + Realtime dub on your own Kyma key.
+Bilingual captions and live AI dubbing for YouTube: free caption translation, Standard dub (~5s), Realtime dub (<1s).
 ```
+
+(117 characters — also the `manifest.json` description. The previous 134-character variant exceeded the 132 limit.)
 
 ## Category
 
-`Productivity` — primary. (Accessibility is also valid; pick whichever you think gets better discovery for your audience.)
+- Chrome Web Store: `Productivity` (primary) or `Accessibility`.
+- Microsoft Edge: pick the closest option in the dropdown — `Entertainment` (YouTube/video discovery) or
+  `Productivity` (tool discovery).
+- Firefox AMO: `Photos, Music & Videos` (already set in `amo-metadata.json`).
 
 ## Language
 
@@ -145,6 +154,21 @@ Caption tier — used only when the user supplies their own Soniox API key as a 
 Caption tier — used only when the user chooses LibreTranslate. The user can use the managed LibreTranslate endpoint or a self-hosted local endpoint such as localhost:5000.
 ```
 
+## Microsoft Edge notes
+
+- The Edge Partner Center form asks for **one combined host-permission justification** (≤1000 characters), not one
+  per host. Ready text:
+
+```
+Lumeo reads the captions or audio of the YouTube video the user chooses to translate and sends that text or audio only to the translation provider the user selects. youtube.com access is required to read subtitle tracks, capture the video tab audio through HTMLMediaElement.captureStream(), and draw the translation overlay. Provider hosts (Kyma, OpenAI, Google Gemini/Translate/Cloud TTS, OpenRouter, Groq, Hugging Face, Soniox, LibreTranslate) are contacted only when the user picks that provider and supplies their own API key; each request is authenticated with the user key and is never proxied through a Lumeo server. localhost and 127.0.0.1 are used only when the user runs a self-hosted LibreTranslate instance. No host is accessed unless the user presses Start.
+```
+
+- **"Are you using remote code?" → No.** Justification: "No. All JavaScript, the AudioWorklet processor, and every
+  asset are packaged inside the extension. Lumeo does not load scripts, modules, or WebAssembly from remote servers
+  and does not use eval() or similar dynamic code execution."
+- Required listing logo: `store-assets/edge-store-logo-300x300.png`. Screenshots and promo tiles are optional.
+- The first Edge listing must be published manually in Partner Center; later releases update through the API.
+
 ## Data usage disclosures (Web Store form checkboxes)
 
 When the form asks "Does this extension collect or use any user data?":
@@ -178,9 +202,11 @@ Required certifications:
 
 ## Privacy policy URL
 
-Host `docs/privacy.html` or `store-assets/privacy-policy.html` somewhere stable. Suggested: a static GitHub Pages site at `https://thanhnguyxnorg.github.io/lumeo/privacy.html` or a Vercel project.
+Live: `https://thanhnguyxnorg.github.io/lumeo/privacy.html`
 
-Once hosted, paste the URL into the Web Store form's "Privacy policy" field.
+GitHub Pages serves `docs/` from `main` (Settings → Pages → Deploy from a branch → `main` / `docs`). Update
+`docs/privacy.html`, push, and Pages redeploys automatically. The same URL goes into the Chrome Web Store and
+Microsoft Edge Partner Center forms.
 
 ## Audit references
 

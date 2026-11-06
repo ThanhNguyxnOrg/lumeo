@@ -105,7 +105,7 @@ API reference: <https://learn.microsoft.com/en-us/microsoft-edge/extensions/upda
 |---|---|---|
 | `EDGE_CLIENT_ID` (org) | `ad56c2f2-fccf-49f5-a6c3-436aa6f9aebe` | Publish API page → Client ID |
 | `EDGE_API_KEY` (org) | `fRD4…` (new key after rotation) | Publish API page → New API key |
-| `EDGE_PRODUCT_ID` (repo) | `641ea3c7-9cfd-4bf1-a919-eee5d8f48c1e` | Extension overview → Product ID |
+| `EDGE_PRODUCT_ID` (repo) | `12d0bf10-20c7-4f62-8c97-e3297f4e328a` | Extension overview → Product ID |
 
 Account-wide values (`Client ID`, API keys) are shared by every Edge extension under the account. The `Product ID`
 is unique per extension and stays stable for that extension.
@@ -139,6 +139,9 @@ off-AMO updates.
 
 ## Self-hosted files (optional)
 
+- The privacy policy is live at <https://thanhnguyxnorg.github.io/lumeo/privacy.html>, served by GitHub Pages from
+  `main` → `/docs` (`docs/privacy.html`, `docs/index.html`). Push an update and Pages redeploys automatically. The
+  same URL is used in the AMO, Chrome Web Store, and Edge Partner Center forms.
 - GitHub Releases already serves the XPI with `application/x-xpinstall`, so Firefox can install it from the release
   asset.
 - Cloudflare Pages free is a good secondary host for XPI/CRX (supports a `_headers` file for content types).
@@ -184,3 +187,9 @@ screenshots and promotional tiles are optional, but a first listing without scre
   optional screenshots), then later tags update it through the API.
 - **Edge `PackageValidationError` / description over 132 characters:** the package manifest description must be ≤132
   characters. `npm run check:manifest` now rejects a longer value before a release is built.
+- **Edge Store Listings shows no language / "Add a language" is disabled:** Partner Center detects listing languages
+  from the package's `_locales` directory, not from the manifest text. The package must ship
+  `_locales/<locale>/messages.json` with `extensionName` / `extensionDescription` keys, and the manifest must use
+  `__MSG_` placeholders plus `default_locale`. Lumeo ships `_locales/en/messages.json` and `default_locale: "en"`;
+  `check-manifest` fails if a placeholder has no matching message or if `_locales` exists without `default_locale`.
+  After changing locales, re-upload the ZIP in Partner Center so the language list refreshes.
