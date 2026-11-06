@@ -38,7 +38,31 @@ export function collectReferencedFiles(manifest) {
     for (const resource of entry.resources || []) addFile(files, resource);
   }
 
+  // Microsoft Edge Partner Center reads the listing languages from the
+  // package's _locales directory, so the default locale file must ship.
+  if (typeof manifest.default_locale === "string" && manifest.default_locale) {
+    addFile(files, `_locales/${manifest.default_locale}/messages.json`);
+  }
+
   return [...files].sort();
+}
+
+function readLocaleMessages(root, locale) {
+  try {
+    return JSON.parse(readFileSync(resolve(root, "_locales", locale, "messages.json"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function resolveMessage(root, manifest, value) {
+  const placeholder = /^__MSG_(.+)__$/.exec(String(value || ""));
+  if (!placeholder) return { text: value, key: null };
+  const key = placeholder[1];
+  const locale = typeof manifest.default_locale === "string" ? manifest.default_locale : "";
+  const messages = locale ? readLocaleMessages(root, locale) : null;
+  const text = messages?.[key]?.message;
+  return { text: typeof text === "string" ? text : null, key };
 }
 
 export function checkManifest(manifestPath = "manifest.json") {
@@ -52,14 +76,33 @@ export function checkManifest(manifestPath = "manifest.json") {
   if (!manifest.name) errors.push("name is required.");
   if (!manifest.version) errors.push("version is required.");
 
+  if (manifest.default_locale !== undefined && typeof manifest.default_locale !== "string") {
+    errors.push("default_locale must be a string.");
+  }
+  if (!manifest.default_locale && existsSync(resolve(root, "_locales"))) {
+    errors.push("_locales exists but default_locale is not set.");
+  }
+
+  for (const field of ["name", "description"]) {
+    const raw = manifest[field];
+    const resolved = resolveMessage(root, manifest, raw);
+    if (resolved.key && resolved.text === null) {
+      errors.push(
+        `${field} message key "${resolved.key}" was not found in _locales/${manifest.default_locale || "<unset>"}/messages.json.`
+      );
+    }
+  }
+
   // Chrome and Microsoft Edge reject a manifest description longer than 132
-  // characters during package validation, so catch it before a release.
+  // characters during package validation, so catch it before a release. When
+  // the field is a __MSG_ placeholder, check the resolved locale string.
   const MAX_DESCRIPTION_LENGTH = 132;
+  const descriptionText = resolveMessage(root, manifest, manifest.description).text;
   if (typeof manifest.description !== "string" || !manifest.description.trim()) {
     errors.push("description is required.");
-  } else if (manifest.description.length > MAX_DESCRIPTION_LENGTH) {
+  } else if (typeof descriptionText === "string" && descriptionText.length > MAX_DESCRIPTION_LENGTH) {
     errors.push(
-      `description is ${manifest.description.length} characters; Chrome and Edge allow at most ${MAX_DESCRIPTION_LENGTH}.`
+      `description is ${descriptionText.length} characters after localization; Chrome and Edge allow at most ${MAX_DESCRIPTION_LENGTH}.`
     );
   }
 
