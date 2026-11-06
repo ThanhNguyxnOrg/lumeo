@@ -160,8 +160,10 @@ When asked "What types of user data?":
 - Personal communications → **NO**
 - Location → **NO**
 - Web history → **NO**
-- User activity → **YES** (subtitle text or audio of the video the user is currently watching is sent to AI providers for the purpose of translation, then discarded)
-- Website content → **NO**
+- User activity → **NO** (Lumeo does not log clicks, scroll, mouse, keystrokes, or network activity)
+- Website content → **YES** (the caption text or audio of the video the user chose to translate is sent to the selected AI provider for translation, then discarded)
+
+The same categories are used in the Microsoft Edge Partner Center data-usage form.
 
 When asked "How is the data used?":
 
