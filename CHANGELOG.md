@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.9] - 2026-11-07 — Spoken Sync: Prefetched TTS & Video-Anchored Dub
+
+### Added
+
+- **Caption TTS prefetch:** while a line is on screen, the next one or two lines are synthesized ahead of time for Google Cloud, OpenAI, and custom voice engines, so speech starts on the cue boundary instead of after a network round-trip.
+- **Shared in-flight synthesis:** prefetch and playback that overlap now share one request for Google Cloud, OpenAI, and custom voice, so a line is never billed or downloaded twice.
+- **Dub timing helpers:** `computeDubTiming`, `stopDubPlayback`, and `clearDubTextTimers` expose the Standard Dub schedule for tests and for clean session teardown.
+
+### Changed
+
+- **Standard Dub is anchored to the video clock:** each chunk is scheduled against its recorded source slot instead of a free-running queue, so processing latency cannot accumulate into minutes of drift. Chunks that already overran are dropped, and late chunks may speed up to `1.6×` to fit the remaining slot.
+- **Subtitles follow the voice:** Standard Dub shows the translated line when its audio actually starts, not when translation finishes. An overrunning line fades out before the next one starts.
+- **Queue-aware rate:** a caption line that waited behind the previous line recomputes its speaking rate at the moment it actually starts, and Google/OpenAI reuse the rate of their prefetched clip while the line is still on time.
+- **Faster stale-line recovery:** caption lines are skipped once the video is more than `0.25s` past their display window instead of `0.75s`.
+
+### Fixed
+
+- Spoken captions no longer trail the on-screen subtitle by a full TTS round-trip, and Standard Dub no longer drifts further behind the video with every chunk.
+
 ## [2.0.8] - 2026-11-05 — Ordered Dub Scheduler, Key Isolation & Multi-Store Release
 
 ### Added

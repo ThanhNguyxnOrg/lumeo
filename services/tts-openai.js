@@ -19,6 +19,7 @@
 
   const MAX_CACHE_ENTRIES = 100;
   const cache = new Map();
+  const inflight = new Map();
   let currentAudio = null;
 
   function assertKey(apiKey) {
@@ -50,38 +51,51 @@
     let blobUrl = cache.get(cacheKey);
     if (blobUrl) return blobUrl;
 
-    const key = assertKey(options.apiKey);
-    const response = await fetch(OPENAI_TTS_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: options.model || DEFAULT_MODEL,
-        voice,
-        input: clean,
-        format,
-        speed,
-      }),
-      signal: options.signal,
-    });
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      throw new Error(
-        `OpenAI TTS ${response.status}: ${String(detail).slice(0, 200)}`
+    // Prefetch and playback can overlap when the cue arrives before the
+    // prefetched request finishes. Share one request instead of paying twice.
+    let pending = inflight.get(cacheKey);
+    if (!pending) {
+      pending = (async () => {
+        const key = assertKey(options.apiKey);
+        const response = await fetch(OPENAI_TTS_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${key}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: options.model || DEFAULT_MODEL,
+            voice,
+            input: clean,
+            format,
+            speed,
+          }),
+          signal: options.signal,
+        });
+        if (!response.ok) {
+          const detail = await response.text().catch(() => "");
+          throw new Error(
+            `OpenAI TTS ${response.status}: ${String(detail).slice(0, 200)}`
+          );
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        if (cache.size >= MAX_CACHE_ENTRIES) {
+          const oldestKey = cache.keys().next().value;
+          const oldUrl = cache.get(oldestKey);
+          try { URL.revokeObjectURL(oldUrl); } catch {}
+          cache.delete(oldestKey);
+        }
+        cache.set(cacheKey, url);
+        return url;
+      })();
+      inflight.set(cacheKey, pending);
+      pending.then(
+        () => inflight.delete(cacheKey),
+        () => inflight.delete(cacheKey),
       );
     }
-    const blob = await response.blob();
-    blobUrl = URL.createObjectURL(blob);
-    if (cache.size >= MAX_CACHE_ENTRIES) {
-      const oldestKey = cache.keys().next().value;
-      const oldUrl = cache.get(oldestKey);
-      try { URL.revokeObjectURL(oldUrl); } catch {}
-      cache.delete(oldestKey);
-    }
-    cache.set(cacheKey, blobUrl);
-    return blobUrl;
+    return pending;
   }
 
   // Fire-and-forget playback helper matching LumeoTTS.speak semantics so

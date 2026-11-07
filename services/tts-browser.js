@@ -143,15 +143,17 @@
     ar: "ar-SA",
   };
 
-  const MAX_GOOGLE_AUDIO_CACHE = 100;
+  const MAX_AUDIO_CACHE = 100;
   const SPEECH_QUEUE_LIMIT = 2;
   const googleAudioCache = new Map();
+  const customAudioCache = new Map();
+  const googleAudioInflight = new Map();
+  const customAudioInflight = new Map();
   const speechQueue = [];
   let queuePumping = false;
   let speechGeneration = 0;
   let activeAbortController = null;
   let currentAudio = null;
-  let lastCustomVoiceUrl = null;
   let cachedVoices = [];
 
   function clampRate(value, min = 0.5, max = 2.0) {
@@ -290,10 +292,6 @@
       try { currentAudio.pause(); } catch {}
       currentAudio = null;
     }
-    if (lastCustomVoiceUrl) {
-      try { URL.revokeObjectURL(lastCustomVoiceUrl); } catch {}
-      lastCustomVoiceUrl = null;
-    }
   }
 
   function speakTaskAndWait(text, lang, options = {}) {
@@ -351,6 +349,13 @@
         }
         let ok = false;
         try {
+          // A queued line may start late because the previous line is still
+          // playing. Recompute its rate at the moment it actually starts so a
+          // stale queue cannot keep speaking at the pace it had when queued.
+          if (typeof task.options.getRate === "function") {
+            const nextRate = Number(task.options.getRate());
+            if (Number.isFinite(nextRate)) task.options.rate = nextRate;
+          }
           ok = await speakTaskAndWait(task.text, task.lang, task.options);
         } catch {}
         try {
@@ -446,9 +451,22 @@
     return true;
   }
 
-  async function speakGoogleCloud(text, lang, options = {}) {
+  function setCachedAudio(cache, key, url) {
+    if (cache.size >= MAX_AUDIO_CACHE) {
+      const oldestKey = cache.keys().next().value;
+      const oldUrl = cache.get(oldestKey);
+      try { URL.revokeObjectURL(oldUrl); } catch {}
+      cache.delete(oldestKey);
+    }
+    cache.set(key, url);
+  }
+
+  // Synthesize (and cache) a Google Cloud line without playing it. The
+  // caption orchestrator calls this for the next cue so playback can start on
+  // the cue boundary instead of after a network round-trip.
+  async function synthesizeGoogleCloud(text, lang, options = {}) {
     const clean = stripTtsNoise(text);
-    if (!clean) return false;
+    if (!clean) return null;
     const apiKey = String(options.googleCloudKey || options.apiKey || "").trim();
     if (!apiKey) throw new Error("Google Cloud Text-to-Speech API key is missing.");
     const languageCode = normalizeLang(lang);
@@ -456,46 +474,56 @@
       throw new Error(`Google Cloud TTS has no Chirp3-HD voice for ${languageCode}; falling back to browser voice.`);
     }
     const voiceName = options.voiceName || "Achernar";
+    const rate = clampRate(options.rate, 0.25, 2.0);
     const cacheKey = [
       languageCode,
       voiceName,
-      options.rate || 1,
+      rate,
       clean,
     ].join("\u0001");
     let audioUrl = googleAudioCache.get(cacheKey);
-    if (!audioUrl) {
-      const response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(apiKey)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          input: { text: clean },
-          voice: {
-            languageCode,
-            name: `${languageCode}-Chirp3-HD-${voiceName}`,
-          },
-          audioConfig: {
-            audioEncoding: "MP3",
-            speakingRate: clampRate(options.rate, 0.25, 2.0),
-          },
-        }),
-        signal: options.signal,
-      });
-      if (options.signal?.aborted) return false;
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data?.error?.message || `Google TTS HTTP ${response.status}`);
-      }
-      const bytes = Uint8Array.from(atob(data.audioContent || ""), (char) => char.charCodeAt(0));
-      audioUrl = URL.createObjectURL(new Blob([bytes], { type: "audio/mp3" }));
-      if (googleAudioCache.size >= MAX_GOOGLE_AUDIO_CACHE) {
-        const oldestKey = googleAudioCache.keys().next().value;
-        const oldUrl = googleAudioCache.get(oldestKey);
-        try { URL.revokeObjectURL(oldUrl); } catch {}
-        googleAudioCache.delete(oldestKey);
-      }
-      googleAudioCache.set(cacheKey, audioUrl);
+    if (audioUrl) return audioUrl;
+    let pending = googleAudioInflight.get(cacheKey);
+    if (!pending) {
+      pending = (async () => {
+        const response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(apiKey)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            input: { text: clean },
+            voice: {
+              languageCode,
+              name: `${languageCode}-Chirp3-HD-${voiceName}`,
+            },
+            audioConfig: {
+              audioEncoding: "MP3",
+              speakingRate: rate,
+            },
+          }),
+          signal: options.signal,
+        });
+        if (options.signal?.aborted) return null;
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data?.error?.message || `Google TTS HTTP ${response.status}`);
+        }
+        const bytes = Uint8Array.from(atob(data.audioContent || ""), (char) => char.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([bytes], { type: "audio/mp3" }));
+        setCachedAudio(googleAudioCache, cacheKey, url);
+        return url;
+      })();
+      googleAudioInflight.set(cacheKey, pending);
+      pending.then(
+        () => googleAudioInflight.delete(cacheKey),
+        () => googleAudioInflight.delete(cacheKey),
+      );
     }
-    if (options.signal?.aborted) return false;
+    return pending;
+  }
+
+  async function speakGoogleCloud(text, lang, options = {}) {
+    const audioUrl = await synthesizeGoogleCloud(text, lang, options);
+    if (!audioUrl || options.signal?.aborted) return false;
     if (currentAudio) {
       try { currentAudio.pause(); } catch {}
       currentAudio = null;
@@ -510,62 +538,83 @@
     return true;
   }
 
-  async function speakCustomVoice(text, lang, options = {}) {
+  async function synthesizeCustomVoice(text, lang, options = {}) {
     const clean = stripTtsNoise(text);
-    if (!clean) return false;
+    if (!clean) return null;
     const base = String(options.customTtsBaseUrl || "").trim().replace(/\/+$/, "");
     const voiceId = String(options.customTtsVoiceId || "").trim();
     const apiKey = String(options.customTtsApiKey || "").trim();
     if (!base) throw new Error("Custom Voice Base URL is required.");
     if (!voiceId) throw new Error("Custom Voice ID is required.");
 
-    let targetUrl;
-    const headers = { "Content-Type": "application/json" };
-    let body;
-
     const modelId = String(options.customTtsModelId || "").trim();
-    if (base.includes("elevenlabs")) {
-      targetUrl = `${base}/text-to-speech/${encodeURIComponent(voiceId)}`;
-      if (apiKey) headers["xi-api-key"] = apiKey;
-      body = JSON.stringify({
-        text: clean,
-        model_id: modelId || "eleven_flash_v2_5",
-        voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-      });
-    } else {
-      targetUrl = base.endsWith("/audio/speech") ? base : `${base}/audio/speech`;
-      if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-      body = JSON.stringify({
-        input: clean,
-        voice: voiceId,
-        model: modelId || "tts-1",
-      });
-    }
+    // Rate is applied with Audio.playbackRate at playback time, so it must not
+    // be part of the cache key; the same clip can be reused at a new speed.
+    const cacheKey = [base, voiceId, modelId, clean].join("\u0001");
+    let audioUrl = customAudioCache.get(cacheKey);
+    if (audioUrl) return audioUrl;
 
-    const response = await fetch(targetUrl, {
-      method: "POST",
-      headers,
-      body,
-      signal: options.signal,
-    });
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData?.detail?.message || errData?.error?.message || `Custom Voice HTTP ${response.status}`);
-    }
-    if (options.signal?.aborted) return false;
+    // Prefetch and playback may ask for the same line within the same tick.
+    // Share one request so the clip is synthesized once.
+    let pending = customAudioInflight.get(cacheKey);
+    if (!pending) {
+      pending = (async () => {
+        let targetUrl;
+        const headers = { "Content-Type": "application/json" };
+        let body;
 
-    const blob = await response.blob();
-    if (options.signal?.aborted) return false;
-    const audioUrl = URL.createObjectURL(blob);
+        if (base.includes("elevenlabs")) {
+          targetUrl = `${base}/text-to-speech/${encodeURIComponent(voiceId)}`;
+          if (apiKey) headers["xi-api-key"] = apiKey;
+          body = JSON.stringify({
+            text: clean,
+            model_id: modelId || "eleven_flash_v2_5",
+            voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+          });
+        } else {
+          targetUrl = base.endsWith("/audio/speech") ? base : `${base}/audio/speech`;
+          if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+          body = JSON.stringify({
+            input: clean,
+            voice: voiceId,
+            model: modelId || "tts-1",
+          });
+        }
+
+        const response = await fetch(targetUrl, {
+          method: "POST",
+          headers,
+          body,
+          signal: options.signal,
+        });
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData?.detail?.message || errData?.error?.message || `Custom Voice HTTP ${response.status}`);
+        }
+        if (options.signal?.aborted) return null;
+
+        const blob = await response.blob();
+        if (options.signal?.aborted) return null;
+        const url = URL.createObjectURL(blob);
+        setCachedAudio(customAudioCache, cacheKey, url);
+        return url;
+      })();
+      customAudioInflight.set(cacheKey, pending);
+      pending.then(
+        () => customAudioInflight.delete(cacheKey),
+        () => customAudioInflight.delete(cacheKey),
+      );
+    }
+    return pending;
+  }
+
+  async function speakCustomVoice(text, lang, options = {}) {
+    const audioUrl = await synthesizeCustomVoice(text, lang, options);
+    if (!audioUrl || options.signal?.aborted) return false;
     if (currentAudio) {
       try { currentAudio.pause(); } catch {}
       currentAudio = null;
     }
-    if (lastCustomVoiceUrl) {
-      try { URL.revokeObjectURL(lastCustomVoiceUrl); } catch {}
-    }
-    if (options.signal?.aborted) return false;
-    lastCustomVoiceUrl = audioUrl;
     stopSpeechOnly();
     currentAudio = new Audio(audioUrl);
     currentAudio.volume = Number(options.volume ?? 1);
@@ -577,6 +626,36 @@
     }
     await currentAudio.play();
     return true;
+  }
+
+  // Warm the audio cache for a line that will be spoken later. Only network
+  // providers can be prefetched; browser speech is synthesized synchronously
+  // by the speech engine and has no media blob to prepare.
+  async function prefetch(text, lang, options = {}) {
+    const provider = options.provider || "browser";
+    try {
+      if (provider === "google-cloud") {
+        return !!(await synthesizeGoogleCloud(text, lang, options));
+      }
+      if (provider === "custom-voice-engine") {
+        return !!(await synthesizeCustomVoice(text, lang, options));
+      }
+      if (provider === "openai-tts" || provider === "openai") {
+        if (!window.LumeoOpenAITTS?.synthesize) return false;
+        const url = await window.LumeoOpenAITTS.synthesize(text, {
+          apiKey: options.openaiKey,
+          voice: options.openaiVoice || "alloy",
+          speed: options.rate || 1,
+          signal: options.signal,
+        });
+        return !!url;
+      }
+    } catch (err) {
+      // Prefetch is opportunistic: a failed request must never block or
+      // duplicate the real playback request.
+      console.warn("[TTS] Prefetch failed, playback will retry:", err);
+    }
+    return false;
   }
 
   async function speak(text, lang, options = {}) {
@@ -628,9 +707,12 @@
     getVoicesForLang,
     speak,
     speakQueued,
+    prefetch,
     speakBrowser,
     speakGoogleCloud,
     speakCustomVoice,
+    synthesizeGoogleCloud,
+    synthesizeCustomVoice,
     stop,
   };
 })();

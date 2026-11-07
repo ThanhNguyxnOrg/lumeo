@@ -117,6 +117,29 @@ describe("TTS sync behavior (integration)", () => {
     await expect(newest).resolves.toBe(true);
   });
 
+  it("recomputes a queued line's rate at the moment it actually starts", async () => {
+    const { api, utterances } = await setupTts();
+    const first = api.speakQueued("first line", "en", {});
+    await tick(5);
+
+    let rate = 1.0;
+    const second = api.speakQueued("second line", "en", {
+      getRate: () => rate,
+    });
+    await tick(5);
+    expect(utterances).toHaveLength(1);
+
+    rate = 1.8;
+    utterances[0].onend();
+    await expect(first).resolves.toBe(true);
+    await tick(5);
+    expect(utterances).toHaveLength(2);
+    expect(utterances[1].rate).toBe(1.8);
+
+    utterances[1].onend();
+    await expect(second).resolves.toBe(true);
+  });
+
   it("never plays a cloud line whose fetch finishes after stop", async () => {
     const { window, api } = await setupTts();
     let releaseFetch;

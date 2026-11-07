@@ -185,6 +185,100 @@ describe("services/tts-browser.js", () => {
     expect(result).toBe(true);
     expect(window.speechSynthesis.cancel).toHaveBeenCalled();
   });
+
+  it("prefetches a Google line once and reuses the cached clip at playback", async () => {
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ audioContent: "ZmFrZS1tcDMtYnl0ZXM=" }),
+    }));
+    window.fetch = fetch;
+    const play = vi.fn(() => Promise.resolve());
+    window.URL = { createObjectURL: () => "blob:prefetched", revokeObjectURL: () => {} };
+    window.Audio = class {
+      constructor(src) { this.src = src; }
+      play() { return play(); }
+      addEventListener() {}
+      pause() {}
+    };
+    const options = {
+      provider: "google-cloud",
+      googleCloudKey: "gcp-test",
+      rate: 1.2,
+    };
+
+    await expect(api.prefetch("xin chào", "vi", options)).resolves.toBe(true);
+    await expect(api.speak("xin chào", "vi", options)).resolves.toBe(true);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("prefetches a custom-voice line once and reuses the cached clip at playback", async () => {
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      blob: async () => ({}),
+    }));
+    window.fetch = fetch;
+    const play = vi.fn(() => Promise.resolve());
+    window.URL = { createObjectURL: () => "blob:custom-prefetched", revokeObjectURL: () => {} };
+    window.Audio = class {
+      constructor(src) { this.src = src; }
+      play() { return play(); }
+      addEventListener() {}
+      pause() {}
+    };
+    const options = {
+      provider: "custom-voice-engine",
+      customTtsBaseUrl: "https://api.example.com/v1",
+      customTtsVoiceId: "voice-1",
+      customTtsModelId: "tts-1",
+    };
+
+    await expect(api.prefetch("xin chào", "vi", options)).resolves.toBe(true);
+    await expect(api.speak("xin chào", "vi", options)).resolves.toBe(true);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares one in-flight request when playback starts before prefetch settles", async () => {
+    let resolveFetch;
+    const fetch = vi.fn(() => new Promise((resolve) => {
+      resolveFetch = resolve;
+    }));
+    window.fetch = fetch;
+    const play = vi.fn(() => Promise.resolve());
+    let objects = 0;
+    window.URL = {
+      createObjectURL: () => `blob:shared-${++objects}`,
+      revokeObjectURL: () => {},
+    };
+    window.Audio = class {
+      constructor(src) { this.src = src; }
+      play() { return play(); }
+      addEventListener() {}
+      pause() {}
+    };
+    const options = {
+      provider: "custom-voice-engine",
+      customTtsBaseUrl: "https://api.example.com/v1",
+      customTtsVoiceId: "voice-1",
+    };
+
+    const prefetch = api.prefetch("xin chào", "vi", options);
+    const speak = api.speak("xin chào", "vi", options);
+
+    resolveFetch({ ok: true, blob: async () => ({}) });
+    await expect(prefetch).resolves.toBe(true);
+    await expect(speak).resolves.toBe(true);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(objects).toBe(1);
+  });
+
+  it("does not prefetch browser speech", async () => {
+    expect(await api.prefetch("hello", "en", { provider: "browser" })).toBe(false);
+  });
 });
 
 describe("services/tts-browser.js queue", () => {

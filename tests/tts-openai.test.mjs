@@ -49,6 +49,23 @@ describe("services/tts-openai.js", () => {
     }));
   });
 
+  it("shares one in-flight request between prefetch and playback", async () => {
+    let resolveFetch;
+    window.fetch = vi.fn(() => new Promise((resolve) => {
+      resolveFetch = resolve;
+    }));
+
+    const first = api.synthesize("hello", { apiKey: "openai-key" });
+    const second = api.synthesize("hello", { apiKey: "openai-key" });
+
+    resolveFetch({ ok: true, blob: async () => new window.Blob(["mp3"]) });
+    await expect(first).resolves.toBe("blob:tts");
+    await expect(second).resolves.toBe("blob:tts");
+
+    expect(window.fetch).toHaveBeenCalledOnce();
+    expect(window.URL.createObjectURL).toHaveBeenCalledOnce();
+  });
+
   it("returns null for empty text and throws on missing keys", async () => {
     expect(await api.synthesize("   ", { apiKey: "openai-key" })).toBeNull();
     await expect(api.synthesize("hello", {})).rejects.toThrow("OpenAI API key is missing.");

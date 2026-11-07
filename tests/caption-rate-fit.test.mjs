@@ -79,10 +79,95 @@ describe("caption fitRateForCue (multilingual)", () => {
 
   it("marks cues the video has already moved past as stale", () => {
     const cue = { start: 10, end: 13 };
-    expect(api.isCueStale(13.5, cue)).toBe(false);
-    expect(api.isCueStale(13.8, cue)).toBe(true);
+    expect(api.isCueStale(13.2, cue)).toBe(false);
+    expect(api.isCueStale(13.5, cue)).toBe(true);
     expect(api.isCueStale(5, { start: 10 })).toBe(false);
     expect(api.isCueStale(14.5, { start: 10 })).toBe(true);
+  });
+});
+
+describe("caption TTS prefetch", () => {
+  it("prefetches an upcoming network line once and skips browser speech", async () => {
+    const { window } = await createSandboxWindow();
+    loadService("pipelines/caption-orchestrator.js", window);
+    const api = window.LumeoCaptionOrchestrator;
+    const prefetch = vi.fn(async () => true);
+    window.LumeoTTS = { prefetch };
+    const session = {};
+    const video = { currentTime: 10, playbackRate: 1 };
+    const cue = { start: 10, end: 12, translated: "xin chào" };
+    const next = { start: 12, end: 14 };
+    const settings = {
+      captionTtsProvider: "google-cloud",
+      targetLanguage: "vi",
+      standardVoice: "Achernar",
+    };
+
+    expect(api.prefetchCueSpeech(cue, next, settings, video, {}, session)).toBe(true);
+    expect(api.prefetchCueSpeech(cue, next, settings, video, {}, session)).toBe(false);
+    expect(prefetch).toHaveBeenCalledTimes(1);
+    expect(prefetch).toHaveBeenCalledWith(
+      "xin chào",
+      "vi",
+      expect.objectContaining({ provider: "google-cloud", voiceName: "Achernar" }),
+    );
+
+    const stored = session.prefetchedTtsPlans.get(api.cueSpeechKey(cue, "xin chào"));
+    expect(stored.rate).toBe(1.0);
+
+    expect(api.prefetchCueSpeech(
+      cue,
+      next,
+      { ...settings, captionTtsProvider: "browser" },
+      video,
+      {},
+      {},
+    )).toBe(false);
+  });
+
+  it("reuses the prefetched rate for baked-rate providers while on time", async () => {
+    const { window } = await createSandboxWindow();
+    loadService("pipelines/caption-orchestrator.js", window);
+    const api = window.LumeoCaptionOrchestrator;
+    const cue = { start: 10, end: 12 };
+    const plan = { rate: 1.0 };
+    const prefetchedPlan = { rate: 1.0 };
+
+    expect(api.selectCuePlaybackPlan({
+      plan, prefetchedPlan, mediaNow: 10.2, cue, provider: "google-cloud",
+    })).toEqual({ rate: 1.0, reusePrefetched: true });
+
+    // Late enough that the voice should catch up instead of replaying the
+    // prefetched pace.
+    expect(api.selectCuePlaybackPlan({
+      plan: { rate: 1.4 }, prefetchedPlan, mediaNow: 12, cue, provider: "google-cloud",
+    })).toEqual({ rate: 1.4, reusePrefetched: false });
+
+    // Custom voice applies rate at playback, so it keeps adapting.
+    expect(api.selectCuePlaybackPlan({
+      plan: { rate: 1.2 }, prefetchedPlan, mediaNow: 10.2, cue, provider: "custom-voice-engine",
+    })).toEqual({ rate: 1.2, reusePrefetched: false });
+  });
+
+  it("builds the same rate for prefetch and on-time playback", async () => {
+    const { window } = await createSandboxWindow();
+    loadService("pipelines/caption-orchestrator.js", window);
+    const api = window.LumeoCaptionOrchestrator;
+    const cue = { start: 10, end: 12, translated: "xin chào các bạn" };
+    const next = { start: 12, end: 14 };
+    const settings = { targetLanguage: "vi", captionTtsProvider: "google-cloud" };
+
+    const prefetch = api.buildCueSpeechPlan(cue, next, settings, {
+      videoNow: 10,
+      videoRate: 1,
+      includeCatchUp: false,
+    });
+    const playback = api.buildCueSpeechPlan(cue, next, settings, {
+      videoNow: 10,
+      videoRate: 1,
+    });
+
+    expect(playback.rate).toBe(prefetch.rate);
   });
 });
 

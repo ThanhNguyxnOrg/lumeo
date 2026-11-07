@@ -551,6 +551,7 @@
       s.captionTimer = null;
     }
     s.stopFlag = true;
+    window.LumeoStandardPipeline?.stopDubPlayback?.(s);
     window.LumeoStandardPipeline?.resetDubState?.(s, s.nextChunkIndex);
     try { s.abortController?.abort(); } catch {}
     try {

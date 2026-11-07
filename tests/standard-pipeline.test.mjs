@@ -499,4 +499,176 @@ describe("pipelines/standard.js", () => {
     expect(starts).toHaveLength(1);
     expect(session.dubState.dropped).toBe(1);
   });
+
+  it("anchors a late chunk to the video clock instead of the queue clock", () => {
+    const timing = api.computeDubTiming(
+      { sourceStartMs: 5000, sourceEndMs: 10000 },
+      2,
+      { getVideo: () => ({ currentTime: 6, playbackRate: 1 }) },
+      100,
+    );
+    expect(timing.anchored).toBe(true);
+    expect(timing.expired).toBe(false);
+    expect(timing.startAt).toBeCloseTo(100.05, 3);
+    expect(timing.rate).toBe(1);
+  });
+
+  it("schedules a future chunk against its source slot", () => {
+    const timing = api.computeDubTiming(
+      { sourceStartMs: 5000, sourceEndMs: 10000 },
+      3,
+      { getVideo: () => ({ currentTime: 2, playbackRate: 1 }) },
+      100,
+    );
+    expect(timing.startAt).toBeCloseTo(103.05, 3);
+    expect(timing.rate).toBe(1);
+  });
+
+  it("speeds a late chunk up to fit the remaining slot", () => {
+    const timing = api.computeDubTiming(
+      { sourceStartMs: 0, sourceEndMs: 5000 },
+      4,
+      { getVideo: () => ({ currentTime: 3, playbackRate: 1 }) },
+      100,
+    );
+    expect(timing.lateness).toBe(3);
+    expect(timing.rate).toBeCloseTo(api.MAX_CATCHUP_RATE, 3);
+    expect(timing.endAt - timing.startAt).toBeCloseTo(4 / api.MAX_CATCHUP_RATE, 3);
+  });
+
+  it("skips a chunk the video has already moved past", () => {
+    const timing = api.computeDubTiming(
+      { sourceStartMs: 0, sourceEndMs: 5000 },
+      2,
+      { getVideo: () => ({ currentTime: 12, playbackRate: 1 }) },
+      100,
+    );
+    expect(timing.expired).toBe(true);
+  });
+
+  it("keeps a chunk that is only late by normal processing latency", () => {
+    const timing = api.computeDubTiming(
+      { sourceStartMs: 0, sourceEndMs: 5000 },
+      5,
+      { getVideo: () => ({ currentTime: 8, playbackRate: 1 }) },
+      100,
+    );
+    expect(timing.expired).toBe(false);
+    expect(timing.startAt).toBeCloseTo(100.05, 3);
+    expect(timing.rate).toBe(1);
+  });
+
+  it("runs a late chunk after the previous one instead of stacking both", () => {
+    const starts = [];
+    const audioCtx = {
+      currentTime: 100,
+      createBufferSource: vi.fn(() => ({
+        connect: vi.fn(),
+        start: vi.fn((at) => starts.push(at)),
+        playbackRate: { value: 1 },
+      })),
+    };
+    const session = {
+      token: 9,
+      audioCtx,
+      outputGain: {},
+      nextPlayAt: 0,
+      activeSources: new Set(),
+      dubGeneration: 0,
+    };
+    const context = {
+      getActiveSession: () => session,
+      getPageToken: () => 9,
+      getVideo: () => ({ currentTime: 8, playbackRate: 1 }),
+      getSettings: () => ({ muteOriginal: true }),
+    };
+
+    api.playDubItem(session, { duration: 2 }, context, { sourceStartMs: 0, sourceEndMs: 5000 });
+    api.playDubItem(session, { duration: 2 }, context, { sourceStartMs: 5000, sourceEndMs: 10000 });
+
+    expect(starts).toHaveLength(2);
+    expect(starts[0]).toBeCloseTo(100.05, 3);
+    expect(starts[1]).toBeCloseTo(102.05, 3);
+  });
+
+  it("shows the subtitle when the dub actually starts, not when translation finishes", () => {
+    vi.useFakeTimers();
+    const sourceNode = { connect: vi.fn(), start: vi.fn(), playbackRate: { value: 1 } };
+    const gainNode = { gain: { value: 1, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() }, connect: vi.fn() };
+    const audioCtx = {
+      currentTime: 100,
+      createBufferSource: vi.fn(() => sourceNode),
+      createGain: vi.fn(() => gainNode),
+    };
+    const session = {
+      token: 3,
+      audioCtx,
+      outputGain: {},
+      nextPlayAt: 0,
+      activeSources: new Set(),
+      dubGeneration: 0,
+    };
+    const video = { currentTime: 2, playbackRate: 1 };
+    const onSourceText = vi.fn();
+    const onTargetText = vi.fn();
+    const context = {
+      getActiveSession: () => session,
+      getPageToken: () => 3,
+      getVideo: () => video,
+      getSettings: () => ({ muteOriginal: true }),
+      onSourceText,
+      onTargetText,
+    };
+
+    const played = api.playDubItem(
+      session,
+      { duration: 2 },
+      context,
+      { sourceStartMs: 5000, sourceEndMs: 10000, sourceText: "hello", targetText: "xin chào" },
+    );
+
+    expect(played).toBe(true);
+    expect(sourceNode.start).toHaveBeenCalledWith(103.05);
+    expect(onTargetText).not.toHaveBeenCalled();
+
+    audioCtx.currentTime = 103.05;
+    vi.advanceTimersByTime(3050);
+    expect(onSourceText).toHaveBeenCalledWith("hello");
+    expect(onTargetText).toHaveBeenCalledWith("xin chào");
+    vi.useRealTimers();
+  });
+
+  it("does not show or play a chunk whose slot has fully passed", () => {
+    const sourceNode = { connect: vi.fn(), start: vi.fn(), playbackRate: { value: 1 } };
+    const audioCtx = {
+      currentTime: 100,
+      createBufferSource: vi.fn(() => sourceNode),
+    };
+    const session = {
+      token: 4,
+      audioCtx,
+      outputGain: {},
+      nextPlayAt: 0,
+      activeSources: new Set(),
+      dubGeneration: 0,
+    };
+    const onTargetText = vi.fn();
+    const played = api.playDubItem(
+      session,
+      { duration: 2 },
+      {
+        getActiveSession: () => session,
+        getPageToken: () => 4,
+        getVideo: () => ({ currentTime: 12, playbackRate: 1 }),
+        getSettings: () => ({}),
+        onTargetText,
+      },
+      { sourceStartMs: 0, sourceEndMs: 5000, sourceText: "old", targetText: "cũ" },
+    );
+
+    expect(played).toBe(false);
+    expect(sourceNode.start).not.toHaveBeenCalled();
+    expect(onTargetText).not.toHaveBeenCalled();
+    expect(session.dubSkippedLate).toBe(1);
+  });
 });

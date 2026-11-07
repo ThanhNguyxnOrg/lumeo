@@ -769,7 +769,7 @@
     // A cue is stale once the video has moved past its display window plus a
     // short grace period. Skipping stale queued cues is what keeps the voice
     // from drifting minutes behind the subtitles.
-    isCueStale(mediaNow, cue, graceSeconds = 0.75) {
+    isCueStale(mediaNow, cue, graceSeconds = 0.25) {
       const now = Number(mediaNow);
       if (!Number.isFinite(now)) return false;
       const start = Number(cue?.start) || 0;
@@ -790,6 +790,101 @@
       }
       const desired = Math.max(Number(calculatedRate) || 1, Number(catchUpRate) || 1);
       return Math.min(2.0, Math.max(0.5, desired));
+    },
+
+    // Pick the rate for a cue that is starting now. Providers that bake the
+    // speaking rate into the generated clip (Google, OpenAI) can only hit their
+    // prefetched cache if playback uses the exact same rate; while the line is
+    // still on time, reuse the prefetched plan instead of recomputing a
+    // slightly higher catch-up rate.
+    selectCuePlaybackPlan({ plan, prefetchedPlan, mediaNow = 0, cue = null, provider = "" } = {}) {
+      const bakedRate = provider === "google-cloud"
+        || provider === "openai-tts"
+        || provider === "openai";
+      const lag = Math.max(0, Number(mediaNow) - (Number(cue?.start) || 0));
+      const reusePrefetched = !!(bakedRate && prefetchedPlan && lag <= 1.0);
+      return {
+        rate: reusePrefetched ? prefetchedPlan.rate : plan?.rate,
+        reusePrefetched,
+      };
+    },
+
+    // Stable key for the prefetched plan of one cue. Start time + text means a
+    // seek or retranslation never reuses the wrong clip.
+    cueSpeechKey(cue, text) {
+      return [
+        (Number(cue?.start) || 0).toFixed(3),
+        String(text ?? cue?.translated ?? cue?.text ?? "").trim(),
+      ].join("\u0001");
+    },
+
+    // Build the rate/slot plan for one cue. Prefetch and playback call this
+    // with the same arguments, so the cached TTS clip matches the rate used
+    // when the cue starts.
+    buildCueSpeechPlan(cue, nextCue, settings = {}, { videoNow = 0, videoRate = 1, includeCatchUp = true } = {}) {
+      const text = String(cue?.translated || cue?.text || "").trim();
+      if (!text) return null;
+      const start = Number(cue?.start) || 0;
+      const nextStart = Number(nextCue?.start);
+      const cueEnd = Number(cue?.end);
+      const slotEnd = Number.isFinite(nextStart) && nextStart > start
+        ? nextStart
+        : (Number.isFinite(cueEnd) && cueEnd > start ? cueEnd : start + 3.0);
+      const duration = Math.max(0.5, slotEnd - start);
+      const calculatedRate = this.fitRateForCue({
+        text,
+        targetLanguage: settings.targetLanguage || "en",
+        duration,
+        playbackRate: videoRate || 1,
+      });
+      const lag = Math.max(0, Number(videoNow) - start);
+      const catchUpRate = includeCatchUp ? this.catchUpRateForLag(lag) : 1;
+      const rate = this.resolveSpeechRate({ calculatedRate, catchUpRate, settings });
+      return { text, duration, calculatedRate, catchUpRate, rate };
+    },
+
+    // Pre-synthesize a future cue for network TTS providers. This removes the
+    // network round-trip from the cue boundary, which is the main reason the
+    // spoken voice used to trail the subtitle line.
+    prefetchCueSpeech(cue, nextCue, settings = {}, video = null, ctx = null, session = null) {
+      const provider = settings.captionTtsProvider;
+      if (!cue?.translated || !provider || provider === "off" || provider === "browser") return false;
+      const videoNow = Number(video?.currentTime) || 0;
+      const videoRate = Number(video?.playbackRate) || 1;
+      const plan = this.buildCueSpeechPlan(cue, nextCue, settings, {
+        videoNow,
+        videoRate,
+        includeCatchUp: false,
+      });
+      if (!plan) return false;
+      const plans = session?.prefetchedTtsPlans
+        || (session ? (session.prefetchedTtsPlans = new Map()) : null);
+      const cueKey = this.cueSpeechKey(cue, plan.text);
+      plans?.set(cueKey, plan);
+      const key = [
+        provider,
+        settings.targetLanguage || "en",
+        settings.standardVoice || "",
+        plan.rate.toFixed(3),
+        plan.text,
+      ].join("\u0001");
+      const seen = session?.prefetchedTts || (session ? (session.prefetchedTts = new Set()) : null);
+      if (seen?.has(key)) return false;
+      seen?.add(key);
+      const pending = window.LumeoTTS?.prefetch?.(plan.text, settings.targetLanguage || "en", {
+        provider,
+        rate: plan.rate,
+        googleCloudKey: settings.googleCloudKey,
+        openaiKey: settings.openaiKey,
+        openaiVoice: settings.openaiVoice,
+        customTtsBaseUrl: settings.customTtsBaseUrl,
+        customTtsVoiceId: settings.customTtsVoiceId,
+        customTtsApiKey: settings.customTtsApiKey,
+        customTtsModelId: settings.customTtsModelId,
+        voiceName: settings.standardVoice,
+      });
+      Promise.resolve(pending).catch(() => {});
+      return true;
     },
 
     updateCaptionProgress(progress = {}, ctx) {
@@ -927,7 +1022,29 @@
         if (currentSession?.type !== "caption" || currentSession.token !== token) return;
         if (video.paused) return;
         const liveSettings = ctx.getSettings() || settings;
+        const orchestrator = window.LumeoCaptionOrchestrator;
         const current = pipeline.cueAt(video.currentTime);
+        const mediaNow = Number(video?.currentTime) || 0;
+
+        // While the current line is on screen, synthesize the next one or two
+        // lines. Network TTS then starts on the cue boundary instead of after a
+        // round-trip, which is what made the voice trail the subtitle.
+        if (current.cue) {
+          for (let offset = 1; offset <= 2; offset += 1) {
+            const upcoming = pipeline.cues?.[current.index + offset];
+            if (!upcoming) break;
+            if (Number(upcoming.start) - mediaNow > 14) break;
+            orchestrator.prefetchCueSpeech(
+              upcoming,
+              pipeline.cues?.[current.index + offset + 1],
+              liveSettings,
+              video,
+              ctx,
+              currentSession,
+            );
+          }
+        }
+
         if (current.index === currentSession.lastCueIndex) return;
         currentSession.lastCueIndex = current.index;
 
@@ -951,9 +1068,6 @@
 
         if (liveSettings.captionTtsProvider && liveSettings.captionTtsProvider !== "off") {
           const cue = current.cue;
-          const mediaNow = Number(video?.currentTime) || 0;
-          const cueLag = mediaNow - (Number(cue.start) || 0);
-          const orchestrator = window.LumeoCaptionOrchestrator;
 
           // The previous line is allowed to finish, but do not start a line the
           // video has already moved past: that is how audio and subtitles drift
@@ -967,30 +1081,32 @@
           // starts, not only its own display window. This avoids unnecessary
           // speed-ups and keeps more lines at a natural pace.
           const nextCue = pipeline.cues?.[current.index + 1];
-          const slotEnd = nextCue?.start != null && Number(nextCue.start) > Number(cue.end)
-            ? Number(nextCue.start)
-            : cue.end;
-          const duration = (slotEnd != null && cue.start != null && slotEnd > cue.start)
-            ? (slotEnd - cue.start)
-            : 3.0;
-          const textToSpeak = (cue.translated || cue.text || "").trim();
-          const calculatedRate = orchestrator.fitRateForCue({
-            text: textToSpeak,
-            targetLanguage: liveSettings.targetLanguage || "en",
-            duration,
-            playbackRate: video?.playbackRate || 1,
+          const plan = orchestrator.buildCueSpeechPlan(cue, nextCue, liveSettings, {
+            videoNow: mediaNow,
+            videoRate: Number(video?.playbackRate) || 1,
           });
-          // The longer a cue has already been on screen, the harder the voice
-          // has to push to stay with the video. 2.0x is the product cap.
-          const catchUpRate = orchestrator.catchUpRateForLag(cueLag);
-          const effectiveRate = orchestrator.resolveSpeechRate({
-            calculatedRate,
-            catchUpRate,
-            settings: liveSettings,
+          if (!plan) return;
+
+          // Google/OpenAI bake the speaking rate into the audio blob, and the
+          // blob is cached by that rate. When the line starts on time, reuse
+          // the exact rate its prefetched clip was synthesized with so playback
+          // does not trigger a second network request. Custom voice applies the
+          // rate at playback time, so it can keep adapting from the queue.
+          const provider = liveSettings.captionTtsProvider;
+          const prefetchedPlan = currentSession.prefetchedTtsPlans?.get(
+            orchestrator.cueSpeechKey(cue, plan.text)
+          );
+          const startAt = Number(cue.start) || 0;
+          const { rate: effectiveRate, reusePrefetched } = orchestrator.selectCuePlaybackPlan({
+            plan,
+            prefetchedPlan,
+            mediaNow,
+            cue,
+            provider,
           });
 
           pipeline.speakCue(cue, {
-            provider: liveSettings.captionTtsProvider,
+            provider,
             targetLanguage: liveSettings.targetLanguage || "en",
             googleCloudKey: liveSettings.googleCloudKey,
             openaiKey: liveSettings.openaiKey,
@@ -1000,6 +1116,15 @@
             customTtsModelId: liveSettings.customTtsModelId,
             voiceName: liveSettings.standardVoice,
             rate: effectiveRate,
+            // If the line waited behind the previous one, recompute the rate
+            // at the moment the queue actually starts it.
+            getRate: reusePrefetched ? undefined : () => orchestrator.resolveSpeechRate({
+              calculatedRate: plan.calculatedRate,
+              catchUpRate: orchestrator.catchUpRateForLag(
+                (Number(video?.currentTime) || 0) - startAt
+              ),
+              settings: liveSettings,
+            }),
             volume: Math.min((liveSettings.voiceVolume ?? 100) / 100, 1),
             isStale: () => orchestrator.isCueStale(Number(video?.currentTime) || 0, cue),
             onSkip: () => ctx.showToast("⚠️ Spoken audio is catching up; oldest line skipped.", 3500),

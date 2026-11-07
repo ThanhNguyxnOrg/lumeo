@@ -25,6 +25,16 @@
   const MAX_READY_CHUNKS = 3;
   const MAX_WAIT_MS = 2200;
   const DRAIN_TICK_MS = 250;
+  // Playback is anchored to the source video clock, not to a free-running
+  // queue. These caps keep a late line intelligible while still letting it
+  // catch up instead of drifting one chunk further behind every time.
+  const MAX_FIT_RATE = 1.1;
+  const MAX_CATCHUP_RATE = 1.6;
+  // A chunk can only start after STT + translation + TTS finish, which is
+  // normally a couple of seconds after its recorded slot. Allow more than one
+  // full chunk of lateness before treating it as a backlog spike and dropping
+  // it; otherwise a normal processing delay would mute the whole dub.
+  const LATE_GRACE_SECONDS = 5.5;
 
   function clearDrainTimer(state) {
     if (!state?.drainTimer) return;
@@ -126,8 +136,10 @@
   function resetDubState(sessionRef, startIndex) {
     const state = sessionRef?.dubState;
     clearDrainTimer(state);
+    clearDubTextTimers(sessionRef);
     if (!sessionRef) return;
     sessionRef.dubState = null;
+    sessionRef.lastScheduledDubItem = null;
     if (Number.isFinite(Number(startIndex))) {
       sessionRef.dubStartIndex = Number(startIndex);
     }
@@ -274,7 +286,6 @@
     const transcription = await transcriptionResponse.json().catch(() => ({}));
     const sourceText = String(transcription.text || "").trim();
     if (!sourceText || sourceText.length < 2) return;
-    context.onSourceText?.(sourceText);
 
     const glossary = String(settings.translationContext || "").trim();
     const priorLines = Array.isArray(sessionRef.contextLines)
@@ -319,7 +330,6 @@
     const translation = await translationResponse.json().catch(() => ({}));
     const targetText = String(translation?.choices?.[0]?.message?.content || "").trim();
     if (!targetText) return;
-    context.onTargetText?.(targetText);
 
     if (!Array.isArray(sessionRef.contextLines)) sessionRef.contextLines = [];
     sessionRef.contextLines.push(sourceText);
@@ -364,65 +374,214 @@
     }
     if (!isCurrent()) return;
 
-    enqueueOrderedDub(sessionRef, chunkMeta, audioBuffer, context);
+    enqueueOrderedDub(sessionRef, { ...chunkMeta, sourceText, targetText }, audioBuffer, context);
     context.onChunkDone?.();
   }
 
-  function playDubItem(sessionRef, audioBuffer, context = {}, meta = {}) {
-    if (!sessionRef || !audioBuffer || !sessionRef.audioCtx) return;
-    if (sessionRef.nextPlayAt < sessionRef.audioCtx.currentTime) sessionRef.nextPlayAt = 0;
-    // Backlog guard: tighter 1.10 cap trades chipmunking for queue drift under sustained
-    // expansion (e.g. 6s speech per 5s chunk drifts +0.45s/chunk). Fast-forward instead of
-    // queueing unbounded lag; current (fresher) chunk wins over stale backlog.
-    if (sessionRef.nextPlayAt - sessionRef.audioCtx.currentTime > 2.0) {
-      sessionRef.nextPlayAt = sessionRef.audioCtx.currentTime + 0.05;
+  function clearDubTextTimers(sessionRef) {
+    if (!sessionRef?.dubTextTimers) return;
+    for (const timer of sessionRef.dubTextTimers) {
+      try { clearTimeout(timer); } catch {}
     }
-    const startAt = Math.max(sessionRef.audioCtx.currentTime + 0.05, sessionRef.nextPlayAt);
-    const source = sessionRef.audioCtx.createBufferSource();
-    source.buffer = audioBuffer;
+    sessionRef.dubTextTimers = null;
+  }
 
-    const settings = context.getSettings?.() || {};
+  function stopDubPlayback(sessionRef) {
+    clearDubTextTimers(sessionRef);
+    if (sessionRef?.activeSources) {
+      for (const source of sessionRef.activeSources) {
+        try { source.stop(); } catch {}
+      }
+      sessionRef.activeSources.clear();
+    }
+    if (sessionRef) {
+      sessionRef.lastScheduledDubItem = null;
+      sessionRef.nextPlayAt = 0;
+      sessionRef.duckUntil = 0;
+    }
+  }
+
+  // Translate a chunk's source slot into AudioContext time. `startAt` is when
+  // playback should begin, `rate` is the speed needed to fit the slot, and
+  // `expired` means the video already moved past this chunk entirely.
+  function computeDubTiming(meta = {}, audioDuration = 0, context = {}, audioNow = 0) {
+    const slotStart = Math.max(0, (Number(meta.sourceStartMs) || 0) / 1000);
+    const slotEnd = Math.max(slotStart + 0.25, (Number(meta.sourceEndMs) || 0) / 1000);
+    const duration = Math.max(0, Number(audioDuration) || 0);
     const video = typeof context.getVideo === "function" ? context.getVideo() : null;
-    const fitPlaybackRate = Number(video?.playbackRate) || 1;
-    const chunkSeconds = (Number(meta.sourceEndMs) - Number(meta.sourceStartMs)) / 1000;
-    const targetDuration = (chunkSeconds > 0 ? chunkSeconds : 5.0) / fitPlaybackRate;
-    const ttsDuration = audioBuffer.duration;
-    const speedRatio = ttsDuration / targetDuration;
-    let rate = 1.0;
-    if (speedRatio > 1.05) {
-      rate = Math.min(speedRatio, 1.1);
+    const rawTime = Number(video?.currentTime);
+    if (!Number.isFinite(rawTime)) {
+      return { anchored: false, slotStart, slotEnd, duration };
     }
-    if (source.playbackRate) {
-      source.playbackRate.value = rate;
+    const videoRate = Math.max(0.25, Number(video?.playbackRate) || 1);
+    const lateness = Math.max(0, rawTime - slotStart);
+    const expired = rawTime > slotEnd + LATE_GRACE_SECONDS;
+    const slotSeconds = Math.max(0.25, (slotEnd - slotStart) / videoRate);
+    const remaining = Math.max(0, (slotEnd - rawTime) / videoRate);
+    const wait = Math.max(0, (slotStart - rawTime) / videoRate);
+    const startAt = audioNow + 0.05 + (expired ? 0 : wait);
+    let rate = 1;
+    if (duration > slotSeconds) {
+      rate = Math.min(MAX_FIT_RATE, duration / slotSeconds);
     }
-    const duration = ttsDuration / rate;
+    if (!expired && lateness > 0 && remaining > 0.15 && duration > remaining) {
+      rate = Math.max(rate, Math.min(MAX_CATCHUP_RATE, duration / remaining));
+    }
+    return {
+      anchored: true,
+      slotStart,
+      slotEnd,
+      duration,
+      lateness,
+      expired,
+      startAt,
+      rate,
+      endAt: startAt + duration / Math.max(0.5, rate),
+    };
+  }
 
-    source.connect(sessionRef.outputGain);
+  function playDubItem(sessionRef, audioBuffer, context = {}, meta = {}) {
+    if (!sessionRef || !audioBuffer || !sessionRef.audioCtx) return false;
+    const audioCtx = sessionRef.audioCtx;
+    const now = audioCtx.currentTime;
+    const timing = computeDubTiming(meta, audioBuffer.duration, context, now);
+
+    if (timing.expired) {
+      sessionRef.dubSkippedLate = (Number(sessionRef.dubSkippedLate) || 0) + 1;
+      try { context.onChunkSkipped?.({ ...meta, reason: "late" }); } catch {}
+      return false;
+    }
+
+    const previous = sessionRef.lastScheduledDubItem;
+    let startAt;
+    let rate;
+    if (timing.anchored) {
+      startAt = timing.startAt;
+      rate = timing.rate;
+      // Late chunks start as soon as they are ready. If the previous chunk is
+      // still speaking, run this one right after it instead of stacking both
+      // at the same instant and cutting the older line off.
+      if (timing.lateness > 0
+        && previous?.source
+        && Number.isFinite(previous.endAt)
+        && previous.endAt > startAt) {
+        startAt = previous.endAt;
+      }
+    } else {
+      // Legacy fallback when no video clock is available (tests, detached
+      // players): keep the old bounded queue behavior.
+      if (sessionRef.nextPlayAt < now) sessionRef.nextPlayAt = 0;
+      if (sessionRef.nextPlayAt - now > 2.0) sessionRef.nextPlayAt = now + 0.05;
+      startAt = Math.max(now + 0.05, sessionRef.nextPlayAt);
+      const chunkSeconds = (Number(meta.sourceEndMs) - Number(meta.sourceStartMs)) / 1000;
+      const targetDuration = (chunkSeconds > 0 ? chunkSeconds : 5.0) / (Number(context.getVideo?.()?.playbackRate) || 1);
+      const speedRatio = (Number(audioBuffer.duration) || 0) / targetDuration;
+      rate = speedRatio > 1.05 ? Math.min(speedRatio, MAX_FIT_RATE) : 1.0;
+    }
+
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    if (source.playbackRate) source.playbackRate.value = rate;
+    const duration = (Number(audioBuffer.duration) || 0) / Math.max(0.5, rate);
+
+    let gain = null;
+    if (typeof audioCtx.createGain === "function") {
+      gain = audioCtx.createGain();
+      gain.gain.value = 1;
+      source.connect(gain);
+      gain.connect(sessionRef.outputGain);
+    } else {
+      source.connect(sessionRef.outputGain);
+    }
+
+    // A line that overran its slot may still be playing when the next cue is
+    // due. Fade it out at the boundary so the fresh chunk starts on time
+    // instead of stacking behind it.
+    if (previous?.source && previous.source !== source && startAt < previous.endAt) {
+      const fadeAt = Math.max(now, startAt - 0.12);
+      try {
+        previous.gain?.gain?.cancelScheduledValues?.(now);
+        previous.gain?.gain?.setValueAtTime?.(1, fadeAt);
+        previous.gain?.gain?.linearRampToValueAtTime?.(0, Math.max(fadeAt + 0.02, startAt));
+      } catch {}
+      try { previous.source.stop(Math.max(now + 0.02, startAt)); } catch {}
+    }
+
+    const item = {
+      source,
+      gain,
+      meta,
+      startAt,
+      endAt: startAt + duration,
+    };
     sessionRef.activeSources = sessionRef.activeSources || new Set();
     sessionRef.activeSources.add(source);
+    sessionRef.lastScheduledDubItem = item;
+    const onEnded = () => {
+      sessionRef.activeSources?.delete(source);
+      if (sessionRef.lastScheduledDubItem === item) sessionRef.lastScheduledDubItem = null;
+    };
     if (typeof source.addEventListener === "function") {
-      source.addEventListener("ended", () => {
-        sessionRef.activeSources?.delete(source);
-      });
+      source.addEventListener("ended", onEnded);
     } else {
-      source.onended = () => {
-        sessionRef.activeSources?.delete(source);
-      };
+      source.onended = onEnded;
     }
-    try { source.start(startAt); } catch {}
-    sessionRef.nextPlayAt = startAt + duration;
 
+    try {
+      source.start(startAt);
+    } catch {
+      sessionRef.activeSources.delete(source);
+      if (sessionRef.lastScheduledDubItem === item) sessionRef.lastScheduledDubItem = null;
+      return false;
+    }
+    sessionRef.nextPlayAt = item.endAt;
+
+    // Show the translated line when its voice actually starts. Showing it at
+    // translation time made the subtitle run ahead of the dub by the whole
+    // TTS latency.
+    if (meta.sourceText || meta.targetText) {
+      if (!timing.anchored) {
+        try { context.onSourceText?.(meta.sourceText || ""); } catch {}
+        try { context.onTargetText?.(meta.targetText || ""); } catch {}
+      } else {
+        const generation = Number(sessionRef.dubGeneration) || 0;
+        const delay = Math.max(0, (startAt - audioCtx.currentTime) * 1000);
+        let timer = null;
+        const scheduleTextCheck = (ms) => {
+          timer = setTimeout(showText, ms);
+          sessionRef.dubTextTimers = sessionRef.dubTextTimers || new Set();
+          sessionRef.dubTextTimers.add(timer);
+        };
+        const showText = () => {
+          sessionRef.dubTextTimers?.delete(timer);
+          if (sessionRef !== context.getActiveSession?.()) return;
+          if (context.getPageToken && sessionRef.token !== context.getPageToken()) return;
+          if ((Number(sessionRef.dubGeneration) || 0) !== generation) return;
+          const remainingMs = (startAt - audioCtx.currentTime) * 1000;
+          if (remainingMs > 25) {
+            scheduleTextCheck(remainingMs);
+            return;
+          }
+          try { context.onSourceText?.(meta.sourceText || ""); } catch {}
+          try { context.onTargetText?.(meta.targetText || ""); } catch {}
+        };
+        scheduleTextCheck(delay);
+      }
+    }
+
+    const video = typeof context.getVideo === "function" ? context.getVideo() : null;
     if (video) {
+      const settings = context.getSettings?.() || {};
       if (settings.muteOriginal) {
         video.muted = true;
         video.volume = 0;
       } else {
         const originalVolume = settings.originalVolume ?? 18;
         const endAt = startAt + duration;
-        sessionRef.duckUntil = Math.max(sessionRef.duckUntil || 0, endAt);
+        sessionRef.duckUntil = endAt;
 
-        const delayToStart = Math.max(0, (startAt - sessionRef.audioCtx.currentTime) * 1000);
-        const delayToEnd = Math.max(0, (endAt - sessionRef.audioCtx.currentTime) * 1000);
+        const delayToStart = Math.max(0, (startAt - audioCtx.currentTime) * 1000);
+        const delayToEnd = Math.max(0, (endAt - audioCtx.currentTime) * 1000);
 
         setTimeout(() => {
           if (sessionRef === context.getActiveSession?.() && sessionRef.token === context.getPageToken?.()) {
@@ -438,7 +597,7 @@
           if (sessionRef === context.getActiveSession?.() && sessionRef.token === context.getPageToken?.()) {
             const liveSettings = context.getSettings?.() || settings;
             if (!liveSettings.muteOriginal) {
-              if (sessionRef.audioCtx.currentTime >= (sessionRef.duckUntil || 0) - 0.05) {
+              if (audioCtx.currentTime >= (sessionRef.duckUntil || 0) - 0.05) {
                 const liveVol = liveSettings.originalVolume ?? originalVolume;
                 video.volume = Math.max(0, Math.min(1, liveVol / 100));
               }
@@ -447,6 +606,7 @@
         }, delayToEnd);
       }
     }
+    return true;
   }
 
   window.LumeoStandardPipeline = {
@@ -459,6 +619,12 @@
     MAX_READY_CHUNKS,
     MAX_WAIT_MS,
     DRAIN_TICK_MS,
+    MAX_FIT_RATE,
+    MAX_CATCHUP_RATE,
+    LATE_GRACE_SECONDS,
+    computeDubTiming,
+    clearDubTextTimers,
+    stopDubPlayback,
     runChunkLoop,
     processChunk,
     enqueueOrderedDub,
