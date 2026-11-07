@@ -14,8 +14,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Changed
 
-- **Standard Dub is anchored to the video clock:** each chunk is scheduled against its recorded source slot instead of a free-running queue, so processing latency cannot accumulate into minutes of drift. Chunks that already overran are dropped, and late chunks may speed up to `1.6×` to fit the remaining slot.
-- **Subtitles follow the voice:** Standard Dub shows the translated line when its audio actually starts, not when translation finishes. An overrunning line fades out before the next one starts.
+- **Standard Dub is anchored to the video clock:** each chunk is scheduled against its recorded source slot instead of a free-running queue, so processing latency cannot accumulate into minutes of drift. A chunk more than a full chunk behind is dropped, and a late chunk starts immediately, running back-to-back after the previous line instead of stacking on top of it.
+- **Subtitles follow the voice:** Standard Dub shows the translated line when its audio actually starts, not when translation finishes. A line that overruns its slot fades out before the next on-time chunk starts.
 - **Queue-aware rate:** a caption line that waited behind the previous line recomputes its speaking rate at the moment it actually starts, and Google/OpenAI reuse the rate of their prefetched clip while the line is still on time.
 - **Faster stale-line recovery:** caption lines are skipped once the video is more than `0.25s` past their display window instead of `0.75s`.
 
