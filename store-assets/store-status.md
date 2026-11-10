@@ -5,7 +5,7 @@ Release: **v2.0.9**
 
 ## Firefox Add-ons (AMO)
 
-<badge>Public</badge>
+**Status: Public**
 
 - Listing: [Lumeo — Captions & AI Dub for YouTube](https://addons.mozilla.org/en-US/firefox/addon/lumeo-captions-ai-dub-for-yout/)
 - Approved version: **2.0.9**
@@ -13,7 +13,7 @@ Release: **v2.0.9**
 
 ## Microsoft Edge Add-ons
 
-<badge>First publication pending</badge>
+**Status: First publication pending**
 
 - There is no verified public Edge Add-ons listing URL yet.
 - The v2.0.9 Edge ZIP is available from the [GitHub release](https://github.com/ThanhNguyxnOrg/lumeo/releases/tag/v2.0.9): `lumeo-v2.0.9-edge.zip`.
