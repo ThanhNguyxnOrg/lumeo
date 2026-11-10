@@ -259,8 +259,9 @@ jobs:
       - name: Generate GitHub App Token
         if: steps.plan.outputs.should_release == 'true'
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: ThanhNguyxnOrg/.github/.github/actions/agent-token@da9d02544f60aeec92f8c851846ee3a587044beb
         with:
+          profile: content
           client-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_PRIVATE_KEY }}
 
