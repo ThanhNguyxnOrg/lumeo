@@ -5,71 +5,33 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  lint-and-syntax:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-
-      - name: Validate manifest JSON
-        run: |
-          node -e "
-            const m = JSON.parse(require('fs').readFileSync('manifest.json','utf8'));
-            if (!m.name || !m.version || m.manifest_version !== 3) {
-              throw new Error('manifest.json missing required MV3 fields');
-            }
-            console.log('manifest.json OK — name:', m.name, '· version:', m.version);
-          "
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Validate version consistency
-        run: npm run check:versions
-
-      - name: Validate manifest references
-        run: npm run check:manifest
-
-      - name: Validate AMO listing metadata
-        run: |
-          node -e "
-            const m = JSON.parse(require('fs').readFileSync('store-assets/amo-metadata.json','utf8'));
-            if (!m.summary?.['en-US'] || !m.categories?.length || !m.version?.license) {
-              throw new Error('amo-metadata.json is missing first-submission fields');
-            }
-            console.log('amo-metadata.json OK');
-          "
-
-      - name: Check JavaScript syntax
-        run: npm run check:all
-
-      - name: Run unit tests
-        run: npm test
-
-      - name: Build every target
-        run: npm run build:targets
-
-      - name: Verify target archives
-        run: |
-          set -e
-          for f in dist/*.zip; do
-            unzip -t "$f" >/dev/null
-          done
-          unzip -p dist/lumeo-v*-firefox.zip manifest.json > /tmp/firefox-manifest.json
-          node -e "
-            const m = require('/tmp/firefox-manifest.json');
-            if (!m.background?.scripts || m.background?.service_worker) {
-              throw new Error('Firefox background transform missing');
-            }
-            if (!m.browser_specific_settings?.gecko?.id) {
-              throw new Error('Firefox gecko id missing');
-            }
-          "
-          echo "target archives OK"
+  verify:
+    uses: ThanhNguyxnOrg/.github/.github/workflows/ci-node.yml@2bda8e8e8073a2578db4bbb1e0f6aaf21d061bcd
+    with:
+      job_name: lint-and-syntax
+      node_version: "22"
+      package_manager: npm
+      cache: npm
+      validation_command: |
+        node scripts/check-versions.mjs
+        node scripts/check-manifest.mjs
+        node -e "const m=JSON.parse(require('fs').readFileSync('store-assets/amo-metadata.json','utf8')); if (!m.summary?.['en-US'] || !m.categories?.length || !m.version?.license) throw new Error('amo-metadata.json is missing first-submission fields'); console.log('amo-metadata.json OK');"
+      lint_command: npm run check:all
+      test_command: npm test
+      build_command: npm run build:targets
+      post_build_command: |
+        set -euo pipefail
+        for f in dist/*.zip; do unzip -t "$f" >/dev/null; done
+        unzip -p dist/lumeo-v*-firefox.zip manifest.json > /tmp/firefox-manifest.json
+        node -e "const m=require('/tmp/firefox-manifest.json'); if (!m.background?.scripts || m.background?.service_worker) throw new Error('Firefox background transform missing'); if (!m.browser_specific_settings?.gecko?.id) throw new Error('Firefox gecko id missing');"
+        echo "target archives OK"
