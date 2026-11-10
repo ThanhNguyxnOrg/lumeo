@@ -86,7 +86,9 @@ No account required. No telemetry. No Lumeo-operated server. Your API keys stay 
 
 ### Firefox (AMO)
 
-Lumeo is submitted to [addons.mozilla.org](https://addons.mozilla.org/) as a listed add-on. Once the first AMO review completes, install it from the AMO listing and Firefox keeps it updated automatically.
+<badge>Public · v2.0.9</badge>
+
+Install Lumeo from the [Firefox Add-ons listing](https://addons.mozilla.org/en-US/firefox/addon/lumeo-captions-ai-dub-for-yout/). Firefox receives future updates through AMO automatically. Mozilla's automated screening marked v2.0.9 tentatively approved; a later human review may still request changes.
 
 ### Chrome / Brave (sideload ZIP)
 
@@ -103,7 +105,8 @@ Chrome Web Store currently requires a paid developer registration, so the Chrome
 
 1. Download `lumeo-v<version>-edge.zip` from the [latest release](https://github.com/ThanhNguyxnOrg/lumeo/releases/latest).
 2. Open `edge://extensions`, enable **Developer mode**, and choose **Load unpacked**.
-3. For store installation, the Edge Add-ons listing is uploaded manually from the same ZIP until a publishing API is available.
+
+**Store status:** Lumeo is not publicly listed on Microsoft Edge Add-ons yet. The first listing must be created and submitted manually in Partner Center; the Edge Add-ons API is for updating an existing listing. See [store status and submission notes](store-assets/store-status.md).
 
 ### Opera
 
@@ -290,7 +293,7 @@ npm run build:targets
 - `lumeo-v<version>-opera.zip`
 - `SHA256SUMS.txt` and `build-metadata.json`
 
-The builder reads `manifest.json`, packages only tracked runtime files (`.env`, tests, docs, and local artifacts can never leak in), writes per-target manifest transforms, and produces deterministic ZIP bytes. The same ZIPs are published automatically on every version tag by [`.github/workflows/release.yml`](.github/workflows/release.yml). Firefox is submitted to AMO when the `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` secrets are configured, and Microsoft Edge is updated when the `EDGE_PRODUCT_ID` / `EDGE_API_KEY` / `EDGE_CLIENT_ID` secrets exist. Opera and Naver Whale uploads stay manual. Account and secret setup: [`docs/RELEASE-SETUP.md`](docs/RELEASE-SETUP.md).
+The builder reads `manifest.json`, packages only tracked runtime files (`.env`, tests, docs, and local artifacts can never leak in), writes per-target manifest transforms, and produces deterministic ZIP bytes. The same ZIPs are published automatically on every version tag by [`.github/workflows/release.yml`](.github/workflows/release.yml). Firefox is submitted to AMO when the `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` secrets are configured. Microsoft Edge's first listing must be created manually in Partner Center; after that first publication, later releases can use the Edge Add-ons API. Opera and Naver Whale uploads stay manual. See [store status](store-assets/store-status.md) and [account / secret setup](docs/RELEASE-SETUP.md).
 
 ---
 
@@ -323,8 +326,8 @@ The builder reads `manifest.json`, packages only tracked runtime files (`.env`, 
 - [ ] Dictionary lookup on highlighted caption text
 - [ ] Auto-pick tier based on available captions
 - [ ] SRT/ZIP export across all tiers
-- [x] Firefox MV3 port and AMO listed-channel packaging
-- [ ] Edge Add-ons and Opera Add-ons store submissions
+- [x] Firefox MV3 port and public AMO listing
+- [ ] First Microsoft Edge Add-ons publication and Opera Add-ons submission
 
 ---
 
@@ -335,7 +338,7 @@ PRs welcome on `main`. The codebase is **plain vanilla JS** — no build step, n
 Before opening a PR:
 
 ```bash
-npm test                    # All 260 tests must pass
+npm test                    # All 306 tests must pass
 npm run check:all           # Syntax check
 npm run check:versions      # Manifest/package/content/README/CHANGELOG versions
 npm run check:manifest      # Every file referenced by manifest.json exists
