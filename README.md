@@ -88,7 +88,7 @@ No account required. No telemetry. No Lumeo-operated server. Your API keys stay 
 
 **Status: Public · v2.0.9**
 
-Install Lumeo from the [Firefox Add-ons listing](https://addons.mozilla.org/en-US/firefox/addon/lumeo-captions-ai-dub-for-yout/). Firefox receives future updates through AMO automatically. Mozilla's automated screening marked v2.0.9 tentatively approved; a later human review may still request changes.
+Install Lumeo from the [Firefox Add-ons listing](https://addons.mozilla.org/en-US/firefox/addon/lumeo-captions-ai-dub-for-yout/). Firefox receives future updates through AMO automatically. The listing is public after automated validation; Mozilla may still conduct a manual review after publication and may request changes.
 
 ### Chrome / Brave (sideload ZIP)
 
