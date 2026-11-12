@@ -2,7 +2,7 @@
 
 > **Status:** v2.0.9 store copy. Privacy policy is live at <https://thanhnguyxnorg.github.io/lumeo/privacy.html>.
 > **Firefox AMO:** publicly listed at <https://addons.mozilla.org/en-US/firefox/addon/lumeo-captions-ai-dub-for-yout/> (v2.0.9).
-> **Microsoft Edge:** first public listing is still pending; create and submit the product manually in Partner Center.
+> **Microsoft Edge:** publicly listed and approved (v2.0.9) — <https://microsoftedge.microsoft.com/addons/detail/kpmmjnkccgpjbekgeiehbjonabdklhgj>. Subsequent package updates can use the Edge Add-ons Update REST API.
 > Lengths checked against current limits: long description 16,000; short description 132; **Edge/Chrome manifest
 > description 132**. The same name, short description, and long description are used on the Microsoft Edge Partner
 > Center listing. The manifest `name`/`description` are `__MSG_` placeholders resolved from
