@@ -1,6 +1,6 @@
 # Marketplace listing status
 
-Last verified: **2026-11-10**  
+Last verified: **2026-11-12**  
 Release: **v2.0.9**
 
 ## Firefox Add-ons (AMO)
@@ -13,12 +13,13 @@ Release: **v2.0.9**
 
 ## Microsoft Edge Add-ons
 
-**Status: First publication pending**
+**Status: Public · Approved**
 
-- There is no verified public Edge Add-ons listing URL yet.
 - The v2.0.9 Edge ZIP is available from the [GitHub release](https://github.com/ThanhNguyxnOrg/lumeo/releases/tag/v2.0.9): `lumeo-v2.0.9-edge.zip`.
-- The release workflow successfully uploaded the package to the Partner Center draft-package endpoint. Its subsequent submission request failed with `CreateNotAllowed` / “Can't create new extension.” This is not a certification rejection and does not mean the extension is public.
-- Microsoft's first product/listing must be created and submitted manually in Partner Center. Once the first listing is published, subsequent package updates can use the Edge Add-ons API.
+- Listing: [Lumeo — Captions & AI Dub for YouTube](https://microsoftedge.microsoft.com/addons/detail/kpmmjnkccgpjbekgeiehbjonabdklhgj)
+- Published listing confirmed on **2026-11-12**. The first listing is approved and publicly available.
+- The earlier `CreateNotAllowed` response was a first-submission API limitation, not a certification rejection; it is now historical.
+- Subsequent package updates can use the Edge Add-ons Update REST API. Keep `EDGE_PRODUCT_ID` specific to this repository.
 - Partner Center: [Microsoft Edge Add-ons dashboard](https://partner.microsoft.com/dashboard/microsoftedge/public/login?ref=dd).
 
 ## Release workflow
