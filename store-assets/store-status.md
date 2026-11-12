@@ -8,8 +8,9 @@ Release: **v2.0.9**
 **Status: Public**
 
 - Listing: [Lumeo — Captions & AI Dub for YouTube](https://addons.mozilla.org/en-US/firefox/addon/lumeo-captions-ai-dub-for-yout/)
-- Approved version: **2.0.9**
-- Mozilla notified the publisher on 2026-11-10 that automated screening passed and the version was tentatively approved. Mozilla may still perform a human review and request changes.
+- Published version: **2.0.9** (automated validation passed).
+- Mozilla notified the publisher on 2026-11-10 that automated screening passed and the submission was tentatively approved for publication.
+- **Review distinction:** public availability does not mean the manual review is necessarily complete. Mozilla may conduct a post-publication human review and request changes; this is a normal part of AMO's listed distribution process.
 
 ## Microsoft Edge Add-ons
 
