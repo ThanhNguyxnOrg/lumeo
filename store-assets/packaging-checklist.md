@@ -53,7 +53,7 @@ Account and secret setup is documented in [`docs/RELEASE-SETUP.md`](../docs/RELE
 
 ## Manual blocks
 
-- Edge: first listing is manual in Partner Center — the API returns `CreateNotAllowed` until the first version is published; later versions are automated through the free Update REST API.
+- Edge: first listing is now published. Subsequent package updates can use the free Edge Add-ons Update REST API when the Edge credentials and repo-specific product ID are configured.
 - Opera Add-ons upload and review.
 - Naver Whale Store upload and review.
 - Chrome Web Store / Brave store listing (requires the paid Chrome Web Store developer registration).
