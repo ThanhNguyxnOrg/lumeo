@@ -14,8 +14,10 @@ permissions:
   actions: read
   contents: read
 
+# Serialize all PR event workers per repository. Multiple check-run completions
+# can signal the same PR at once; per-run locking would allow racing merge calls.
 concurrency:
-  group: agent-pr-event-${{ github.event.workflow_run.id }}
+  group: agent-pr-events-${{ github.event.workflow_run.repository.full_name }}
   cancel-in-progress: false
 
 jobs:
