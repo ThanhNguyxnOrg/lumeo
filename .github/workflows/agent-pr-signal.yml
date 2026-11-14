@@ -5,6 +5,9 @@ name: ThanhNguyxnAgent PR Event Signal
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review, edited]
+  workflow_run:
+    workflows: ["Test Suite", "Node.js CI"]
+    types: [completed]
 
 # pull_request_target executes this workflow from the base repository's default
 # branch. Keep it metadata-only: no checkout, no secrets, no write permissions.
@@ -12,15 +15,19 @@ permissions: {}
 
 jobs:
   signal:
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.pull_requests[0].number != null)
     runs-on: ubuntu-latest
     permissions: {}
     steps:
       - name: Write the PR event metadata
         env:
           EVENT_REPOSITORY: ${{ github.repository }}
-          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
-          EVENT_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          EVENT_PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number }}
+          EVENT_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.pull_requests[0].head.sha || github.event.workflow_run.head_sha }}
+          EVENT_PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.event.workflow_run.pull_requests[0].head.repo.full_name || github.repository }}
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
