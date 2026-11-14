@@ -21,7 +21,8 @@ concurrency:
 jobs:
   process:
     if: >-
-      github.event.workflow_run.event == 'pull_request_target' &&
+      (github.event.workflow_run.event == 'pull_request_target' ||
+       github.event.workflow_run.event == 'workflow_run') &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.repository.owner.login == 'ThanhNguyxnOrg'
     uses: ThanhNguyxnOrg/.github/.github/workflows/agent-pr-worker.yml@main
