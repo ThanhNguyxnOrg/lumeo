@@ -111,7 +111,7 @@ jobs:
       # Firefox listed channel: web-ext creates the AMO listing on first run and
       # adds the version on later runs. AMO hosts the signed XPI, so there is no
       # XPI asset to attach to the GitHub release. This step is skipped until
-      # the free AMO API credentials are configured as repository secrets.
+      # the AMO_API_KEY organization variable and AMO_API_SECRET organization secret are configured.
       - name: Submit Firefox package to AMO
         id: amo
         if: steps.plan.outputs.should_release == 'true' && steps.stores.outputs.amo == 'true'
