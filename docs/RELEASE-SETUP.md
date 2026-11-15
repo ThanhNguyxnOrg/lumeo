@@ -23,21 +23,34 @@ Manual `workflow_dispatch` runs accept two extra inputs:
   manifest issue) without moving the release tag.
 - `stores` — `both` (default), `amo`, `edge`, or `none`. Use it to retry only one store after a partial failure.
 
-## Org-level secrets
+## Organization-level Variables and Secrets
 
-The workflow reads `secrets.*`, so **organization secrets work as-is** — create them at the org level and grant this
-repository access in the org secret settings. Repository-level secrets with the same names would also work; org-level
-is the better choice if several repos will reuse them.
+The workflows read `vars.*` for non-sensitive identifiers and `secrets.*` for credentials. Configure the organization
+values below and grant the `lumeo` repository access where GitHub offers a repository-visibility selector. Keep
+per-extension identifiers such as `EDGE_PRODUCT_ID` and `GECKO_ID` at repository scope.
 
-| Secret | Used by | Level | Required for |
-|---|---|---|---|
-| `AMO_API_KEY` | Firefox AMO | org (shared) | AMO account JWT issuer |
-| `AMO_API_SECRET` | Firefox AMO | org (shared) | AMO account JWT secret |
-| `EDGE_API_KEY` | Microsoft Edge | org (shared) | Partner Center account API key |
-| `EDGE_CLIENT_ID` | Microsoft Edge | org (shared) | Partner Center account client ID |
-| `EDGE_PRODUCT_ID` | Microsoft Edge | **repo** | unique product GUID per extension |
-| `BOT_APP_ID` | GitHub release | org (shared) | GitHub App token |
-| `BOT_PRIVATE_KEY` | GitHub release | org (shared) | GitHub App token |
+### Organization Variables
+
+| Variable | Used by | Required for |
+|---|---|---|
+| `AMO_API_KEY` | Firefox AMO | AMO account JWT issuer (not the JWT secret) |
+| `EDGE_CLIENT_ID` | Microsoft Edge | Partner Center Publish API Client ID |
+| `BOT_APP_ID` | GitHub automation | Numeric GitHub App ID; consumed through the action's `app-id` input |
+
+### Organization Secrets
+
+| Secret | Used by | Required for |
+|---|---|---|
+| `AMO_API_SECRET` | Firefox AMO | AMO account JWT secret |
+| `EDGE_API_KEY` | Microsoft Edge | Partner Center account API key |
+| `BOT_PRIVATE_KEY` | GitHub automation | GitHub App private key |
+
+### Repository Variables
+
+| Variable | Used by | Required for |
+|---|---|---|
+| `EDGE_PRODUCT_ID` | Microsoft Edge | Unique product GUID for this extension |
+| `GECKO_ID` | Firefox AMO | Add-on identity; defaults to `lumeo@thanhnguyxn.org` |
 
 The Firefox and Edge credentials are **account-wide**: one pair works for every extension published under the same
 account, so they belong at the organization level. The Edge `Product ID` is per-extension, so keep that one in the
@@ -56,11 +69,8 @@ add-on identity is per-extension.
 Registration: free AMO account, no fee.
 
 1. Create an account at <https://addons.mozilla.org/>.
-2. Generate API credentials at <https://addons.mozilla.org/developers/addon/api/key/>. Copy the **JWT issuer** as
-   `AMO_API_KEY` and the **JWT secret** as `AMO_API_SECRET`; the secret is shown only once.
-3. Add organization secrets (shared by every Firefox extension under the same AMO account):
-   - `AMO_API_KEY`
-   - `AMO_API_SECRET`
+2. Generate API credentials at <https://addons.mozilla.org/developers/addon/api/key/>. Copy the **JWT issuer** into the organization variable `AMO_API_KEY` and the **JWT secret** into the
+   organization secret `AMO_API_SECRET`; the secret is shown only once. The issuer is an identifier, not a secret.
 
    The workflow maps them to `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` for the `web-ext` CLI. The old
    `WEB_EXT_*` secret names still work as a fallback.
@@ -70,7 +80,7 @@ Registration: free AMO account, no fee.
    upload the new version.
 6. AMO hosts the signed XPI and distributes updates automatically. No extra step is needed for users.
 
-If the secrets are absent, the workflow prints a notice and skips the AMO step.
+If either the variable or secret is absent, the workflow prints a notice and skips the AMO step.
 
 ## Microsoft Edge Add-ons — first upload manual, updates automated
 
@@ -83,16 +93,13 @@ Registration: free Partner Center account. Microsoft documents "There is no regi
    in draft; keep that draft and use its GUID. Discarding and recreating the draft can change it.
 3. On the Partner Center **Publish API** page, enable the v1.1 experience and click **Create API credentials**.
    Copy the **Client ID** and **API key** immediately: the key is shown only once and has an expiry date. Rotate it
-   before that date and update the `EDGE_API_KEY` secret.
+   before that date and update the `EDGE_API_KEY` secret. Store the Client ID in the organization variable `EDGE_CLIENT_ID`.
 4. Add the Product ID as a repository **variable** `EDGE_PRODUCT_ID` (preferred), or as a repository secret with the
-   same name. Add the account-wide credentials as organization secrets:
-   - `EDGE_PRODUCT_ID` (repo variable or repo secret)
-   - `EDGE_API_KEY` (org secret)
-   - `EDGE_CLIENT_ID` (org secret)
+   same name. Add the account-wide Client ID as organization variable `EDGE_CLIENT_ID` and the API key as organization secret `EDGE_API_KEY`.
 
    The workflow reads `vars.EDGE_PRODUCT_ID` first and falls back to `secrets.EDGE_PRODUCT_ID`.
 5. Subsequent tags upload `dist/lumeo-v<version>-edge.zip` to the draft submission, publish it, and poll the
-   operation status. If any secret is missing, the step is skipped with a notice.
+   operation status. If any required variable or secret is missing, the step is skipped with a notice.
 6. Edge validates the package manifest before accepting a version. The manifest `description` must be **132
    characters or fewer** (Chrome has the same limit), so the canonical `manifest.json` keeps it short. Keep longer
    marketing copy in the store listing text.
@@ -101,11 +108,11 @@ API reference: <https://learn.microsoft.com/en-us/microsoft-edge/extensions/upda
 
 ### Example mapping
 
-| GitHub secret | Example value | Where it comes from |
+| GitHub setting | Example value | Where it comes from |
 |---|---|---|
-| `EDGE_CLIENT_ID` (org) | `ad56c2f2-fccf-49f5-a6c3-436aa6f9aebe` | Publish API page → Client ID |
-| `EDGE_API_KEY` (org) | `fRD4…` (new key after rotation) | Publish API page → New API key |
-| `EDGE_PRODUCT_ID` (repo) | `12d0bf10-20c7-4f62-8c97-e3297f4e328a` | Extension overview → Product ID |
+| `EDGE_CLIENT_ID` (org variable) | `<Partner Center Client ID>` | Publish API page → Client ID |
+| `EDGE_API_KEY` (org secret) | `<redacted>` | Publish API page → New API key |
+| `EDGE_PRODUCT_ID` (repo variable) | `<extension Product ID>` | Extension overview → Product ID |
 
 Account-wide values (`Client ID`, API keys) are shared by every Edge extension under the account. The `Product ID`
 is unique per extension and stays stable for that extension.
