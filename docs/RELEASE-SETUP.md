@@ -11,8 +11,8 @@ Push a `v*` tag (or run the `Release` workflow manually with a tag). `.github/wo
 1. validates the version and changelog,
 2. runs tests, syntax checks, and manifest checks,
 3. builds `dist/lumeo-v<version>-{chrome,edge,firefox,opera}.zip` + `SHA256SUMS.txt`,
-4. submits Firefox to AMO when the AMO secrets exist,
-5. updates Microsoft Edge when the Edge secrets exist,
+4. submits Firefox to AMO when the AMO issuer variable and JWT secret exist,
+5. updates Microsoft Edge when the Edge Client ID variable and API key secret exist,
 6. publishes all ZIPs to GitHub Releases.
 
 No store secrets are required for the GitHub Release itself.
@@ -175,7 +175,7 @@ screenshots and promotional tiles are optional, but a first listing without scre
 - [ ] `npm run build:targets`
 - [ ] `npx web-ext lint --source-dir dist/firefox` reports no errors/warnings
 - [ ] CHANGELOG has a `## [<version>]` section and the README badge matches
-- [ ] AMO and Edge secrets are configured if those steps should run
+- [ ] AMO issuer variable + JWT secret and Edge Client ID variable + API key secret are configured if those steps should run
 - [ ] `store-assets/edge-store-logo-300x300.png` and other listing assets are current
 
 ## Troubleshooting store credentials
@@ -186,8 +186,7 @@ screenshots and promotional tiles are optional, but a first listing without scre
 - **Edge `curl: (3) URL rejected: Malformed input`:** usually a trailing newline or space in `EDGE_PRODUCT_ID`. The
   release workflow trims it and validates the GUID before calling the API.
 - **Checking secret configuration:** GitHub never returns secret values through the REST API or MCP. Use
-  `gh secret list --org <org>` and `gh secret list --repo <owner>/<repo>` to verify names, visibility, and update
-  time; use the workflow logs to verify formatting and delivery. Repository secrets shadow organization secrets with
+  `gh secret list --org <org>` / `gh secret list --repo <owner>/<repo>` and `gh variable list --org <org>` / `gh variable list --repo <owner>/<repo>` to verify names and visibility; use workflow logs to verify formatting and delivery. Repository secrets shadow organization secrets with
   the same name, so keep only one copy of each.
 - **Edge `"Can't create new extension."` / `errorCode: "CreateNotAllowed"`:** expected on the first release. The
   update API cannot create a product; publish the first version manually in Partner Center (logo, description,
