@@ -72,8 +72,8 @@ Registration: free AMO account, no fee.
 2. Generate API credentials at <https://addons.mozilla.org/developers/addon/api/key/>. Copy the **JWT issuer** into the organization variable `AMO_API_KEY` and the **JWT secret** into the
    organization secret `AMO_API_SECRET`; the secret is shown only once. The issuer is an identifier, not a secret.
 
-   The workflow maps them to `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` for the `web-ext` CLI. The old
-   `WEB_EXT_*` secret names still work as a fallback.
+   The workflow maps them to `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET` for the `web-ext` CLI. The legacy
+   `WEB_EXT_API_SECRET` name remains a fallback for the JWT secret; the issuer is read from the `AMO_API_KEY` variable.
 4. Optional repository variable: `GECKO_ID` (defaults to `lumeo@thanhnguyxn.org`; changing it makes a different
    add-on identity, so only set it before the first submission).
 5. The first submission uses `store-assets/amo-metadata.json` (summary, category, MIT license). Later tags only
