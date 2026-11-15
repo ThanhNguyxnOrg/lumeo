@@ -18,6 +18,7 @@ on:
       - "Markdown Lint"
       - "Link Checker"
       - "CodeQL"
+      - "Website CI"
     types: [completed]
 
 # pull_request_target executes this workflow from the base repository's default
