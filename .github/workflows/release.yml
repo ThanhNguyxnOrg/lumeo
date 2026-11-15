@@ -121,8 +121,8 @@ jobs:
           # Org-level names stay store-specific and symmetric with EDGE_*.
           # web-ext itself expects WEB_EXT_API_KEY / WEB_EXT_API_SECRET, so we
           # prefer the organization issuer variable and retain legacy secret names as fallback.
-          WEB_EXT_API_KEY: ${{ vars.AMO_API_KEY || secrets.AMO_API_KEY || secrets.WEB_EXT_API_KEY }}
-          WEB_EXT_API_SECRET: ${{ secrets.AMO_API_SECRET || secrets.WEB_EXT_API_SECRET }}
+          WEB_EXT_API_KEY: ${{ vars.AMO_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_API_SECRET }}
         run: |
           # Secrets pasted from a store console can carry a trailing CR/LF or
           # spaces. Trim before signing; otherwise the HMAC key differs and AMO
@@ -166,9 +166,9 @@ jobs:
         # A store API hiccup must not block the GitHub Release assets.
         continue-on-error: true
         env:
-          EDGE_PRODUCT_ID: ${{ vars.EDGE_PRODUCT_ID || secrets.EDGE_PRODUCT_ID }}
+          EDGE_PRODUCT_ID: ${{ vars.EDGE_PRODUCT_ID }}
           EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
-          EDGE_CLIENT_ID: ${{ vars.EDGE_CLIENT_ID || secrets.EDGE_CLIENT_ID }}
+          EDGE_CLIENT_ID: ${{ vars.EDGE_CLIENT_ID }}
         run: |
           # Same copy/paste guard as the AMO step: a trailing newline in the
           # Product ID makes curl reject the API URL with exit code 3.
@@ -262,7 +262,7 @@ jobs:
         uses: ThanhNguyxnOrg/.github/.github/actions/agent-token@2b5c5cad571ee93fd091e16e1734ebd819191e68
         with:
           profile: content
-          app-id: ${{ vars.BOT_APP_ID || secrets.BOT_APP_ID }}
+          app-id: ${{ vars.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_PRIVATE_KEY }}
 
       - name: Publish GitHub Release
