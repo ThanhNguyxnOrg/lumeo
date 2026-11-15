@@ -138,7 +138,7 @@ jobs:
           WEB_EXT_API_SECRET="$(trim "${WEB_EXT_API_SECRET:-}")"
           export WEB_EXT_API_KEY WEB_EXT_API_SECRET
           if [ -z "${WEB_EXT_API_KEY:-}" ] || [ -z "${WEB_EXT_API_SECRET:-}" ]; then
-            echo "::notice::Skipping AMO submission; add AMO_API_KEY and AMO_API_SECRET organization secrets to enable it."
+            echo "::notice::Skipping AMO submission; add AMO_API_KEY as an organization variable and AMO_API_SECRET as an organization secret to enable it."
             exit 0
           fi
           case "$WEB_EXT_API_KEY" in
@@ -159,7 +159,7 @@ jobs:
 
       # Microsoft Edge Add-ons: first publication is manual in Partner Center;
       # later versions use the free Update REST API v1.1. Skipped until the
-      # EDGE_PRODUCT_ID / EDGE_API_KEY / EDGE_CLIENT_ID secrets exist.
+      # EDGE_PRODUCT_ID / EDGE_CLIENT_ID variables and EDGE_API_KEY secret exist.
       - name: Update Microsoft Edge Add-ons
         id: edge
         if: steps.plan.outputs.should_release == 'true' && steps.stores.outputs.edge == 'true'
@@ -183,7 +183,7 @@ jobs:
           EDGE_API_KEY="$(trim "${EDGE_API_KEY:-}")"
           EDGE_CLIENT_ID="$(trim "${EDGE_CLIENT_ID:-}")"
           if [ -z "${EDGE_PRODUCT_ID:-}" ] || [ -z "${EDGE_API_KEY:-}" ] || [ -z "${EDGE_CLIENT_ID:-}" ]; then
-            echo "::notice::Skipping Edge update; add EDGE_PRODUCT_ID, EDGE_API_KEY and EDGE_CLIENT_ID secrets to enable it."
+            echo "::notice::Skipping Edge update; add EDGE_PRODUCT_ID and EDGE_CLIENT_ID as variables, plus EDGE_API_KEY as a secret, to enable it."
             exit 0
           fi
           if ! printf '%s' "$EDGE_PRODUCT_ID" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
@@ -262,7 +262,7 @@ jobs:
         uses: ThanhNguyxnOrg/.github/.github/actions/agent-token@da9d02544f60aeec92f8c851846ee3a587044beb
         with:
           profile: content
-          client-id: ${{ secrets.BOT_APP_ID }}
+          app-id: ${{ vars.BOT_APP_ID || secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_PRIVATE_KEY }}
 
       - name: Publish GitHub Release
