@@ -120,7 +120,7 @@ jobs:
         env:
           # Org-level names stay store-specific and symmetric with EDGE_*.
           # web-ext itself expects WEB_EXT_API_KEY / WEB_EXT_API_SECRET, so we
-          # prefer the organization issuer variable and retain legacy secret names as fallback.
+          # map the organization issuer variable and JWT secret to web-ext's expected names.
           WEB_EXT_API_KEY: ${{ vars.AMO_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.AMO_API_SECRET }}
         run: |
