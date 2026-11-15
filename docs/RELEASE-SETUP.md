@@ -94,10 +94,10 @@ Registration: free Partner Center account. Microsoft documents "There is no regi
 3. On the Partner Center **Publish API** page, enable the v1.1 experience and click **Create API credentials**.
    Copy the **Client ID** and **API key** immediately: the key is shown only once and has an expiry date. Rotate it
    before that date and update the `EDGE_API_KEY` secret. Store the Client ID in the organization variable `EDGE_CLIENT_ID`.
-4. Add the Product ID as a repository **variable** `EDGE_PRODUCT_ID` (preferred), or as a repository secret with the
-   same name. Add the account-wide Client ID as organization variable `EDGE_CLIENT_ID` and the API key as organization secret `EDGE_API_KEY`.
+4. Add the Product ID as a repository **variable** `EDGE_PRODUCT_ID`. The workflow reads this identifier from
+   `vars.EDGE_PRODUCT_ID` only. Add the account-wide Client ID as organization variable `EDGE_CLIENT_ID` and the API key as organization secret `EDGE_API_KEY`.
 
-   The workflow reads `vars.EDGE_PRODUCT_ID` first and falls back to `secrets.EDGE_PRODUCT_ID`.
+   The workflow reads `vars.EDGE_PRODUCT_ID` only; a repository secret with the same name is not used.
 5. Subsequent tags upload `dist/lumeo-v<version>-edge.zip` to the draft submission, publish it, and poll the
    operation status. If any required variable or secret is missing, the step is skipped with a notice.
 6. Edge validates the package manifest before accepting a version. The manifest `description` must be **132
