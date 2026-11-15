@@ -8,9 +8,9 @@ on:
       - ThanhNguyxnAgent PR Event Signal
     types: [completed]
 
-# This workflow runs after the metadata-only signal. It forwards the non-secret
-# App ID variable through the reusable-workflow compatibility input and passes
-# only the private key as an actual credential.
+# This workflow runs after the metadata-only signal. The reusable workflow
+# reads BOT_APP_ID directly from the organization vars context; only the
+# private key is passed through the workflow_call secrets interface.
 permissions:
   actions: read
   contents: read
@@ -34,5 +34,4 @@ jobs:
       repository_name: ${{ github.event.workflow_run.repository.name }}
       workflow_run_id: ${{ github.event.workflow_run.id }}
     secrets:
-      BOT_APP_ID: ${{ vars.BOT_APP_ID }}
       BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
