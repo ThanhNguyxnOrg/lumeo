@@ -84,7 +84,11 @@ jobs:
           const prNumber = Number(payload.pr_number);
           const headSha = String(payload.head_sha || '').toLowerCase();
           const headRepository = String(payload.head_repository || '');
+          const sourceEvent = String(payload.source_event || '');
 
+          if (!['pull_request', 'pull_request_target'].includes(sourceEvent)) {
+            throw new Error('Event artifact is not from a pull_request or pull_request_target event');
+          }
           if (!expectedRepository || repository !== expectedRepository) {
             throw new Error('Event artifact repository does not match this repository');
           }
@@ -114,11 +118,11 @@ jobs:
       group: agent-pr-events-${{ github.event.workflow_run.repository.full_name }}
       cancel-in-progress: false
       queue: max
-    uses: ThanhNguyxnOrg/.github/.github/workflows/agent-pr-worker.yml@b9a9fe09d8b608022552708ee811d711f03e4c25
+    uses: ThanhNguyxnOrg/.github/.github/workflows/agent-pr-worker.yml@f87286f907f22db3bd8b0038c49433fb4073bf8e
     with:
       repository_owner: ${{ github.event.workflow_run.repository.owner.login }}
       repository_name: ${{ github.event.workflow_run.repository.name }}
       workflow_run_id: ${{ github.event.workflow_run.id }}
-      policy_ref: b9a9fe09d8b608022552708ee811d711f03e4c25
+      policy_ref: f87286f907f22db3bd8b0038c49433fb4073bf8e
     secrets:
       BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
