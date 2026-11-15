@@ -21,6 +21,8 @@ jobs:
       github.event_name == 'pull_request_target' ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.pull_requests[0].number != null &&
+       (github.event.workflow_run.event == 'pull_request' ||
+        github.event.workflow_run.event == 'pull_request_target') &&
        github.event.workflow_run.name != 'ThanhNguyxnAgent PR Event Signal' &&
        github.event.workflow_run.name != 'ThanhNguyxnAgent PR Event Worker')
     runs-on: ubuntu-latest
@@ -32,6 +34,7 @@ jobs:
           EVENT_PR_NUMBER: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number }}
           EVENT_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.pull_requests[0].head.sha || github.event.workflow_run.head_sha }}
           EVENT_PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.event.workflow_run.pull_requests[0].head.repo.full_name || github.repository }}
+          EVENT_SOURCE_EVENT: ${{ github.event_name == 'pull_request_target' && 'pull_request_target' || github.event.workflow_run.event }}
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
@@ -40,11 +43,15 @@ jobs:
             repository: process.env.EVENT_REPOSITORY || '',
             pr_number: Number(process.env.EVENT_PR_NUMBER),
             head_sha: process.env.EVENT_PR_HEAD_SHA || '',
-            head_repository: process.env.EVENT_PR_HEAD_REPOSITORY || ''
+            head_repository: process.env.EVENT_PR_HEAD_REPOSITORY || '',
+            source_event: process.env.EVENT_SOURCE_EVENT || ''
           };
 
           if (!payload.repository || !Number.isSafeInteger(payload.pr_number) || payload.pr_number < 1) {
             throw new Error('GitHub did not provide a valid repository and pull request number');
+          }
+          if (!['pull_request', 'pull_request_target'].includes(payload.source_event)) {
+            throw new Error('GitHub did not provide a trusted pull request source event');
           }
           if (!/^[0-9a-f]{40}$/i.test(payload.head_sha)) {
             throw new Error('GitHub did not provide a valid pull request head SHA');
