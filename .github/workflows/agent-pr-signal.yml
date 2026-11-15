@@ -6,7 +6,18 @@ on:
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review, edited]
   workflow_run:
-    workflows: ["Test Suite", "Node.js CI"]
+    # Keep this list aligned with the workflow names used across org repositories.
+    # Without these completions, the PR controller retains stale CI labels and never
+    # gets a fresh opportunity to enqueue eligible Dependabot updates for auto-merge.
+    workflows:
+      - "Test Suite"
+      - "Node.js CI"
+      - "CI"
+      - "CI Checks"
+      - "🧪 CI & Quality Checks ⚙️"
+      - "Markdown Lint"
+      - "Link Checker"
+      - "CodeQL"
     types: [completed]
 
 # pull_request_target executes this workflow from the base repository's default
