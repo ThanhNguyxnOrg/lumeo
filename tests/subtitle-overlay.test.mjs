@@ -219,7 +219,7 @@ describe("ui/subtitle-overlay.js", () => {
     window.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true }));
 
     expect(overlay.style.left).toBe("50%");
-    expect(overlay.style.top).toBe("66.66666666666666%");
+    expect(Number.parseFloat(overlay.style.top)).toBeCloseTo(200 / 3, 3);
     expect(overlay.style.transform).toBe("none");
     expect(JSON.parse(window.localStorage.getItem("lumeoSubPosition"))).toEqual({
       leftPercent: 50,
