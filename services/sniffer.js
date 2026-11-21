@@ -86,7 +86,9 @@
       url,
       text: String(text || ''),
       status,
-      source,
+      // Not `source`: that key is the envelope discriminator the content
+      // script filters on.
+      via: source,
     });
   };
 
