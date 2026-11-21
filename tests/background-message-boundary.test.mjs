@@ -205,6 +205,14 @@ describe("background message boundary", () => {
         () => {},
       );
       expect(otherTab).toBe(false);
+
+      const otherStop = await ask({ action: "stopSonioxWs" }, YT_TAB_8);
+      expect(otherStop.ok).toBe(false);
+      expect(socket.readyState).not.toBe(3);
+
+      const ownerStop = await ask({ action: "stopSonioxWs" }, YT_TAB_7);
+      expect(ownerStop.ok).toBe(true);
+      expect(socket.readyState).toBe(3);
     } finally {
       globalThis.WebSocket = previousWebSocket;
     }

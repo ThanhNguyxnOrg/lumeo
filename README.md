@@ -193,6 +193,8 @@ popup ◄── BACKGROUND_STATE_UPDATE ─── background ◄── CONTENT_S
 - **Standard Pipeline**: captureStream → MediaRecorder chunks → Whisper STT → Gemini translate → MiniMax TTS → Web Audio playback
 - **Realtime Pipeline**: captureStream → WebRTC PeerConnection → OpenAI Realtime → voice output with gain control
 
+The background keeps only the active tab ID in browser session storage. After a background restart it checks that tab for a live pipeline before restoring the controls; a full browser restart does not resume dubbing.
+
 ---
 
 ## Project Structure

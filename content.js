@@ -138,7 +138,9 @@
   function notifyBackground(msg) {
     browserApi.sendRuntimeMessage(msg).catch(() => {});
   }
+  let liveState = {};
   function emitState(partial) {
+    liveState = { ...liveState, ...partial };
     notifyBackground({ type: "CONTENT_STATE", ...partial });
   }
   function emitEnded(reason) {
@@ -930,6 +932,7 @@
     getCurrentTexts: () => ({ source: currentSourceText, target: currentTargetText }),
     setCurrentTexts: (src, tgt) => { currentSourceText = src; currentTargetText = tgt; },
     onSessionStopped: () => {
+      liveState = {};
       clearSessionUI();
       transcriptController?.remove?.();
     },
@@ -964,7 +967,7 @@
       overlayController?.toggleSideCollapsed?.(true);
       overlayController?.refreshLayoutKey?.();
       overlayController?.ensureYouTubeControlButton?.();
-      if (LumeoSessionManager.getSession()) {
+      if (LumeoSessionManager.getSession() || LumeoSessionManager.isStarting()) {
         LumeoSessionManager.stopSession("yt-navigation");
         emitEnded("YouTube navigated.");
       }
@@ -989,6 +992,13 @@
     (async () => {
       try {
         switch (msg?.type) {
+          case "CONTENT_SESSION_STATE":
+            sendResponse({
+              running: !!LumeoSessionManager.getSession() && liveState.running === true,
+              paused: liveState.paused === true,
+              status: liveState.status,
+            });
+            break;
           case "CONTENT_PING":
             sendResponse({
               ok: true,

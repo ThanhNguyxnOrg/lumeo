@@ -980,7 +980,6 @@
 
       if (token !== ctx.getPageToken()) {
         pipeline.stop();
-        ctx.removeOverlay();
         return { ok: false, error: "Cancelled before captions loaded." };
       }
 

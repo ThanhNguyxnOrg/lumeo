@@ -20,6 +20,7 @@
 
   let session = null;
   let prevSession = null;
+  let startAttempt = null;
   let activeStartingPipeline = null;
   let pageToken = 0;
   let settings = null;
@@ -223,14 +224,20 @@
     if (!video) return { ok: false, error: "No YouTube video on this page." };
     videoEl = video;
 
+    const token = ++pageToken;
     let stream;
     try {
       callbacks.buildOverlay?.();
       callbacks.setStatusText?.("Acquiring audio");
       stream = await audioUtils.captureWithRetry(video);
     } catch (err) {
+      if (token !== pageToken) return { ok: false, error: "Start cancelled." };
       callbacks.removeOverlay?.();
       return { ok: false, error: err.message || "YouTube audio cannot be captured. Click Play on the video, then retry." };
+    }
+    if (token !== pageToken) {
+      disposeSession({ stream });
+      return { ok: false, error: "Start cancelled." };
     }
 
     const recorderMime = window.LumeoStandardPipeline.pickRecorderMime(audioUtils);
@@ -253,7 +260,6 @@
     outputGain.gain.value = computeGain(settings.voiceVolume ?? 100);
     outputGain.connect(audioCtx.destination);
 
-    const token = ++pageToken;
     const newSession = {
       token,
       type: "standard",
@@ -382,7 +388,17 @@
   }
 
   async function startSession(incomingSettings) {
-    if (session) return { ok: false, error: "Session already running." };
+    if (session || startAttempt) return { ok: false, error: "Session already running." };
+    const attempt = {};
+    startAttempt = attempt;
+    try {
+      return await startPipeline(incomingSettings);
+    } finally {
+      if (startAttempt === attempt) startAttempt = null;
+    }
+  }
+
+  async function startPipeline(incomingSettings) {
     if (incomingSettings && typeof incomingSettings === "object") {
       settings = { ...(settings || {}), ...incomingSettings };
     } else if (typeof incomingSettings === "string") {
@@ -402,10 +418,10 @@
         return { ok: false, error: "LumeoCaptionOrchestrator not loaded" };
       }
       videoEl = videoEl || audioUtils?.findVideo();
-      pageToken++;
+      const token = ++pageToken;
       return window.LumeoCaptionOrchestrator.start({
         getSession: () => session,
-        setActivePipeline: (p) => { activeStartingPipeline = p; },
+        setActivePipeline: (p) => { if (token === pageToken) activeStartingPipeline = p; },
         getSettings: () => settings,
         getPageToken: () => pageToken,
         getVideo: () => videoEl,
@@ -478,17 +494,22 @@
     if (!video) return { ok: false, error: "No YouTube video on this page." };
     videoEl = video;
 
+    const token = ++pageToken;
     let stream;
     try {
       callbacks.buildOverlay?.();
       callbacks.setStatusText?.("Acquiring audio");
       stream = await audioUtils.captureWithRetry(video);
     } catch (err) {
+      if (token !== pageToken) return { ok: false, error: "Start cancelled." };
       callbacks.removeOverlay?.();
       return { ok: false, error: err.message || "YouTube audio cannot be captured. Click Play on the video, then retry." };
     }
 
-    const token = ++pageToken;
+    if (token !== pageToken) {
+      disposeSession({ stream });
+      return { ok: false, error: "Start cancelled." };
+    }
     let newSession;
     try {
       newSession = await buildRealtimeSession(token, stream, {
@@ -498,13 +519,13 @@
       });
     } catch (err) {
       stream.getTracks().forEach((t) => t.stop());
+      if (token !== pageToken) return { ok: false, error: "Start cancelled." };
       callbacks.removeOverlay?.();
       const msg = err.cta ? `${err.message} (${err.cta})` : err.message;
       return { ok: false, error: msg };
     }
     if (token !== pageToken) {
-      try { newSession.pc.close(); } catch {}
-      callbacks.removeOverlay?.();
+      disposeSession(newSession);
       return { ok: false, error: "Cancelled before connect completed." };
     }
 
@@ -589,6 +610,7 @@
 
   function stopSession(reason = "stop") {
     pageToken += 1;
+    startAttempt = null;
     clearSessionTimer();
     stopHeartbeat();
     callbacks.stopCaptionPoll?.();
@@ -677,7 +699,7 @@
     restartSession,
     requestHandover,
     applySettingsLive,
-    isStarting: () => !!activeStartingPipeline,
+    isStarting: () => !!(startAttempt || activeStartingPipeline),
     applyVolumes,
     computeGain,
   };

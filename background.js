@@ -80,8 +80,7 @@ const DEFAULT_SETTINGS = {
   ttsSpeed: 1.0,
 };
 
-// In-memory state. Resets when the service worker cold-starts; that's
-// intentional — the user gets a clean idle on cold start.
+// The tab owns the pipeline. Only its ID is saved across background restarts.
 const state = {
   running: false,
   connecting: false,
@@ -350,6 +349,43 @@ const CONTENT_SCRIPT_FILES = [
 ];
 const EXPECTED_CONTENT_VERSION = chrome.runtime.getManifest()?.version || "2.0.0";
 const CAPTION_CACHE_KEY = "lumeoCaptionCacheV1";
+const SESSION_TAB_KEY = "lumeoSessionTab";
+
+async function saveSessionTab(tabId) {
+  try {
+    const storage = browserApi.native?.storage?.session;
+    if (tabId === null) await storage?.remove(SESSION_TAB_KEY);
+    else await storage?.set({ [SESSION_TAB_KEY]: tabId });
+  } catch {
+    // The live tab still works if session storage is unavailable.
+  }
+}
+
+async function restoreSession() {
+  try {
+    const stored = await browserApi.native.storage.session.get(SESSION_TAB_KEY);
+    const tabId = stored[SESSION_TAB_KEY];
+    if (!Number.isInteger(tabId)) return;
+    try {
+      const reply = await browserApi.sendTabMessage(tabId, { type: "CONTENT_SESSION_STATE" });
+      if (reply?.running === true) {
+        state.tabId = tabId;
+        state.running = true;
+        state.paused = reply.paused === true;
+        state.status = typeof reply.status === "string" ? reply.status : "Translating";
+        return;
+      }
+    } catch {
+      // The tab may have closed or navigated while the background was asleep.
+    }
+    await saveSessionTab(null);
+  } catch {
+    // No session storage; start idle.
+  }
+}
+
+let sessionRestore = null;
+let startAttempt = null;
 
 async function readCaptionCache() {
   const stored = await browserApi.storageGet(CAPTION_CACHE_KEY);
@@ -490,10 +526,22 @@ async function persistSettings(partial) {
 }
 
 async function handleStart(settings, explicitTab = null) {
-  if (state.running || state.connecting) {
+  if (state.running || state.connecting || startAttempt) {
     return { ok: true, alreadyRunning: true, state: snapshot() };
   }
+  const attempt = {};
+  startAttempt = attempt;
+  try {
+    return await startForTab(settings, explicitTab, attempt);
+  } finally {
+    if (startAttempt === attempt) startAttempt = null;
+  }
+}
+
+async function startForTab(settings, explicitTab, attempt) {
+  const cancelled = { ok: false, error: "Start cancelled." };
   await loadSettings();
+  if (startAttempt !== attempt) return cancelled;
   await persistSettings(settings || {});
   let tab = explicitTab;
   if (!tab) {
@@ -503,6 +551,7 @@ async function handleStart(settings, explicitTab = null) {
       return { ok: false, error: err.message };
     }
   }
+  if (startAttempt !== attempt) return cancelled;
   state.tabId = tab.id;
   state.connecting = true;
   state.errorMessage = "";
@@ -514,13 +563,17 @@ async function handleStart(settings, explicitTab = null) {
 
   try {
     await ensureContentScript(tab.id);
-    const reply = await relayToContent(tab.id, {
+    if (startAttempt !== attempt) return cancelled;
+    const reply = await browserApi.sendTabMessage(tab.id, {
       type: "CONTENT_START",
       settings: pruneSettingsForContent(snapshot()),
     });
+    if (startAttempt !== attempt) return cancelled;
     if (!reply?.ok) {
       state.connecting = false;
       state.running = false;
+      state.tabId = null;
+      closeSonioxForTab(tab.id);
       state.errorMessage = reply?.error || "Could not start translation.";
       state.errorCode = reply?.errorCode || "";
       state.missingProviders = reply?.missingProviders || [];
@@ -539,11 +592,16 @@ async function handleStart(settings, explicitTab = null) {
     state.connecting = false;
     state.running = true;
     state.status = "Translating";
+    await saveSessionTab(tab.id);
+    if (startAttempt !== attempt) return cancelled;
     broadcastToPopup();
     return { ok: true, state: snapshot() };
   } catch (err) {
+    if (startAttempt !== attempt) return cancelled;
     state.connecting = false;
     state.running = false;
+    state.tabId = null;
+    closeSonioxForTab(tab.id);
     state.errorMessage = err.message || String(err);
     state.errorCode = err.errorCode || err.code || "";
     state.missingProviders = err.missingProviders || [];
@@ -556,6 +614,9 @@ async function handleStart(settings, explicitTab = null) {
 
 async function handleStop() {
   const tabId = state.tabId;
+  startAttempt = null;
+  state.tabId = null;
+  closeSonioxForTab(tabId);
   state.running = false;
   state.connecting = false;
   state.paused = false;
@@ -564,15 +625,16 @@ async function handleStop() {
   state.missingProviders = [];
   state.slotsMissingKeys = [];
   state.status = "Stopped";
+  const clearSessionTab = saveSessionTab(null);
   broadcastToPopup();
   if (tabId) {
     try {
-      await relayToContent(tabId, { type: "CONTENT_STOP" });
+      await browserApi.sendTabMessage(tabId, { type: "CONTENT_STOP" });
     } catch {
       // Tab may be gone; that's fine.
     }
   }
-  state.tabId = null;
+  await clearSessionTab;
   return { ok: true, state: snapshot() };
 }
 
@@ -638,6 +700,7 @@ function handleContentEvent(message, senderTabId) {
     }
   }
   if (message.type === "CONTENT_STATE") {
+    if (senderTabId !== state.tabId) return;
     if (typeof message.running === "boolean") state.running = message.running;
     if (typeof message.paused === "boolean") state.paused = message.paused;
     if (typeof message.status === "string") state.status = message.status;
@@ -653,10 +716,14 @@ function handleContentEvent(message, senderTabId) {
       .catch(() => { });
   }
   if (message.type === "CONTENT_ENDED") {
+    if (senderTabId !== state.tabId) return;
+    startAttempt = null;
+    closeSonioxForTab(senderTabId);
     state.running = false;
     state.connecting = false;
     state.paused = false;
     state.tabId = null;
+    void saveSessionTab(null);
     state.status = message.reason || "Stopped";
     broadcastToPopup();
   }
@@ -724,6 +791,12 @@ function closeSonioxWebSocket() {
   try { ws.close(); } catch { }
 }
 
+function closeSonioxForTab(tabId) {
+  if (sonioxTabId === null || tabId !== sonioxTabId) return;
+  closeSonioxWebSocket();
+  sonioxTabId = null;
+}
+
 function forwardToSonioxTab(msg) {
   if (sonioxTabId) browserApi.sendTabMessage(sonioxTabId, msg).catch(() => { });
 }
@@ -748,13 +821,18 @@ function handleLegacyCaptionMessage(message, sender, sendResponse) {
         sendResponse({ ok: false, error: "No active Lumeo session for this tab." });
         return false;
       }
-      sonioxTabId = sender.tab.id;
       (async () => {
+        const tabId = sender.tab.id;
         await loadSettings();
+        if (state.tabId !== tabId || !(state.running || state.connecting)) {
+          sendResponse({ ok: false, error: "No active Lumeo session for this tab." });
+          return;
+        }
         if (!state.sonioxApiKey) {
           sendResponse({ ok: false, error: "Soniox API key is missing." });
           return;
         }
+        sonioxTabId = tabId;
         startSonioxWebSocket(state.sonioxApiKey, message.langHints);
         sendResponse({ ok: true });
       })().catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
@@ -766,11 +844,11 @@ function handleLegacyCaptionMessage(message, sender, sendResponse) {
       }
       return false;
     case "stopSonioxWs":
-      if (!isYouTubeSender(sender)) {
-        sendResponse({ ok: false, error: "Blocked non-YouTube sender." });
+      if (!isYouTubeSender(sender) || sender.tab?.id !== sonioxTabId) {
+        sendResponse({ ok: false, error: "No active Soniox socket for this tab." });
         return false;
       }
-      closeSonioxWebSocket();
+      closeSonioxForTab(sender.tab.id);
       sendResponse({ ok: true });
       return false;
     case "captionCacheGet":
@@ -942,7 +1020,7 @@ function contentSafeResult(result, contentSender) {
 }
 
 // Popup → background → content router.
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+function handleRuntimeMessage(message, sender, sendResponse) {
   const legacyHandled = handleLegacyCaptionMessage(message, sender, sendResponse);
   if (legacyHandled !== null) return legacyHandled;
 
@@ -1116,28 +1194,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   })();
   return true;  // async sendResponse
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!sessionRestore) return handleRuntimeMessage(message, sender, sendResponse);
+  void sessionRestore.then(() => handleRuntimeMessage(message, sender, sendResponse));
+  return true;
 });
 
-// Tab close / navigate away → stop session cleanly so Kyma sees the /end.
-chrome.tabs.onRemoved.addListener((tabId) => {
-  if (tabId === sonioxTabId) {
-    closeSonioxWebSocket();
-    sonioxTabId = null;
-  }
+function handleTabRemoved(tabId) {
   if (tabId === state.tabId) {
     void handleStop();
   }
-});
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (tabId === sonioxTabId && changeInfo.url) {
-    closeSonioxWebSocket();
-    sonioxTabId = null;
-  }
+}
+
+function handleTabUpdated(tabId, changeInfo) {
   if (tabId !== state.tabId) return;
   // Stop ONLY when URL actually changes (ignore audible, title, favicon, status)
   if (changeInfo.url) {
     void handleStop();
   }
+}
+
+// Register wake-up listeners synchronously, then wait for the owner if needed.
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (sessionRestore) void sessionRestore.then(() => handleTabRemoved(tabId));
+  else handleTabRemoved(tabId);
+});
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (sessionRestore) void sessionRestore.then(() => handleTabUpdated(tabId, changeInfo));
+  else handleTabUpdated(tabId, changeInfo);
 });
 
 chrome.action?.onClicked?.addListener(async (tab) => {
@@ -1163,6 +1249,9 @@ chrome.action?.onClicked?.addListener(async (tab) => {
   }
 });
 
+if (browserApi.native?.storage?.session) {
+  sessionRestore = restoreSession().finally(() => { sessionRestore = null; });
+}
 void loadSettings();
 
 if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
@@ -1175,4 +1264,3 @@ if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
     }
   });
 }
-
