@@ -330,13 +330,14 @@
   // 4. Load Settings from Storage
   async function loadSettings() {
     try {
-      const stored = await STORAGE.get(null);
-      currentSettings = { ...DEFAULT_SETTINGS, ...(stored || {}) };
+      currentSettings = { ...DEFAULT_SETTINGS, ...await STORAGE.get(DEFAULT_SETTINGS) };
 
       // Also read caption style from localStorage if present
       try {
         const style = JSON.parse(localStorage.getItem("lumeoCaptionStyle") || "{}");
-        currentSettings = { ...currentSettings, ...style };
+        for (const [key, value] of Object.entries(style)) {
+          if (Object.hasOwn(DEFAULT_SETTINGS, key)) currentSettings[key] = value;
+        }
       } catch {}
 
       // Seamless migration of openRouterKey to Custom AI Gateway
@@ -424,6 +425,7 @@
       if (area === "local") {
         let changed = false;
         for (const [key, change] of Object.entries(changes)) {
+          if (!Object.hasOwn(DEFAULT_SETTINGS, key)) continue;
           if (currentSettings[key] !== change.newValue) {
             currentSettings[key] = change.newValue;
             changed = true;

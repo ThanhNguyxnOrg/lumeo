@@ -120,6 +120,25 @@ describe("services/session-manager.js", () => {
 
     expect(manager.getSettings().targetLanguage).toBe("ja");
   });
+
+  it.each(["standard", "realtime"])("discards %s audio that arrives after Stop", async (tier) => {
+    const capture = Promise.withResolvers();
+    const track = { stop: vi.fn() };
+    window.LumeoAudioUtils.captureWithRetry = vi.fn(() => capture.promise);
+    window.LumeoStandardPipeline = { pickRecorderMime: vi.fn() };
+    window.LumeoRealtimePipeline = { buildSession: vi.fn() };
+
+    const starting = manager.startSession({ tier, kymaKey: "test-key" });
+    expect(manager.isStarting()).toBe(true);
+    manager.stopSession("yt-navigation");
+    capture.resolve({ getTracks: () => [track] });
+
+    await expect(starting).resolves.toMatchObject({ ok: false, error: "Start cancelled." });
+    expect(track.stop).toHaveBeenCalledOnce();
+    expect(window.LumeoStandardPipeline.pickRecorderMime).not.toHaveBeenCalled();
+    expect(window.LumeoRealtimePipeline.buildSession).not.toHaveBeenCalled();
+    expect(manager.getSession()).toBeNull();
+  });
 });
 
 async function setupRealtime() {

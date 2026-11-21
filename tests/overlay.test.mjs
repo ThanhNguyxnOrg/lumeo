@@ -1,6 +1,50 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createSandboxWindow, loadService } from "./helpers/load-service.mjs";
 
+it("resets the in-player controls when the background stops a recovered caption session", async () => {
+  const { window } = await createSandboxWindow();
+  try {
+    window.document.body.innerHTML = '<div id="movie_player"><video class="html5-main-video"></video></div>';
+    let listener;
+    window.LumeoBrowserApi = {
+      sendRuntimeMessage: vi.fn(async () => ({ ok: true, state: { tier: "caption" } })),
+      addRuntimeMessageListener: (fn) => { listener = fn; },
+    };
+    window.LumeoCaptionOrchestrator = {
+      start: async (ctx) => {
+        ctx.onSessionCreated({ type: "caption" });
+        ctx.setStatusText("Choose fallback");
+        ctx.onStateChange({ running: true, status: "Choose fallback" });
+        return { ok: true };
+      },
+    };
+    for (const file of ["lib/audio-utils.js", "ui/overlay.js", "services/session-manager.js", "content.js"]) {
+      loadService(file, window);
+    }
+    const send = (msg) => new Promise((resolve) => listener(msg, {}, resolve));
+    await send({ type: "TOGGLE_OVERLAY" });
+    const toggle = window.document.querySelector("[data-lumeo-toggle-session]");
+    const badge = window.document.querySelector("[data-lumeo-status-badge]");
+
+    toggle.click();
+    await send({ type: "CONTENT_START", settings: { tier: "caption" } });
+    await expect(send({ type: "CONTENT_SESSION_STATE" })).resolves.toMatchObject({
+      running: true, status: "Choose fallback",
+    });
+    expect(toggle.classList.contains("is-loading")).toBe(true);
+    expect(badge.textContent).toBe("Choose fallback");
+
+    await expect(send({ type: "CONTENT_STOP" })).resolves.toEqual({ ok: true });
+    await send({ type: "TOGGLE_OVERLAY" });
+    expect(toggle.classList.contains("is-loading")).toBe(false);
+    expect(toggle.getAttribute("aria-label")).toBe("Start Translation");
+    expect(badge.style.display).toBe("none");
+    expect(badge.textContent).toBe("");
+  } finally {
+    window.close();
+  }
+});
+
 async function setup() {
   const { window } = await createSandboxWindow();
   loadService("ui/overlay.js", window);

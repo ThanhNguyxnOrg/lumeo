@@ -138,7 +138,9 @@
   function notifyBackground(msg) {
     browserApi.sendRuntimeMessage(msg).catch(() => {});
   }
+  let liveState = {};
   function emitState(partial) {
+    liveState = { ...liveState, ...partial };
     notifyBackground({ type: "CONTENT_STATE", ...partial });
   }
   function emitEnded(reason) {
@@ -502,7 +504,6 @@
   }
 
   function handleStopSession() {
-    overlayController?.setSessionState?.({ isTranslating: false, isLoading: false, statusText: "" });
     LumeoSessionManager.stopSession("user-stop");
     notifyBackground({ type: "CONTENT_STATE", running: false, status: "Stopped" });
     emitEnded("Stopped");
@@ -870,7 +871,7 @@
 
   function clearSessionUI() {
     subtitleOverlay?.remove();
-    overlayController?.setSessionState?.({ isTranslating: false });
+    overlayController?.setSessionState?.({ isTranslating: false, isLoading: false, statusText: "" });
     currentTargetText = "";
     currentSourceText = "";
     lastDisplayedCue = null;
@@ -930,6 +931,7 @@
     getCurrentTexts: () => ({ source: currentSourceText, target: currentTargetText }),
     setCurrentTexts: (src, tgt) => { currentSourceText = src; currentTargetText = tgt; },
     onSessionStopped: () => {
+      liveState = {};
       clearSessionUI();
       transcriptController?.remove?.();
     },
@@ -964,7 +966,7 @@
       overlayController?.toggleSideCollapsed?.(true);
       overlayController?.refreshLayoutKey?.();
       overlayController?.ensureYouTubeControlButton?.();
-      if (LumeoSessionManager.getSession()) {
+      if (LumeoSessionManager.getSession() || LumeoSessionManager.isStarting()) {
         LumeoSessionManager.stopSession("yt-navigation");
         emitEnded("YouTube navigated.");
       }
@@ -989,6 +991,13 @@
     (async () => {
       try {
         switch (msg?.type) {
+          case "CONTENT_SESSION_STATE":
+            sendResponse({
+              running: !!LumeoSessionManager.getSession() && liveState.running === true,
+              paused: liveState.paused === true,
+              status: liveState.status,
+            });
+            break;
           case "CONTENT_PING":
             sendResponse({
               ok: true,
