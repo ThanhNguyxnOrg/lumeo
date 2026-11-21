@@ -3,6 +3,7 @@ import { createSandboxWindow, loadService } from "./helpers/load-service.mjs";
 
 async function setup() {
   const { window } = await createSandboxWindow();
+  loadService("ui/voice-picker.js", window);
   loadService("pipelines/standard.js", window);
   return window.LumeoStandardPipeline;
 }
@@ -73,7 +74,11 @@ describe("pipelines/standard.js", () => {
     expect(processChunk.mock.calls[0][1].type).toBe("audio/webm");
   });
 
-  it("processes Standard STT, translation, TTS, and playback", async () => {
+  it.each([
+    ["English_magnetic_voiced_man", "English_magnetic_voiced_man"],
+    ["English_ConfidentWoman", "English_ConfidentWoman"],
+    ["Browser Japanese", "English_magnetic_voiced_man"],
+  ])("processes Standard STT, translation, TTS, and playback with stored voice %s", async (standardVoice, voiceId) => {
     const sourceNode = { connect: vi.fn(), start: vi.fn() };
     const audioBuffer = { duration: 1.25 };
     const audioCtx = {
@@ -106,7 +111,7 @@ describe("pipelines/standard.js", () => {
     await api.processChunk(session, { size: 3000 }, {
       getActiveSession: () => session,
       getPageToken: () => 7,
-      getSettings: () => ({ targetLanguage: "vi", standardVoice: "English_magnetic_voiced_man" }),
+      getSettings: () => ({ targetLanguage: "vi", standardVoice }),
       langNameByCode: { vi: "Vietnamese" },
       kymaBase: "https://kyma.test/v1",
       audioUtils: { webmBlobToWav: vi.fn(async () => new Blob(["wav"])) },
@@ -118,6 +123,8 @@ describe("pipelines/standard.js", () => {
 
     expect(formData.append).toHaveBeenCalledWith("model", "whisper-v3-turbo");
     expect(fetch).toHaveBeenCalledTimes(3);
+    const [, speechRequest] = fetch.mock.calls.find(([url]) => url.endsWith("/audio/speech"));
+    expect(JSON.parse(speechRequest.body).voice_id).toBe(voiceId);
     expect(callbacks.onSourceText).toHaveBeenCalledWith("hello");
     expect(callbacks.onTargetText).toHaveBeenCalledWith("xin chào");
     expect(sourceNode.connect).toHaveBeenCalledWith(session.outputGain);

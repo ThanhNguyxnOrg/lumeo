@@ -149,6 +149,12 @@
   }
 
   const LumeoSessionManager = window.LumeoSessionManager;
+
+  function getActiveTier() {
+    const session = LumeoSessionManager.getSession();
+    return session ? (session.type || "realtime") : (settings?.tier || "caption");
+  }
+
   const subtitleOverlay = window.LumeoSubtitleOverlay?.createSubtitleOverlayController?.();
   const transcriptController = window.LumeoTranscript?.createTranscriptController?.({
     onToggle: (isOpen) => {
@@ -236,7 +242,7 @@
       if (lastDisplayedCue) setTargetCue(lastDisplayedCue);
 
       const activeSession = LumeoSessionManager.getSession();
-      if (activeSession?.type === "caption") {
+      if (activeSession && getActiveTier() === "caption") {
         overlayController?.setSessionState?.({
           isTranslating: true,
           isLoading: true,
@@ -332,7 +338,7 @@
   if (typeof window !== "undefined" && window.speechSynthesis) {
     const handleVoicesChanged = () => {
       if (elements.voiceSelect) {
-        populateVoicePicker(settings?.tier || "caption");
+        populateVoicePicker();
       }
       overlayController?.updateMenuLabels?.();
     };
@@ -397,10 +403,9 @@
           applyLayoutPreset(captionStyle.layoutPreset || "stacked");
           if (elements.langSelect && res.targetLanguage) {
             elements.langSelect.value = res.targetLanguage;
-            autoPairVoiceForLanguage(res.targetLanguage);
           }
           if (elements.voiceSelect) {
-            populateVoicePicker(settings.tier || "caption");
+            populateVoicePicker();
           }
           overlayController?.syncCaptionControls?.(captionStyle);
           applyCaptionStyle();
@@ -427,10 +432,10 @@
             }
             if (updated.targetLanguage && elements.langSelect) {
               elements.langSelect.value = updated.targetLanguage;
-              autoPairVoiceForLanguage(updated.targetLanguage);
             }
-            if (updated.captionTtsProvider !== undefined || updated.standardVoice !== undefined || updated.targetLanguage !== undefined) {
-              populateVoicePicker(settings.tier || "caption");
+            if (updated.tier !== undefined || updated.captionTtsProvider !== undefined ||
+                updated.standardVoice !== undefined || updated.realtimeVoice !== undefined || updated.targetLanguage !== undefined) {
+              applyTierToolbar();
             }
             overlayController?.syncCaptionControls?.(captionStyle);
             applyCaptionStyle();
@@ -512,7 +517,7 @@
   function handleLanguageChange(newLang) {
     if (!newLang) return;
     const activeSession = LumeoSessionManager.getSession();
-    const tier = activeSession?.type || settings?.tier || "caption";
+    const tier = getActiveTier();
     settings = { ...(settings || {}), targetLanguage: newLang };
     try {
       if (typeof chrome !== "undefined" && chrome.storage?.local) {
@@ -525,11 +530,11 @@
       : { ...settings, tier });
 
     // Smart auto-pair neural voice for chosen target language
-    const pairedVoice = autoPairVoiceForLanguage(newLang);
-    if (pairedVoice) {
-      handleVoiceChange(pairedVoice);
+    if (tier === "caption") {
+      const pairedVoice = autoPairVoiceForLanguage(newLang);
+      if (pairedVoice) handleVoiceChange(pairedVoice);
     }
-    populateVoicePicker(tier);
+    populateVoicePicker();
     overlayController?.updateMenuLabels?.();
 
     // In-place reactive handover without stopping active video playback (Decision 14)
@@ -555,7 +560,7 @@
   function handleVoiceChange(newVoice) {
     if (!newVoice) return;
     settings = settings || {};
-    const tier = LumeoSessionManager.getSession()?.type || settings.tier || "caption";
+    const tier = getActiveTier();
     if (tier === "caption") {
       if (newVoice === "off") {
         settings.captionTtsProvider = "off";
@@ -596,7 +601,7 @@
     if (elements.langSelect && settings?.targetLanguage) {
       elements.langSelect.value = settings.targetLanguage;
     }
-    populateVoicePicker(settings?.tier || "caption");
+    populateVoicePicker();
     overlayController?.syncCaptionControls?.(captionStyle);
     overlayController?.updateMenuLabels?.();
 
@@ -609,7 +614,7 @@
             if (elements.langSelect && settings.targetLanguage) {
               elements.langSelect.value = settings.targetLanguage;
             }
-            populateVoicePicker(settings?.tier || "caption");
+            populateVoicePicker();
             overlayController?.syncCaptionControls?.(captionStyle);
             applyCaptionStyle();
             overlayController?.updateMenuLabels?.();
@@ -733,11 +738,13 @@
 
   function applyTierToolbar() {
     if (elements.exportBtn) elements.exportBtn.hidden = !LumeoSessionManager.getSession();
-    if (elements.ttsCap) elements.ttsCap.hidden = settings?.tier !== "caption";
+    if (elements.ttsCap) elements.ttsCap.hidden = getActiveTier() !== "caption";
+    populateVoicePicker();
+    overlayController?.updateMenuLabels?.();
   }
 
-  function populateVoicePicker(tier) {
-    window.LumeoVoicePicker?.populate(elements.voiceSelect, tier, settings || {});
+  function populateVoicePicker() {
+    window.LumeoVoicePicker?.populate(elements.voiceSelect, getActiveTier(), settings || {});
   }
 
   function setOverlayState(state) {
@@ -939,18 +946,13 @@
     onSessionStopped: () => {
       liveState = {};
       clearSessionUI();
+      applyTierToolbar();
       transcriptController?.remove?.();
     },
     onSettingsUpdated: (newSettings, prev) => {
       settings = { ...(settings || {}), ...newSettings };
       if (elements.langSelect && newSettings.targetLanguage) {
         elements.langSelect.value = newSettings.targetLanguage;
-      }
-      if (elements.voiceSelect &&
-          (newSettings.realtimeVoice !== undefined ||
-           newSettings.standardVoice !== undefined ||
-           newSettings.captionTtsProvider !== undefined)) {
-        populateVoicePicker(settings.tier || "realtime");
       }
       applyTierToolbar();
       if ("showSource" in newSettings) {
@@ -1044,7 +1046,7 @@
             if (elements.langSelect && settings.targetLanguage) {
               elements.langSelect.value = settings.targetLanguage;
             }
-            populateVoicePicker(settings.tier || "caption");
+            applyTierToolbar();
             overlayController?.syncCaptionControls?.(captionStyle);
             overlayController?.updateMenuLabels?.();
             const startRes = await LumeoSessionManager.startSession(settings);
@@ -1183,7 +1185,7 @@
         if (volumeChanged) {
           LumeoSessionManager.applyVolumes(settings.originalVolume, settings.voiceVolume);
           const currentSession = LumeoSessionManager.getSession?.();
-          const isDubbingActive = currentSession && currentSession.type !== "caption";
+          const isDubbingActive = currentSession && getActiveTier() !== "caption";
           const vid = LumeoSessionManager.getVideoEl() || findVideo?.() || document.querySelector("video");
           if (vid && isDubbingActive && typeof settings.originalVolume === "number") {
             vid.volume = Math.max(0, Math.min(1, settings.originalVolume / 100));

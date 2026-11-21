@@ -110,6 +110,18 @@ it("keeps the same Standard Dub session when the player language changes after a
   document.body.innerHTML = '<div id="movie_player"><video class="html5-main-video"></video></div>';
   let listener;
   let captionContext;
+  const storageListeners = [];
+  const storageSet = vi.fn();
+  window.chrome = {
+    storage: {
+      local: { get: (_keys, callback) => callback({ tier: "caption" }), set: storageSet },
+      onChanged: { addListener: (fn) => storageListeners.push(fn) },
+    },
+  };
+  const browserVoice = "Browser Japanese";
+  window.speechSynthesis = Object.assign(new window.EventTarget(), {
+    getVoices: () => [{ name: browserVoice, lang: "ja-JP" }],
+  });
   window.LumeoBrowserApi = {
     sendRuntimeMessage: vi.fn(async () => ({ ok: true })),
     addRuntimeMessageListener: (fn) => { listener = fn; },
@@ -134,33 +146,56 @@ it("keeps the same Standard Dub session when the player language changes after a
     pickRecorderMime: () => "audio/webm",
     runChunkLoop: vi.fn(),
   };
-  for (const file of ["ui/overlay.js", "services/session-manager.js", "content.js"]) {
+  for (const file of ["ui/voice-picker.js", "ui/overlay.js", "services/session-manager.js", "content.js"]) {
     loadService(file, window);
   }
 
   const manager = window.LumeoSessionManager;
   const send = (msg) => new Promise((resolve) => listener(msg, {}, resolve));
   try {
-    await expect(send({ type: "CONTENT_START", settings: { tier: "caption", targetLanguage: "en", kymaKey: "" } }))
+    const standardVoice = "English_ConfidentWoman";
+    await expect(send({ type: "CONTENT_START", settings: { tier: "caption", targetLanguage: "en", kymaKey: "", standardVoice } }))
       .resolves.toEqual({ ok: true });
     await captionContext.onSwitchToStandard(async () => "kyma-test-key");
     const standard = manager.getSession();
     expect(standard.type).toBe("standard");
 
     const root = document.querySelector(".ec-root");
+    const picker = root.querySelector("[data-ec-voice]");
+    const expectDubVoices = () => {
+      expect(picker.getAttribute("aria-label")).toBe("Dub voice");
+      expect([...picker.options].map(({ value }) => value)).toEqual(
+        window.LumeoVoicePicker.STANDARD_VOICES.map(([id]) => id),
+      );
+      expect(picker.value).toBe(standardVoice);
+    };
+    expectDubVoices();
     const chooseJapanese = (menu) => {
       root.querySelector(`[data-open-sub="${menu}"]`).click();
       const button = [...root.querySelectorAll(".ytp-lumeo-sub-item")].find((item) => item.textContent.includes("Japanese"));
       button.click();
     };
     chooseJapanese("language");
-    expect(manager.getSettings()).toMatchObject({ tier: "standard", targetLanguage: "ja", kymaKey: "kyma-test-key" });
+    expect(manager.getSettings()).toMatchObject({ tier: "standard", targetLanguage: "ja", kymaKey: "kyma-test-key", standardVoice });
     expect(manager.getSession()).toBe(standard);
+    expect(storageSet).not.toHaveBeenCalledWith(expect.objectContaining({ standardVoice: browserVoice }));
+    expect(window.LumeoBrowserApi.sendRuntimeMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      settings: expect.objectContaining({ standardVoice: browserVoice }),
+    }));
+    for (const fn of storageListeners) {
+      fn({ tier: { newValue: "caption" }, targetLanguage: { newValue: "ja" } }, "local");
+    }
+    expectDubVoices();
+    window.speechSynthesis.dispatchEvent(new window.Event("voiceschanged"));
+    expectDubVoices();
 
     chooseJapanese("secondarylanguage");
     expect(manager.getSession()).toBe(standard);
     expect(track.stop).not.toHaveBeenCalled();
     expect(window.LumeoCaptionOrchestrator.start).toHaveBeenCalledOnce();
+    await expect(send({ type: "CONTENT_STOP" })).resolves.toEqual({ ok: true });
+    expect(picker.getAttribute("aria-label")).toBe("Caption speech voice");
+    expect([...picker.options].map(({ value }) => value)).toContain(browserVoice);
   } finally {
     manager.stopSession();
     window.close();

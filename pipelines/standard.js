@@ -240,7 +240,8 @@
     const kymaKey = sessionRef.kymaKey;
     const language = settings.targetLanguage || "en";
     const languageName = context.langNameByCode?.[language] || language;
-    const voiceId = settings.standardVoice || context.standardDefaultVoice || "English_magnetic_voiced_man";
+    const voiceId = window.LumeoVoicePicker?.resolveStandardVoice?.(settings.standardVoice)
+      || context.standardDefaultVoice || "English_magnetic_voiced_man";
     const kymaBase = context.kymaBase || "https://api.kymaapi.com/v1";
     const audioUtils = context.audioUtils || window.LumeoAudioUtils;
     const fetchFn = context.fetch || fetch;
