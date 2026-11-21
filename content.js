@@ -61,7 +61,7 @@
     ["ur", "Urdu (اردو)"],
   ];
   const LANG_NAME = Object.fromEntries(LANGUAGES);
-  const browserApi = window.LumeoBrowserApi;
+  const browserApi = globalThis.LumeoBrowserApi;
 
   const SMART_VOICE_PREFERENCES = {
     vi: ["Microsoft HoaiMy Online (Natural) - Vietnamese (Vietnam)", "Google tiếng Việt", "Microsoft NamMinh Online (Natural)"],
@@ -1011,7 +1011,7 @@
             sendResponse({
               ok: true,
               version: LUMEO_VERSION,
-              browserApi: !!window.LumeoBrowserApi,
+              browserApi: !!globalThis.LumeoBrowserApi,
               platformAdapters: !!window.LumeoPlatformAdapters,
               captionPipeline: !!window.LumeoCaptionPipeline,
               realtimePipeline: !!window.LumeoRealtimePipeline,

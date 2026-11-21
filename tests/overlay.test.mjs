@@ -2,6 +2,32 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createSandboxWindow, loadService } from "./helpers/load-service.mjs";
 
+it("starts Caption when the isolated script global is separate from the page window", async () => {
+  const { window } = await createSandboxWindow();
+  try {
+    window.document.body.innerHTML = '<div id="movie_player"><video class="html5-main-video"></video></div>';
+    const runtime = {
+      sendMessage: vi.fn(async () => ({ ok: true, state: { tier: "caption" } })),
+      onMessage: { addListener: vi.fn() },
+    };
+    Object.defineProperty(window, "globalThis", { value: { browser: { runtime } } });
+    for (const file of ["lib/browser-api.js", "lib/audio-utils.js", "ui/overlay.js",
+      "services/session-manager.js", "content.js"]) {
+      loadService(file, window);
+    }
+    expect(window.LumeoBrowserApi).toBeUndefined();
+    const [[listener]] = runtime.onMessage.addListener.mock.calls;
+    const send = (message) => new Promise((resolve) => listener(message, {}, resolve));
+    await expect(send({ type: "CONTENT_PING" })).resolves.toMatchObject({ ok: true, browserApi: true });
+    await send({ type: "TOGGLE_OVERLAY" });
+    window.document.querySelector("[data-lumeo-toggle-session]").click();
+    await vi.waitFor(() => expect(runtime.sendMessage).toHaveBeenCalledWith({ type: "START" }));
+    expect(runtime.sendMessage).toHaveBeenCalledWith({ type: "GET_STATE" });
+  } finally {
+    window.close();
+  }
+});
+
 it("resets the in-player controls when the background stops a recovered caption session", async () => {
   const { window } = await createSandboxWindow();
   try {

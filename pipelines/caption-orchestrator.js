@@ -148,7 +148,7 @@
         reason,
         diagnostics,
         onChromeLiveCaption: async () => {
-          const reply = await window.LumeoBrowserApi
+          const reply = await globalThis.LumeoBrowserApi
             .sendRuntimeMessage({ type: "OPEN_CHROME_ACCESSIBILITY_SETTINGS" }).catch(() => null);
           if (token !== ctx.getPageToken()) return;
           if (!reply?.ok) {

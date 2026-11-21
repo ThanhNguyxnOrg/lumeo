@@ -458,8 +458,8 @@ async function ensureContentScript(tabId) {
         target: { tabId },
         func: () => {
           delete window.__lumeoContentVersion;
+          delete globalThis.LumeoBrowserApi;
           for (const key of [
-            "LumeoBrowserApi",
             "LumeoTokenGuard",
             "LumeoAudioUtils",
             "LumeoOverlay",

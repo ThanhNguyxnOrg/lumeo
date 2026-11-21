@@ -54,7 +54,7 @@
     const actions = doc.createElement("div");
     actions.className = "ec-choice-actions";
 
-    if (options.onChromeLiveCaption && window.LumeoBrowserApi?.supportsChromeLiveCaption()) {
+    if (options.onChromeLiveCaption && globalThis.LumeoBrowserApi?.supportsChromeLiveCaption()) {
       actions.append(
         createButton(doc, "ec-choice-btn ec-choice-btn-accent", "Chrome Live Caption (0-Key · Free)", () => options.onChromeLiveCaption?.())
       );
