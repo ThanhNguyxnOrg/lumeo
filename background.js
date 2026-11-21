@@ -66,6 +66,7 @@ const DEFAULT_SETTINGS = {
   customProxyBaseUrl: "",
   customProxyApiKey: "",
   customProxyModelId: "",
+  customTtsPreset: "custom",
   customTtsBaseUrl: "",
   customTtsApiKey: "",
   customTtsVoiceId: "",
@@ -80,8 +81,7 @@ const DEFAULT_SETTINGS = {
   ttsSpeed: 1.0,
 };
 
-// The tab owns the pipeline. Only its ID is saved across background restarts.
-const state = {
+const DEFAULT_SESSION_STATE = {
   running: false,
   connecting: false,
   paused: false,
@@ -91,8 +91,9 @@ const state = {
   errorCode: "",
   missingProviders: [],
   slotsMissingKeys: [],
-  ...DEFAULT_SETTINGS,
 };
+// The tab owns the pipeline. Only its ID is saved across background restarts.
+const state = { ...DEFAULT_SESSION_STATE, ...DEFAULT_SETTINGS };
 
 // Storage access level left default so Content Scripts on YouTube can read/write
 // persistent user preferences (layout, font size, subtitle styles) and receive onChanged.
@@ -506,21 +507,20 @@ async function ensureContentScript(tabId) {
 }
 
 async function loadSettings() {
-  const stored = await browserApi.storageGet(null);
-  Object.assign(state, DEFAULT_SETTINGS, stored);
-  return state;
+  const stored = await browserApi.storageGet(DEFAULT_SETTINGS);
+  Object.assign(state, DEFAULT_SETTINGS, pickSettings(stored));
+}
+
+function pickSettings(partial) {
+  return Object.fromEntries(Object.entries(partial).filter(
+    ([key, value]) => Object.hasOwn(DEFAULT_SETTINGS, key) && value !== undefined,
+  ));
 }
 
 async function persistSettings(partial) {
-  Object.assign(state, partial);
-  const persistable = {};
-  for (const [k, v] of Object.entries(partial)) {
-    if (v !== undefined) {
-      persistable[k] = v;
-      state[k] = v;
-    }
-  }
+  const persistable = pickSettings(partial);
   if (Object.keys(persistable).length) {
+    Object.assign(state, persistable);
     await browserApi.storageSet(persistable);
   }
 }
@@ -650,11 +650,10 @@ async function handleUpdateSettings(settings) {
   broadcastToPopup();
   if (state.tabId && (state.running || state.connecting)) {
     try {
-      const reply = await relayToContent(state.tabId, {
+      await relayToContent(state.tabId, {
         type: "CONTENT_UPDATE_SETTINGS",
         settings: pruneSettingsForContent(snapshot()),
       });
-      if (reply?.state) Object.assign(state, reply.state);
     } catch (err) {
       state.errorMessage = err.message || String(err);
       broadcastToPopup();
@@ -1253,14 +1252,18 @@ if (browserApi.native?.storage?.session) {
   sessionRestore = restoreSession().finally(() => { sessionRestore = null; });
 }
 void loadSettings();
+void browserApi.native?.storage?.local?.remove?.(Object.keys(DEFAULT_SESSION_STATE)).catch(() => {});
 
 if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "local") {
+      let changed = false;
       for (const [key, change] of Object.entries(changes)) {
-        state[key] = change.newValue;
+        if (!Object.hasOwn(DEFAULT_SETTINGS, key)) continue;
+        state[key] = change.newValue === undefined ? DEFAULT_SETTINGS[key] : change.newValue;
+        changed = true;
       }
-      broadcastToPopup();
+      if (changed) broadcastToPopup();
     }
   });
 }

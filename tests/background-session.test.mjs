@@ -9,9 +9,13 @@ const sessionKey = "lumeoSessionTab";
 let sessionStorage;
 let chrome;
 
-async function boot(onTabMessage) {
+async function boot(onTabMessage, options = {}) {
   vi.resetModules();
-  globalThis.chrome = chrome = createChromeMock({ onTabMessage });
+  globalThis.chrome = chrome = createChromeMock({ onTabMessage, ...options });
+  chrome.storage.local.remove = vi.fn(async (keys) => {
+    for (const key of keys) delete chrome.__storageData[key];
+  });
+  chrome.storage.onChanged = { addListener: vi.fn() };
   chrome.storage.session = {
     get: vi.fn(async () => ({ ...sessionStorage })),
     set: vi.fn(async (items) => { Object.assign(sessionStorage, items); }),
@@ -66,6 +70,42 @@ describe("background session ownership", () => {
     await expect(ask({ type: "GET_STATE" })).resolves.toMatchObject({
       state: { running: false, tabId: null },
     });
+  });
+
+  it("persists only settings when the standalone popup starts without a YouTube tab", async () => {
+    await boot(undefined, { tabs: [] });
+    const { state } = await ask({ type: "GET_STATE" });
+    await expect(ask({ type: "START", settings: { ...state, targetLanguage: "vi" } })).resolves.toMatchObject({
+      ok: false,
+      error: "No active tab.",
+    });
+    expect(chrome.__storageData).toMatchObject({ targetLanguage: "vi" });
+    for (const key of ["running", "connecting", "paused", "tabId", "status", "errorMessage", "errorCode", "missingProviders", "slotsMissingKeys"]) {
+      expect(chrome.__storageData).not.toHaveProperty(key);
+    }
+  });
+
+  it("removes legacy session fields without touching other stored data", async () => {
+    const cache = { entries: { example: {} } };
+    await boot(undefined, { storage: { running: false, tabId: null, targetLanguage: "vi", lumeoCaptionCacheV1: cache } });
+    expect(chrome.__storageData).toEqual({ targetLanguage: "vi", lumeoCaptionCacheV1: cache });
+  });
+
+  it("keeps the owner when stale session fields appear in storage during a live session", async () => {
+    await boot();
+    await expect(ask({ type: "START" }, owner)).resolves.toMatchObject({ ok: true });
+    await ask({ type: "CONTENT_STATE", paused: true, status: "Paused" }, owner);
+    const stale = { running: false, connecting: false, paused: false, tabId: null, status: "Ready" };
+    Object.assign(chrome.__storageData, stale, { targetLanguage: "vi" });
+    const onChanged = chrome.storage.onChanged.addListener.mock.calls[0][0];
+    onChanged(Object.fromEntries(Object.entries(stale).map(([key, newValue]) => [key, { newValue }])), "local");
+    await expect(ask({ type: "STOP" }, otherTab)).resolves.toEqual({ ok: true, ignored: true });
+    await expect(ask({ type: "GET_STATE" })).resolves.toMatchObject({
+      state: { running: true, paused: true, tabId: 7, status: "Paused", targetLanguage: "vi" },
+    });
+    await expect(ask({ type: "STOP" }, otherTab)).resolves.toEqual({ ok: true, ignored: true });
+    await expect(ask({ type: "START" }, otherTab)).resolves.toMatchObject({ alreadyRunning: true });
+    expect(chrome.tabs.sendMessage.mock.calls.filter(([, msg]) => msg.type === "CONTENT_START")).toHaveLength(1);
   });
 
   it("accepts only one start while background settings are loading", async () => {

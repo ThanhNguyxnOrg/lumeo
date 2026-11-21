@@ -504,7 +504,6 @@
   }
 
   function handleStopSession() {
-    overlayController?.setSessionState?.({ isTranslating: false, isLoading: false, statusText: "" });
     LumeoSessionManager.stopSession("user-stop");
     notifyBackground({ type: "CONTENT_STATE", running: false, status: "Stopped" });
     emitEnded("Stopped");
@@ -872,7 +871,7 @@
 
   function clearSessionUI() {
     subtitleOverlay?.remove();
-    overlayController?.setSessionState?.({ isTranslating: false });
+    overlayController?.setSessionState?.({ isTranslating: false, isLoading: false, statusText: "" });
     currentTargetText = "";
     currentSourceText = "";
     lastDisplayedCue = null;

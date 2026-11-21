@@ -105,6 +105,11 @@ let providerSaveTimer = null;
 let volumeDebounce = null;
 let highlightSlotId = "";
 
+const SESSION_FIELDS = new Set([
+  "running", "connecting", "paused", "tabId", "status",
+  "errorMessage", "errorCode", "missingProviders", "slotsMissingKeys",
+]);
+
 let state = {
   running: false,
   connecting: false,
@@ -529,7 +534,7 @@ function activeVoiceForTier(tier) {
 function readSettings() {
   const tier = tierSelect.value || "caption";
   const settings = {
-    ...state,
+    ...Object.fromEntries(Object.entries(state).filter(([key]) => !SESSION_FIELDS.has(key))),
     ...allKeyValues(),
     tier,
     targetLanguage: langSelect.value || "en",
@@ -1005,6 +1010,7 @@ if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
     if (area === "local") {
       const updated = {};
       for (const [k, v] of Object.entries(changes)) {
+        if (SESSION_FIELDS.has(k)) continue;
         updated[k] = v.newValue;
       }
       applyState(updated);
