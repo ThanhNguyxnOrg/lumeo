@@ -259,7 +259,7 @@ jobs:
       - name: Generate GitHub App Token
         if: steps.plan.outputs.should_release == 'true'
         id: app-token
-        uses: ThanhNguyxnOrg/.github/.github/actions/agent-token@2b5c5cad571ee93fd091e16e1734ebd819191e68
+        uses: ThanhNguyxnOrg/.github/.github/actions/agent-token@agent-v1
         with:
           profile: content
           app-id: ${{ vars.BOT_APP_ID }}
