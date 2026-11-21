@@ -917,6 +917,7 @@
       languageCode: track.languageCode,
       kind: track.kind || "manual",
     };
+    options.onTrackChosen?.(track);
 
     const sourceLanguage = track.languageCode || "";
     const url = buildTimedTextUrl(track);
@@ -965,7 +966,24 @@
     };
   }
 
-  async function fetchViaSniff(videoId) {
+  // Point a sniffed player URL (which carries the player's `pot` token) at the
+  // chosen source track instead of the track selected in YouTube's player.
+  function retargetSniffedUrl(parsed, track) {
+    if (!track?.baseUrl) return;
+    let wanted;
+    try {
+      wanted = new URL(String(track.baseUrl).replace(/\\u0026/g, "&"));
+    } catch {
+      return;
+    }
+    for (const key of ["lang", "kind", "name"]) {
+      const value = wanted.searchParams.get(key);
+      if (value) parsed.searchParams.set(key, value);
+      else parsed.searchParams.delete(key);
+    }
+  }
+
+  async function fetchViaSniff(videoId, track = null) {
     let url = sniffedLinks.get(videoId);
     if (!url) {
       for (let i = 0; i < 3 && !url; i++) {
@@ -974,13 +992,14 @@
       }
     }
     const intercepted = interceptedCaptionBodies.get(videoId);
-    if (intercepted?.cues?.length) {
+    if (intercepted?.cues?.length && interceptedMatchesTrack(intercepted, track)) {
       return { cues: intercepted.cues, sourceLanguage: intercepted.sourceLanguage, url: intercepted.url };
     }
     if (!url) return null;
     try {
       const parsed = new URL(url);
       parsed.searchParams.delete("tlang");
+      retargetSniffedUrl(parsed, track);
       if (!parsed.searchParams.has("fmt")) parsed.searchParams.set("fmt", "json3");
       const sourceLanguage = parsed.searchParams.get("lang") || "";
       const xml = await fetchText(parsed.toString());
@@ -1080,9 +1099,10 @@
       // Human-scale bound on the whole discovery cascade: per-hop timeouts
       // cap each request, but sequential fallbacks can still stack minutes of
       // "Loading captions...". On deadline the loud no-tracks error path runs.
+      let chosenTrack = null;
       const cascade = (async () =>
-        await fetchViaPageData(targetLanguage, { diagnostics }) ||
-        await fetchViaSniff(videoId) ||
+        await fetchViaPageData(targetLanguage, { diagnostics, onTrackChosen: (track) => { chosenTrack = track; } }) ||
+        await fetchViaSniff(videoId, chosenTrack) ||
         await fetchViaTranscriptPanel(diagnostics))();
       const deadline = new Promise((resolve) => setTimeout(() => resolve(null), 60000));
       source = await Promise.race([cascade, deadline]);

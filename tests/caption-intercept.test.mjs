@@ -98,6 +98,43 @@ describe("intercepted body vs. the chosen source track", () => {
     expect(result.cues[0]).toMatchObject({ text: "hello everyone", translated: "xin chào các bạn" });
     expect(result.sourceLanguage).toBe("en");
   }, 15000);
+
+  it("re-fetches the chosen source track when only the player's URL is usable", async () => {
+    // Token-less requests come back empty; only the player's `pot` URL works.
+    const requested = [];
+    const bodyFor = (url) => {
+      const params = new URL(url).searchParams;
+      requested.push(params);
+      if (!params.get("pot")) return "";
+      if (params.get("tlang")) return json3("xin chào các bạn");
+      return json3(params.get("lang") === "fr" ? "bonjour à tous" : "hello everyone");
+    };
+    const window = await setup(bodyFor);
+    const tracks = [
+      { baseUrl: "https://www.youtube.com/api/timedtext?v=test&lang=en&name=CC", languageCode: "en" },
+      { baseUrl: "https://www.youtube.com/api/timedtext?v=test&lang=fr", languageCode: "fr" },
+    ];
+    const script = window.document.createElement("script");
+    script.type = "application/json";
+    script.textContent = JSON.stringify({ captions: { playerCaptionsTracklistRenderer: { captionTracks: tracks } } });
+    window.document.body.appendChild(script);
+
+    // The viewer has the French track selected in YouTube's own player.
+    const playerUrl = "https://www.youtube.com/api/timedtext?v=test&lang=fr&pot=abc&fmt=json3";
+    window.postMessage({ source: "yt-trans-sniffer", type: "subtitle-url", nonce: "", url: playerUrl });
+    window.postMessage({
+      source: "yt-trans-sniffer", type: "caption-body", nonce: "",
+      url: playerUrl, text: json3("bonjour à tous"), status: 200, via: "xhr",
+    });
+
+    const result = await window.LumeoCaptions.fetchSubtitles({ targetLanguage: "vi", videoId: "test" });
+
+    expect(result.sourceLanguage).toBe("en");
+    expect(result.cues[0].text).toBe("hello everyone");
+    const refetched = requested.find((params) => params.get("pot") && !params.get("tlang"));
+    expect(Object.fromEntries(refetched)).toMatchObject({ lang: "en", name: "CC", pot: "abc" });
+    expect(refetched.has("kind")).toBe(false);
+  }, 20000);
 });
 
 describe("native transcript fallback", () => {
