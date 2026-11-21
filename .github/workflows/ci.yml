@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   verify:
-    uses: ThanhNguyxnOrg/.github/.github/workflows/ci-node.yml@a032059a58ff65456dcb98a223bd636b96a3d018
+    uses: ThanhNguyxnOrg/.github/.github/workflows/ci-node.yml@ci-v1
     with:
       job_name: lint-and-syntax
       node_version: "22"
