@@ -996,6 +996,7 @@
           case "CONTENT_SESSION_STATE":
             sendResponse({
               running: !!LumeoSessionManager.getSession() && liveState.running === true,
+              choosingCaptionFallback: LumeoSessionManager.getSession()?.choiceOnly === true,
               paused: liveState.paused === true,
               status: liveState.status,
             });

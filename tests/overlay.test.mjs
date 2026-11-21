@@ -86,6 +86,15 @@ it("opens a visible, scrollable fallback chooser in the player and removes it on
       expect(window.getComputedStyle(parent).display).not.toBe("none");
     }
 
+    await expect(send({ type: "CONTENT_SESSION_STATE" })).resolves.toMatchObject({ choosingCaptionFallback: true });
+    const sendMessage = vi.fn((_message, callback) => callback({ ok: true, key: "" }));
+    window.chrome = { runtime: { sendMessage } };
+    const standard = [...chooser.querySelectorAll("button")].find((button) => button.textContent === "Switch to Standard Dub");
+    standard.click();
+    expect(sendMessage).toHaveBeenCalledWith({ type: "GET_PROVIDER_KEY", key: "kymaKey" }, expect.any(Function));
+    await vi.waitFor(() => expect(root.textContent).toContain("Add your Kyma key"));
+    expect(host.firstElementChild).toBe(chooser);
+
     const cancel = [...chooser.querySelectorAll("button")].find((button) => button.textContent === "Cancel");
     cancel.click();
     expect(host.hidden).toBe(true);

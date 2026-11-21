@@ -209,8 +209,8 @@
     applyVolumes(settings.originalVolume, settings.voiceVolume);
   }
 
-  async function startStandardSession(fallbackSession = null) {
-    if (!settings.kymaKey) {
+  async function startStandardSession(fallbackSession = null, kymaKey = settings.kymaKey) {
+    if (!kymaKey) {
       return {
         ok: false,
         error: "Add your Kyma key in Standard Dub, then Start again.",
@@ -263,7 +263,7 @@
 
     if (fallbackSession) {
       disposeSession(fallbackSession);
-      settings = { ...settings, tier: "standard" };
+      settings = { ...settings, tier: "standard", kymaKey };
     }
     const newSession = {
       token: fallbackSession ? ++pageToken : token,
@@ -275,7 +275,7 @@
       pc: null,
       dc: null,
       kymaSessionId: null,
-      kymaKey: settings.kymaKey,
+      kymaKey,
       recorderMime,
       activeRecorder: null,
       nextPlayAt: 0,
@@ -459,12 +459,14 @@
         onStateChange: (partial) => { callbacks.emitState?.(partial); },
         onUpdateSettings: (newSettings) => { callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: newSettings }); },
         onOpenPopup: (slot) => { callbacks.notifyBackground?.({ type: "OPEN_POPUP_TO_SLOT", slot }); },
-        onSwitchToStandard: async () => {
+        onSwitchToStandard: async (requestKymaKey) => {
           const fallbackSession = session;
           if (!fallbackSession?.choiceOnly || switchingToStandard) return;
           switchingToStandard = true;
           try {
-            const reply = await startStandardSession(fallbackSession);
+            const kymaKey = settings.kymaKey || await requestKymaKey();
+            if (session !== fallbackSession) return;
+            const reply = await startStandardSession(fallbackSession, kymaKey);
             if (reply?.ok) {
               callbacks.setCaptionFallbackChoice?.(null);
               callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { tier: "standard" } });

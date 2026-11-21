@@ -92,6 +92,28 @@ describe("background message boundary", () => {
     expect(unusedKey.error).toMatch(/not in use/i);
   });
 
+  it("keeps Kyma out of Caption start and serves it only to the owner at the fallback chooser", async () => {
+    await ask({ type: "STOP" }, OPTIONS_PAGE);
+    chromeMock.__storageData.kymaKey = "kyma-test-key";
+    try {
+      await expect(ask({ type: "START", settings: { tier: "caption" } }, OPTIONS_PAGE))
+        .resolves.toMatchObject({ ok: true });
+      expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(
+        7, expect.objectContaining({ type: "CONTENT_START", settings: expect.objectContaining({ kymaKey: "" }) }),
+        expect.any(Function),
+      );
+
+      const request = { type: "GET_PROVIDER_KEY", key: "kymaKey" };
+      await expect(ask(request, YT_TAB_8)).resolves.toMatchObject({ ok: false });
+      await expect(ask(request, YT_TAB_7)).resolves.toEqual({ ok: false, error: "Provider key is not in use." });
+      chromeMock.tabs.sendMessage.mockResolvedValueOnce({ running: true, choosingCaptionFallback: true });
+      await expect(ask(request, YT_TAB_7)).resolves.toEqual({ ok: true, key: "kyma-test-key" });
+      expect(chromeMock.tabs.sendMessage).toHaveBeenLastCalledWith(7, { type: "CONTENT_SESSION_STATE" }, expect.any(Function));
+    } finally {
+      delete chromeMock.__storageData.kymaKey;
+    }
+  });
+
   it("prunes state in UPDATE_SETTINGS replies and persists only writable fields", async () => {
     const reply = await ask(
       {

@@ -121,7 +121,7 @@ describe("services/session-manager.js", () => {
     expect(manager.getSettings().targetLanguage).toBe("ja");
   });
 
-  it("keeps the Caption chooser usable after a failed Standard switch and clears it on success", async () => {
+  it.each(["configured", "on-demand"])("keeps the chooser after a failed Standard switch with a %s key, and clears it on success", async (source) => {
     const capture = Promise.withResolvers();
     const fallback = { type: "caption", choiceOnly: true, pipeline: { stop: vi.fn() } };
     let ctx;
@@ -142,10 +142,12 @@ describe("services/session-manager.js", () => {
       createGain() { return { gain: {}, connect() {} }; }
       close() { return Promise.resolve(); }
     };
-    await manager.startSession({ tier: "caption", kymaKey: "test-key" });
+    const requestKey = vi.fn().mockResolvedValue("test-key");
+    await manager.startSession({ tier: "caption", kymaKey: source === "configured" ? "test-key" : "" });
     try {
+      expect(requestKey).not.toHaveBeenCalled();
       const token = ctx.getPageToken();
-      const switching = ctx.onSwitchToStandard();
+      const switching = ctx.onSwitchToStandard(requestKey);
       expect(manager.getSession()).toBe(fallback);
       expect(callbacks.setCaptionFallbackChoice).not.toHaveBeenCalled();
       capture.reject(new Error("Capture denied"));
@@ -160,11 +162,12 @@ describe("services/session-manager.js", () => {
       expect(callbacks.setStatusText).toHaveBeenLastCalledWith("Choose fallback");
       expect(callbacks.showToast).toHaveBeenCalledWith("Capture denied", 7000);
 
-      await ctx.onSwitchToStandard();
+      await ctx.onSwitchToStandard(requestKey);
       expect(manager.getSession()).toMatchObject({ type: "standard", kymaKey: "test-key" });
       expect(manager.getSettings().tier).toBe("standard");
       expect(fallback.pipeline.stop).toHaveBeenCalledOnce();
       expect(callbacks.setCaptionFallbackChoice).toHaveBeenCalledExactlyOnceWith(null);
+      expect(requestKey).toHaveBeenCalledTimes(source === "on-demand" ? 2 : 0);
     } finally {
       manager.stopSession();
     }

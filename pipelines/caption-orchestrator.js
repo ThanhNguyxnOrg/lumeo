@@ -162,7 +162,7 @@
         onGroq: () => this.startGroqChoice(video, token, pipeline, reason, ctx),
         onOpenAI: () => this.startOpenAIChoice(video, token, pipeline, reason, ctx),
         onSoniox: () => this.startSonioxChoice(video, token, pipeline, reason, ctx),
-        onStandard: () => ctx.onSwitchToStandard(),
+        onStandard: () => ctx.onSwitchToStandard(() => requestProviderKey("kymaKey")),
         onRetry: () => this.retryCaptionChoice(pipeline, ctx),
         onCancel: () => ctx.onSessionEnded("caption-fallback-cancel", "Caption fallback cancelled."),
       });
