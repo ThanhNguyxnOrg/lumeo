@@ -31,6 +31,41 @@ describe("background content script injection", () => {
     }
   });
 
+  it("injects the content script when the toolbar action hits a tab opened before install", async () => {
+    let injected = false;
+    const chrome = createChromeMock({
+      manifest: JSON.parse(fs.readFileSync("manifest.json", "utf8")),
+      onTabMessage: (_tabId, message) => {
+        if (!injected) throw new Error("Receiving end does not exist.");
+        return { ok: true, type: message.type };
+      },
+    });
+    chrome.storage.onChanged = { addListener: vi.fn() };
+    chrome.scripting.executeScript = vi.fn(async ({ files }) => {
+      if (files?.includes("content.js")) injected = true;
+      return [];
+    });
+    chrome.runtime.openOptionsPage = vi.fn();
+    chrome.action = { onClicked: { addListener: vi.fn() } };
+    const previous = globalThis.chrome;
+    globalThis.chrome = chrome;
+    try {
+      vi.resetModules();
+      await import("../background.js");
+      const [onClicked] = chrome.action.onClicked.addListener.mock.calls[0];
+
+      await onClicked({ id: 7, url: "https://www.youtube.com/watch?v=test" });
+      expect(injected).toBe(true);
+      expect(chrome.tabs.sendMessage).toHaveBeenLastCalledWith(7, { type: "TOGGLE_OVERLAY" });
+      expect(chrome.runtime.openOptionsPage).not.toHaveBeenCalled();
+
+      await onClicked({ id: 8, url: "https://example.com/" });
+      expect(chrome.runtime.openOptionsPage).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.chrome = previous;
+    }
+  });
+
   it("health-checks every runtime-critical content module", () => {
     const background = fs.readFileSync("background.js", "utf8");
     const content = fs.readFileSync("content.js", "utf8");

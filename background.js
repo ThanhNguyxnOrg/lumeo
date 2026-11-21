@@ -1190,6 +1190,13 @@ chrome.action?.onClicked?.addListener(async (tab) => {
       await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_OVERLAY" });
       return;
     } catch {}
+    // The tab was open before the extension was installed or updated, so it
+    // has no content script yet. Inject it instead of opening Settings.
+    try {
+      await ensureContentScript(tab.id);
+      await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_OVERLAY" });
+      return;
+    } catch {}
   }
   if (chrome.runtime.openOptionsPage) {
     chrome.runtime.openOptionsPage();
