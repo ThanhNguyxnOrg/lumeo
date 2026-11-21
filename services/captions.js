@@ -87,6 +87,7 @@
         interceptedCaptionBodies.set(videoId, {
           cues,
           sourceLanguage,
+          kind: parsed.searchParams.get("kind") || "",
           url: parsed.toString(),
           status: data.status,
           source: data.via || "page",
@@ -824,12 +825,20 @@
     return null;
   }
 
-  async function waitForInterceptedCaptions(videoId, timeoutMs = 3500) {
+  // The player loads whichever track the viewer selected in YouTube, which is
+  // not necessarily the source track Lumeo chose.
+  function interceptedMatchesTrack(hit, track) {
+    if (!track) return true;
+    return hit.sourceLanguage === (track.languageCode || "") &&
+      (hit.kind === "asr") === (track.kind === "asr");
+  }
+
+  async function waitForInterceptedCaptions(videoId, timeoutMs = 3500, track = null) {
     if (!videoId) return null;
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
       const hit = interceptedCaptionBodies.get(videoId);
-      if (hit?.cues?.length) return hit;
+      if (hit?.cues?.length && interceptedMatchesTrack(hit, track)) return hit;
       await sleep(150);
     }
     return null;
@@ -911,7 +920,7 @@
 
     const sourceLanguage = track.languageCode || "";
     const url = buildTimedTextUrl(track);
-    const interceptedBeforeFetch = await waitForInterceptedCaptions(videoId, 500);
+    const interceptedBeforeFetch = await waitForInterceptedCaptions(videoId, 500, track);
     if (interceptedBeforeFetch?.cues?.length) {
       diagnostics.steps.push(`intercepted-${interceptedBeforeFetch.source || "page"}`);
       return {
@@ -928,7 +937,7 @@
       return null;
     }
     if (xml.length <= TIMEDTEXT_MIN_CHARS) {
-      const intercepted = await waitForInterceptedCaptions(videoId, 2500);
+      const intercepted = await waitForInterceptedCaptions(videoId, 2500, track);
       if (intercepted?.cues?.length) {
         diagnostics.steps.push(`intercepted-${intercepted.source || "page"}`);
         return {

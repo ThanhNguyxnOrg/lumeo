@@ -12,9 +12,12 @@ const JSON3 = JSON.stringify({
 async function setup(body = JSON3) {
   const { window } = await createSandboxWindow();
   window.chrome = createChromeMock();
-  window.fetch = vi.fn(async () => ({
+  const bodyFor = (url) => (typeof body === "function" ? body(url) : body);
+  window.fetch = vi.fn(async (url) => ({
+    ok: true,
     status: 200,
-    clone: () => ({ text: async () => body }),
+    text: async () => bodyFor(url),
+    clone: () => ({ text: async () => bodyFor(url) }),
   }));
   // jsdom's postMessage leaves event.source/origin unset; deliver the way a
   // browser does so the content-script filter sees a same-window message.
@@ -65,6 +68,36 @@ describe("page sniffer → content script caption interception", () => {
 
     expect(window.LumeoCaptions.getDiagnosticsSummary().interceptedCaptionCount).toBe(0);
   });
+});
+
+describe("intercepted body vs. the chosen source track", () => {
+  const json3 = (text) => JSON.stringify({ events: [{ tStartMs: 0, dDurationMs: 1500, segs: [{ utf8: text }] }] });
+
+  it("ignores the player's track when it is not the source track Lumeo chose", async () => {
+    const bodyFor = (url) => json3(new URL(url).searchParams.get("lang") === "vi" ? "xin chào các bạn" : "hello everyone");
+    const window = await setup(bodyFor);
+    const tracks = [
+      { baseUrl: "https://www.youtube.com/api/timedtext?v=test&lang=en&kind=asr", languageCode: "en", kind: "asr" },
+      { baseUrl: "https://www.youtube.com/api/timedtext?v=test&lang=vi", languageCode: "vi" },
+    ];
+    const script = window.document.createElement("script");
+    script.type = "application/json";
+    script.textContent = JSON.stringify({ captions: { playerCaptionsTracklistRenderer: { captionTracks: tracks } } });
+    window.document.body.appendChild(script);
+
+    // The viewer has the Vietnamese track selected in YouTube's own player.
+    window.postMessage({
+      source: "yt-trans-sniffer", type: "caption-body", nonce: "",
+      url: "https://www.youtube.com/api/timedtext?v=test&lang=vi&pot=abc&fmt=json3",
+      text: json3("xin chào các bạn"), status: 200, via: "xhr",
+    });
+    expect(window.LumeoCaptions.getDiagnosticsSummary().interceptedCaptionCount).toBe(1);
+
+    const result = await window.LumeoCaptions.fetchSubtitles({ targetLanguage: "vi", videoId: "test" });
+
+    expect(result.cues[0]).toMatchObject({ text: "hello everyone", translated: "xin chào các bạn" });
+    expect(result.sourceLanguage).toBe("en");
+  }, 15000);
 });
 
 describe("native transcript fallback", () => {
