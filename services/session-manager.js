@@ -469,7 +469,6 @@
             const reply = await startStandardSession(fallbackSession, kymaKey);
             if (reply?.ok) {
               callbacks.setCaptionFallbackChoice?.(null);
-              callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { tier: "standard" } });
             } else if (session === fallbackSession) {
               callbacks.setStatusText?.("Choose fallback");
               callbacks.setOverlayState?.("error");

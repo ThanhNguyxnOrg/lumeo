@@ -236,13 +236,13 @@
       if (lastDisplayedCue) setTargetCue(lastDisplayedCue);
 
       const activeSession = LumeoSessionManager.getSession();
-      if (activeSession && (settings.tier === "caption" || !settings.tier)) {
+      if (activeSession?.type === "caption") {
         overlayController?.setSessionState?.({
           isTranslating: true,
           isLoading: true,
           statusText: "Switching secondary subtitle to " + (LANG_NAME[secondaryLang] || secondaryLang) + "...",
         });
-        LumeoSessionManager.restartSession({ ...settings, secondaryLanguage: secondaryLang }).catch(() => {
+        LumeoSessionManager.restartSession({ ...settings, tier: "caption", secondaryLanguage: secondaryLang }).catch(() => {
           overlayController?.setSessionState?.({ isTranslating: false, isLoading: false, statusText: "Language switch failed" });
         });
       }
@@ -511,6 +511,8 @@
 
   function handleLanguageChange(newLang) {
     if (!newLang) return;
+    const activeSession = LumeoSessionManager.getSession();
+    const tier = activeSession?.type || settings?.tier || "caption";
     settings = { ...(settings || {}), targetLanguage: newLang };
     try {
       if (typeof chrome !== "undefined" && chrome.storage?.local) {
@@ -518,30 +520,31 @@
       }
     } catch {}
     notifyBackground({ type: "UPDATE_SETTINGS", settings: { targetLanguage: newLang } });
-    LumeoSessionManager.setSettings(settings);
+    LumeoSessionManager.setSettings(tier === "standard" && activeSession
+      ? { ...LumeoSessionManager.getSettings(), tier, targetLanguage: newLang }
+      : { ...settings, tier });
 
     // Smart auto-pair neural voice for chosen target language
     const pairedVoice = autoPairVoiceForLanguage(newLang);
     if (pairedVoice) {
       handleVoiceChange(pairedVoice);
     }
-    populateVoicePicker(settings?.tier || "caption");
+    populateVoicePicker(tier);
     overlayController?.updateMenuLabels?.();
 
     // In-place reactive handover without stopping active video playback (Decision 14)
-    if (settings.tier === "caption" || !settings.tier) {
-      const activeSession = LumeoSessionManager.getSession() || (LumeoSessionManager.isStarting?.() ? true : null);
-      if (activeSession) {
+    if (tier === "caption") {
+      if (activeSession || LumeoSessionManager.isStarting?.()) {
         overlayController?.setSessionState?.({
           isTranslating: true,
           isLoading: true,
           statusText: "Switching to " + (LANG_NAME[newLang] || newLang) + "...",
         });
-        LumeoSessionManager.restartSession({ ...settings, targetLanguage: newLang }).catch(() => {
+        LumeoSessionManager.restartSession({ ...settings, tier, targetLanguage: newLang }).catch(() => {
           overlayController?.setSessionState?.({ isTranslating: false, isLoading: false, statusText: "Language switch failed" });
         });
       }
-    } else if (settings.tier === "standard") {
+    } else if (tier === "standard") {
       setStatusText("Switching to " + (LANG_NAME[newLang] || newLang));
       setOverlayState("live");
     } else {
@@ -552,7 +555,8 @@
   function handleVoiceChange(newVoice) {
     if (!newVoice) return;
     settings = settings || {};
-    if (settings?.tier === "caption" || !settings?.tier) {
+    const tier = LumeoSessionManager.getSession()?.type || settings.tier || "caption";
+    if (tier === "caption") {
       if (newVoice === "off") {
         settings.captionTtsProvider = "off";
       } else if (newVoice === "custom-voice-engine") {
@@ -570,7 +574,7 @@
           chrome.storage.local.set({ captionTtsProvider: settings.captionTtsProvider, standardVoice: settings.standardVoice });
         }
       } catch {}
-    } else if (settings?.tier === "standard") {
+    } else if (tier === "standard") {
       settings.standardVoice = newVoice;
       notifyBackground({ type: "UPDATE_SETTINGS", settings: { standardVoice: newVoice } });
       try {

@@ -104,6 +104,69 @@ it("opens a visible, scrollable fallback chooser in the player and removes it on
   }
 });
 
+it("keeps the same Standard Dub session when the player language changes after a Caption fallback", async () => {
+  const { window } = await createSandboxWindow();
+  const { document } = window;
+  document.body.innerHTML = '<div id="movie_player"><video class="html5-main-video"></video></div>';
+  let listener;
+  let captionContext;
+  window.LumeoBrowserApi = {
+    sendRuntimeMessage: vi.fn(async () => ({ ok: true })),
+    addRuntimeMessageListener: (fn) => { listener = fn; },
+  };
+  window.LumeoCaptionOrchestrator = {
+    start: vi.fn(async (ctx) => {
+      captionContext = ctx;
+      ctx.onSessionCreated({ type: "caption", choiceOnly: true });
+      return { ok: true };
+    }),
+  };
+  const track = { stop: vi.fn() };
+  window.LumeoAudioUtils = {
+    findVideo: () => document.querySelector("video"),
+    captureWithRetry: async () => ({ getTracks: () => [track] }),
+  };
+  window.AudioContext = class {
+    createGain() { return { gain: {}, connect() {} }; }
+    close() { return Promise.resolve(); }
+  };
+  window.LumeoStandardPipeline = {
+    pickRecorderMime: () => "audio/webm",
+    runChunkLoop: vi.fn(),
+  };
+  for (const file of ["ui/overlay.js", "services/session-manager.js", "content.js"]) {
+    loadService(file, window);
+  }
+
+  const manager = window.LumeoSessionManager;
+  const send = (msg) => new Promise((resolve) => listener(msg, {}, resolve));
+  try {
+    await expect(send({ type: "CONTENT_START", settings: { tier: "caption", targetLanguage: "en", kymaKey: "" } }))
+      .resolves.toEqual({ ok: true });
+    await captionContext.onSwitchToStandard(async () => "kyma-test-key");
+    const standard = manager.getSession();
+    expect(standard.type).toBe("standard");
+
+    const root = document.querySelector(".ec-root");
+    const chooseJapanese = (menu) => {
+      root.querySelector(`[data-open-sub="${menu}"]`).click();
+      const button = [...root.querySelectorAll(".ytp-lumeo-sub-item")].find((item) => item.textContent.includes("Japanese"));
+      button.click();
+    };
+    chooseJapanese("language");
+    expect(manager.getSettings()).toMatchObject({ tier: "standard", targetLanguage: "ja", kymaKey: "kyma-test-key" });
+    expect(manager.getSession()).toBe(standard);
+
+    chooseJapanese("secondarylanguage");
+    expect(manager.getSession()).toBe(standard);
+    expect(track.stop).not.toHaveBeenCalled();
+    expect(window.LumeoCaptionOrchestrator.start).toHaveBeenCalledOnce();
+  } finally {
+    manager.stopSession();
+    window.close();
+  }
+});
+
 async function setup() {
   const { window } = await createSandboxWindow();
   loadService("ui/overlay.js", window);
