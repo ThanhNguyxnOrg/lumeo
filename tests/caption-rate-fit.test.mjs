@@ -181,6 +181,39 @@ describe("caption TTS prefetch", () => {
     })).toEqual({ rate: 1.2, reusePrefetched: false });
   });
 
+  it("re-plans a prefetched line when the manual speed changes", async () => {
+    const { window } = await createSandboxWindow();
+    loadService("pipelines/caption-orchestrator.js", window);
+    const api = window.LumeoCaptionOrchestrator;
+    const prefetch = vi.fn(async () => true);
+    window.LumeoTTS = { prefetch };
+    const session = {};
+    const video = { currentTime: 10, playbackRate: 1 };
+    const cue = { start: 10, end: 12, translated: "xin chào" };
+    const next = { start: 12, end: 14 };
+    const settings = { captionTtsProvider: "google-cloud", targetLanguage: "vi", ttsSpeedMode: "manual", ttsSpeed: 1 };
+    const key = api.cueSpeechKey(cue, "xin chào");
+
+    expect(api.prefetchCueSpeech(cue, next, settings, video, {}, session)).toBe(true);
+    expect(session.prefetchedTtsPlans.get(key).rate).toBe(1);
+    // Same speed: still one plan, one synthesis.
+    expect(api.prefetchCueSpeech(cue, next, settings, video, {}, session)).toBe(false);
+
+    const faster = { ...settings, ttsSpeed: 1.5 };
+    // Played before the new prefetch lands: the stale 1.0x clip is not reused.
+    expect(api.selectCuePlaybackPlan({
+      plan: { rate: 1.5 },
+      prefetchedPlan: session.prefetchedTtsPlans.get(key),
+      provider: "google-cloud",
+      manual: true,
+    })).toEqual({ rate: 1.5, reusePrefetched: false });
+
+    expect(api.prefetchCueSpeech(cue, next, faster, video, {}, session)).toBe(true);
+    expect(session.prefetchedTtsPlans.get(key).rate).toBe(1.5);
+    expect(prefetch).toHaveBeenCalledTimes(2);
+    expect(prefetch.mock.calls[1][2]).toMatchObject({ rate: 1.5 });
+  });
+
   it("builds the same rate for prefetch and on-time playback", async () => {
     const { window } = await createSandboxWindow();
     loadService("pipelines/caption-orchestrator.js", window);

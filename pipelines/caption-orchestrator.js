@@ -841,8 +841,11 @@
     // OpenAI) only hit their prefetched cache if playback asks for the exact
     // same rate. The clip player closes any remaining gap with playbackRate,
     // so a prefetched clip is always reused instead of synthesized again.
-    selectCuePlaybackPlan({ plan, prefetchedPlan, provider = "" } = {}) {
-      const reusePrefetched = !!(BAKED_RATE_PROVIDERS.has(provider) && prefetchedPlan);
+    // A manual speed is the user's choice, so a clip prefetched before the
+    // speed was changed is not reused.
+    selectCuePlaybackPlan({ plan, prefetchedPlan, provider = "", manual = false } = {}) {
+      const reusePrefetched = !!(BAKED_RATE_PROVIDERS.has(provider) && prefetchedPlan)
+        && (!manual || prefetchedPlan.rate === plan?.rate);
       return {
         rate: reusePrefetched ? prefetchedPlan.rate : plan?.rate,
         reusePrefetched,
@@ -922,7 +925,12 @@
       const cueKey = this.cueSpeechKey(cue, cue.translated);
       // One plan per line. The measured pace moves a little after every clip;
       // re-planning would re-synthesize (and bill) the same line at a new rate.
-      if (plans?.has(cueKey)) return false;
+      // A changed manual speed is the exception: the old plan no longer
+      // matches what the user asked for.
+      const known = plans?.get(cueKey);
+      const speedChanged = known && this.isManualSpeed(settings)
+        && known.rate !== this.resolveSpeechRate({ settings });
+      if (known && !speedChanged) return false;
       const plan = this.buildCueSpeechPlan(cue, nextCue, settings, {
         videoNow: Number(video?.currentTime) || 0,
         videoRate: Number(video?.playbackRate) || 1,
@@ -990,7 +998,7 @@
       if (tooLate(plan)) return false;
 
       const prefetchedPlan = session.prefetchedTtsPlans?.get(key);
-      const { rate, reusePrefetched } = this.selectCuePlaybackPlan({ plan, prefetchedPlan, provider });
+      const { rate, reusePrefetched } = this.selectCuePlaybackPlan({ plan, prefetchedPlan, provider, manual });
       const voiceKey = this.speechVoiceKey(settings);
 
       pipeline.speakCue(cue, {
