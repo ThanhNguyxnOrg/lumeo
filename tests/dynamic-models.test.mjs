@@ -44,9 +44,10 @@ describe("Dynamic Model Management", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      const [url] = mockFetch.mock.calls[0];
+      const [url, init] = mockFetch.mock.calls[0];
       expect(url).toContain("generativelanguage.googleapis.com");
-      expect(url).toContain("AIza-test-key");
+      expect(url).not.toContain("AIza-test-key");
+      expect(init.headers["x-goog-api-key"]).toBe("AIza-test-key");
 
       expect(models).toEqual([
         { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },

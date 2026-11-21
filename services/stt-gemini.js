@@ -52,7 +52,7 @@
       ? `Transcribe the spoken speech in this audio snippet accurately. Output ONLY the verbatim transcript text. If silence or no speech, output nothing.`
       : "Transcribe the spoken speech in this audio snippet accurately. Output ONLY the verbatim transcript text. If silence or no speech, output nothing.";
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
     const payload = {
       contents: [
@@ -77,7 +77,7 @@
 
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify(payload),
       signal: options.signal,
     });

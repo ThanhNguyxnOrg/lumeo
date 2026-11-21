@@ -581,8 +581,8 @@
     }
 
     if (providerId === "gemini") {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`;
-      const res = await fetchFn(url, { signal: options.signal });
+      const url = `https://generativelanguage.googleapis.com/v1beta/models`;
+      const res = await fetchFn(url, { headers: { "x-goog-api-key": cleanKey }, signal: options.signal });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data?.error?.message || `HTTP ${res.status}`);

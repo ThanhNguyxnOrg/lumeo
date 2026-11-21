@@ -249,10 +249,10 @@
 
   async function translateGoogleCloud(texts, targetLanguage, options) {
     const key = assertKey(options.googleCloudKey || options.apiKey, "Google Cloud");
-    const url = `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(key)}`;
+    const url = `https://translation.googleapis.com/language/translate/v2`;
     const data = await requestJSON(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
         q: texts,
         target: targetLanguage,
@@ -375,7 +375,7 @@
     const model = options.geminiModel || "gemini-2.5-flash-lite";
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}` +
-      `:generateContent?key=${encodeURIComponent(key)}`;
+      `:generateContent`;
     const { system, input } = buildIndexedPrompt(
       texts,
       options.targetLanguageName || targetLanguage,
@@ -383,7 +383,7 @@
     );
     const data = await requestJSON(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: `${system}\n\n${input}` }] }],
         generationConfig: { temperature: 0.2 },
@@ -491,10 +491,10 @@
     if (provider === PROVIDERS.GEMINI) {
       const key = assertKey(options.geminiKey || options.apiKey, "Gemini");
       const model = options.geminiModel || "gemini-2.5-flash-lite";
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
       const data = await requestJSON(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
         body: JSON.stringify({
           contents: [{ parts: [{ text: `${system}\n\n${userPrompt}` }] }],
           generationConfig: { temperature: 0.2 },
@@ -603,10 +603,10 @@
     if (provider === PROVIDERS.GEMINI) {
       const key = assertKey(options.geminiKey || options.apiKey, "Gemini");
       const model = options.geminiModel || "gemini-2.5-flash-lite";
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
       const data = await requestJSON(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
         body: JSON.stringify({
           contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
           generationConfig: { temperature: 0.3 },

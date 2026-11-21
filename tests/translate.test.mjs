@@ -47,10 +47,11 @@ describe("services/translate.js", () => {
     expect(out).toEqual(["xin chào"]);
   });
 
-  it("calls Gemini generateContent with the API key in the URL", async () => {
+  it("calls Gemini generateContent with the API key in a header, not the URL", async () => {
     window.fetch = vi.fn(async (url, init) => {
       expect(url).toContain("generativelanguage.googleapis.com");
-      expect(url).toContain("key=AIzaFAKE");
+      expect(url).not.toContain("AIzaFAKE");
+      expect(init.headers["x-goog-api-key"]).toBe("AIzaFAKE");
       const body = JSON.parse(init.body);
       expect(body.contents[0].parts[0].text).toMatch(/\[0] hello/);
       return fakeResponse({

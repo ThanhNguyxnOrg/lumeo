@@ -587,9 +587,9 @@
     let pending = googleAudioInflight.get(cacheKey);
     if (!pending) {
       pending = (async () => {
-        const response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(apiKey)}`, {
+        const response = await fetch("https://texttospeech.googleapis.com/v1/text:synthesize", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
           body: JSON.stringify({
             input: { text: clean },
             voice: {

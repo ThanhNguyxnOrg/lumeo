@@ -18,7 +18,8 @@ describe("services/stt-gemini.js", () => {
   it("builds a Gemini transcription request with audio inlineData and parses response", async () => {
     window.fetch = vi.fn(async (url, init) => {
       expect(url).toContain("generativelanguage.googleapis.com");
-      expect(url).toContain("key=AIza-gemini-key");
+      expect(url).not.toContain("AIza-gemini-key");
+      expect(init.headers["x-goog-api-key"]).toBe("AIza-gemini-key");
       const body = JSON.parse(init.body);
       expect(body.contents[0].parts[0].inlineData.mimeType).toBe("audio/wav");
       expect(body.contents[0].parts[1].text).toContain("Transcribe");

@@ -696,7 +696,9 @@
         if (provider === "gemini") {
           const key = geminiKeyInput.value.trim();
           if (!key) throw new Error("Please enter a Gemini API Key");
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
+          const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+            headers: { "x-goog-api-key": key },
+          });
           if (res.ok) { msg = "Gemini API Key is valid!"; }
           else { msg = `Error ${res.status}: Check key or permissions`; }
         } else if (provider === "openai") {

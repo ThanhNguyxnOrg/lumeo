@@ -270,6 +270,45 @@ describe("background message boundary", () => {
     }
   });
 
+  it("bounds the transcript a tab can send for summarizing", async () => {
+    const translateApi = globalThis.LumeoTranslate;
+    const original = translateApi.summarizeTranscript;
+    const calls = [];
+    translateApi.summarizeTranscript = async (cues, targetLanguage, options) => {
+      calls.push({ cues, targetLanguage, options });
+      return { summary: "ok", provider: options.provider };
+    };
+
+    try {
+      const reply = await ask(
+        {
+          type: "SUMMARIZE_TRANSCRIPT",
+          cues: [
+            { text: "a".repeat(10000), start: 1, extra: { nested: "x".repeat(50000) } },
+            { translated: "b".repeat(10000), text: "ignored" },
+            { text: "never reached" },
+            null,
+          ],
+          targetLanguage: "v".repeat(500),
+        },
+        YT_TAB_7,
+      );
+      expect(reply.ok).toBe(true);
+      const [{ cues, targetLanguage }] = calls;
+      expect(cues).toHaveLength(2);
+      expect(Object.keys(cues[0])).toEqual(["text"]);
+      expect(cues[1].text).toBe("b".repeat(4999));
+      expect(cues.reduce((sum, cue) => sum + cue.text.length, 0)).toBeLessThanOrEqual(15000);
+      expect(targetLanguage).toHaveLength(32);
+
+      calls.length = 0;
+      await ask({ type: "SUMMARIZE_TRANSCRIPT", cues: "not an array" }, YT_TAB_7);
+      expect(calls[0].cues).toEqual([]);
+    } finally {
+      translateApi.summarizeTranscript = original;
+    }
+  });
+
   it("does not treat look-alike hosts as YouTube", () => {
     const isYouTubeUrl = globalThis.LumeoBackground?.isYouTubeUrl;
     expect(typeof isYouTubeUrl).toBe("function");

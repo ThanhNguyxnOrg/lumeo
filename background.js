@@ -963,10 +963,22 @@ async function handleExplainWordContext(message) {
   }
 }
 
+const SUMMARY_MAX_CHARS = 15000;
+
 async function handleSummarizeTranscript(message) {
   await loadSettings();
-  const cues = message?.cues || [];
-  const targetLanguage = message?.targetLanguage || state.targetLanguage || "en";
+  // Comes from a YouTube tab: keep only bounded plain text. The summarizer
+  // reads 15,000 characters at most, so anything past that is dropped here.
+  const cues = [];
+  let budget = SUMMARY_MAX_CHARS;
+  for (const cue of Array.isArray(message?.cues) ? message.cues : []) {
+    if (budget <= 0) break;
+    const text = String(cue?.translated || cue?.text || "").trim().slice(0, budget);
+    if (!text) continue;
+    cues.push({ text });
+    budget -= text.length + 1;
+  }
+  const targetLanguage = String(message?.targetLanguage || state.targetLanguage || "en").slice(0, 32);
 
   let provider = state.translateProvider;
   if (provider === "google-free" || !provider) {
