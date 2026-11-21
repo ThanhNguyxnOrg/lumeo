@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import { createChromeMock } from "./helpers/chrome-mock.mjs";
 
 let listener;
@@ -257,6 +257,30 @@ describe("background message boundary", () => {
     expect(isYouTubeUrl("https://evil-youtube.com/watch?v=test")).toBe(false);
     expect(isYouTubeUrl("https://youtube.com.evil.example/watch?v=test")).toBe(false);
     expect(isYouTubeUrl("http://www.youtube.com/watch?v=test")).toBe(false);
+  });
+
+  it("opens Chrome Live Caption settings only on supported Chrome builds", async () => {
+    const openSettings = { type: "OPEN_CHROME_ACCESSIBILITY_SETTINGS" };
+    chromeMock.tabs.create = vi.fn().mockResolvedValue({});
+    const manifest = chromeMock.runtime.getManifest();
+    vi.stubGlobal("navigator", {
+      userAgentData: { mobile: false, platform: "Linux", brands: [{ brand: "Google Chrome" }] },
+    });
+    try {
+      await expect(ask(openSettings, YT_TAB_7)).resolves.toMatchObject({ ok: false });
+      expect(chromeMock.tabs.create).not.toHaveBeenCalled();
+
+      chromeMock.runtime.getManifest.mockReturnValue({ ...manifest, minimum_chrome_version: "116" });
+      await expect(ask(openSettings, YT_TAB_7)).resolves.toEqual({ ok: true });
+      expect(chromeMock.tabs.create).toHaveBeenCalledExactlyOnceWith({ url: "chrome://settings/accessibility" });
+
+      chromeMock.tabs.create.mockRejectedValueOnce(new Error("Can't open settings"));
+      await expect(ask(openSettings, YT_TAB_7)).resolves.toMatchObject({ ok: false });
+    } finally {
+      chromeMock.runtime.getManifest.mockReturnValue(manifest);
+      delete chromeMock.tabs.create;
+      vi.unstubAllGlobals();
+    }
   });
 
   it("rejects caption cache and Soniox messages from non-YouTube senders", async () => {

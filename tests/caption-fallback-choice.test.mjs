@@ -1,8 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { transformManifest } from "../scripts/build-targets.mjs";
 import { createSandboxWindow, loadService } from "./helpers/load-service.mjs";
 
-async function setup() {
+const manifest = JSON.parse(readFileSync("manifest.json", "utf8"));
+const desktopChrome = { mobile: false, platform: "Linux", brands: [{ brand: "Google Chrome" }] };
+
+async function setup({ target = "chrome", userAgentData = desktopChrome, brave } = {}) {
   const { window } = await createSandboxWindow();
+  window.chrome = { runtime: { getManifest: () => transformManifest(manifest, target) } };
+  Object.defineProperties(window.navigator, {
+    userAgentData: { value: userAgentData },
+    brave: { value: brave },
+  });
+  loadService("lib/browser-api.js", window);
   loadService("ui/caption-fallback-choice.js", window);
   return { window, api: window.LumeoCaptionFallbackChoice };
 }
@@ -54,6 +65,29 @@ describe("ui/caption-fallback-choice.js", () => {
     expect(callbacks.onRetry).toHaveBeenCalledOnce();
     expect(callbacks.onCancel).toHaveBeenCalledOnce();
     expect(window.LumeoCaptionFallbackChoice.__loaded).toBe(true);
+  });
+
+  it.each([
+    ["Firefox build", { target: "firefox" }],
+    ["Edge build", { target: "edge" }],
+    ["Opera build", { target: "opera" }],
+    ["Chromium sideload", { userAgentData: { ...desktopChrome, brands: [{ brand: "Chromium" }] } }],
+    ["Brave sideload", { brave: {} }],
+    ["mobile Chrome", { userAgentData: { ...desktopChrome, platform: "Android", mobile: true } }],
+    ["Android tablet", { userAgentData: { ...desktopChrome, platform: "Android" } }],
+    ["browser without client hints", { userAgentData: null }],
+  ])("hides Live Caption on %s without hiding other fallback choices", async (_name, browser) => {
+    const { api, window } = await setup(browser);
+    try {
+      const node = api.create({ onChromeLiveCaption: vi.fn(), onGemini: vi.fn() });
+      expect(Array.from(node.querySelectorAll("button"), (button) => button.textContent)).toEqual([
+        "Try Gemini AI STT (Free Tier)",
+        "Retry caption fetch",
+        "Cancel",
+      ]);
+    } finally {
+      window.close();
+    }
   });
 
   it("maps fallback titles by failure reason", async () => {

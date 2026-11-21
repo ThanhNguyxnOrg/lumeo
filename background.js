@@ -1105,11 +1105,14 @@ function handleRuntimeMessage(message, sender, sendResponse) {
       sendResponse?.({ ok: false, error: "Blocked sender." });
       return false;
     }
-    if (typeof chrome !== "undefined" && chrome.tabs?.create) {
-      chrome.tabs.create({ url: "chrome://settings/accessibility" });
+    if (!browserApi.supportsChromeLiveCaption()) {
+      sendResponse({ ok: false, error: "Chrome Live Caption is not available in this browser." });
+      return false;
     }
-    sendResponse?.( { ok: true });
-    return false;
+    chrome.tabs.create({ url: "chrome://settings/accessibility" })
+      .then(() => sendResponse({ ok: true }))
+      .catch(() => sendResponse({ ok: false, error: "Could not open Chrome accessibility settings." }));
+    return true;
   }
 
   // Content-originated messages (have sender.tab from non-extension origin).

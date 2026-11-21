@@ -149,10 +149,14 @@
       const wrap = window.LumeoCaptionFallbackChoice.create({
         reason,
         diagnostics,
-        onChromeLiveCaption: () => {
-          try {
-            chrome.runtime?.sendMessage?.({ type: "OPEN_CHROME_ACCESSIBILITY_SETTINGS" });
-          } catch {}
+        onChromeLiveCaption: async () => {
+          const reply = await window.LumeoBrowserApi
+            .sendRuntimeMessage({ type: "OPEN_CHROME_ACCESSIBILITY_SETTINGS" }).catch(() => null);
+          if (token !== ctx.getPageToken()) return;
+          if (!reply?.ok) {
+            ctx.showToast(reply?.error || "Could not open Chrome accessibility settings.", 7000);
+            return;
+          }
           ctx.showToast("⚡ Opened Chrome Settings. Turn on 'Live Caption' for free offline speech recognition.", 8000);
           ctx.onSessionEnded("chrome-live-caption", "Using Chrome Live Caption");
         },
