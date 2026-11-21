@@ -21,6 +21,7 @@ async function setup({ target = "chrome", userAgentData = desktopChrome, brave }
 describe("ui/caption-fallback-choice.js", () => {
   it("renders no-caption fallback choices and track diagnostics", async () => {
     const { window, api } = await setup();
+    const listeners = vi.spyOn(window.HTMLButtonElement.prototype, "addEventListener");
     const callbacks = {
       onChromeLiveCaption: vi.fn(),
       onGemini: vi.fn(),
@@ -55,7 +56,17 @@ describe("ui/caption-fallback-choice.js", () => {
       "Cancel",
     ]);
 
-    for (const button of buttons) button.click();
+    window.document.body.appendChild(node);
+    for (const button of buttons) {
+      button.click();
+      button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    }
+    for (const callback of Object.values(callbacks)) expect(callback).not.toHaveBeenCalled();
+
+    // JSDOM only dispatches untrusted clicks. Exercise the trusted branch at the listener boundary.
+    for (const [type, listener] of listeners.mock.calls) {
+      if (type === "click") listener({ isTrusted: true });
+    }
     expect(callbacks.onChromeLiveCaption).toHaveBeenCalledOnce();
     expect(callbacks.onGemini).toHaveBeenCalledOnce();
     expect(callbacks.onGroq).toHaveBeenCalledOnce();
@@ -65,6 +76,7 @@ describe("ui/caption-fallback-choice.js", () => {
     expect(callbacks.onRetry).toHaveBeenCalledOnce();
     expect(callbacks.onCancel).toHaveBeenCalledOnce();
     expect(window.LumeoCaptionFallbackChoice.__loaded).toBe(true);
+    window.close();
   });
 
   it.each([

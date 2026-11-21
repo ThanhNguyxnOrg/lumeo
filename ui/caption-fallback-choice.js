@@ -14,7 +14,9 @@
     button.type = "button";
     button.className = className;
     button.textContent = text;
-    button.addEventListener("click", onClick);
+    button.addEventListener("click", (event) => {
+      if (event.isTrusted) onClick();
+    });
     return button;
   }
 

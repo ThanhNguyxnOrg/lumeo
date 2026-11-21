@@ -64,6 +64,7 @@ it("opens a visible, scrollable fallback chooser in the player and removes it on
       "pipelines/caption-orchestrator.js", "services/session-manager.js", "content.js"]) {
       loadService(file, window);
     }
+    const createChoice = vi.spyOn(window.LumeoCaptionFallbackChoice, "create");
     const orchestrator = window.LumeoCaptionOrchestrator;
     orchestrator.start = async (ctx) => {
       orchestrator.renderCaptionFallbackChoice(ctx.getVideo(), ctx.getPageToken(), {}, "No track", {}, ctx);
@@ -89,14 +90,13 @@ it("opens a visible, scrollable fallback chooser in the player and removes it on
     await expect(send({ type: "CONTENT_SESSION_STATE" })).resolves.toMatchObject({ choosingCaptionFallback: true });
     const sendMessage = vi.fn((_message, callback) => callback({ ok: true, key: "" }));
     window.chrome = { runtime: { sendMessage } };
-    const standard = [...chooser.querySelectorAll("button")].find((button) => button.textContent === "Switch to Standard Dub");
-    standard.click();
+    const [{ onStandard, onCancel }] = createChoice.mock.calls[0];
+    await onStandard();
     expect(sendMessage).toHaveBeenCalledWith({ type: "GET_PROVIDER_KEY", key: "kymaKey" }, expect.any(Function));
     await vi.waitFor(() => expect(root.textContent).toContain("Add your Kyma key"));
     expect(host.firstElementChild).toBe(chooser);
 
-    const cancel = [...chooser.querySelectorAll("button")].find((button) => button.textContent === "Cancel");
-    cancel.click();
+    onCancel();
     expect(host.hidden).toBe(true);
     expect(host.childElementCount).toBe(0);
   } finally {
