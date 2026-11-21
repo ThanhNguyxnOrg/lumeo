@@ -353,7 +353,7 @@ describe("background message boundary", () => {
 
     const soniox = await ask(
       { action: "startSonioxWs", apiKey: "soniox-secret" },
-      { url: "chrome-extension://lumeo/popup.html" },
+      { url: "chrome-extension://lumeo/options.html" },
     );
     expect(soniox.ok).toBe(false);
   });

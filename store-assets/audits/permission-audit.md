@@ -21,7 +21,6 @@ Date: 2026-05-12
 | `https://generativelanguage.googleapis.com/*` | Keep | `services/translate.js` | Gemini translation when selected by user with their key. |
 | `https://openrouter.ai/*` | Keep | `services/translate.js` | OpenRouter translation when selected by user with their key. |
 | `https://api.groq.com/*` | Keep | `services/stt-groq.js`, `services/translate.js` | Groq STT or translation when selected by user with their key. |
-| `https://api-inference.huggingface.co/*`, `https://huggingface.co/*` | Review before submit | `services/providers.js` lists Hugging Face provider metadata. No active fetch call found in current JS audit. | Keep only if Hugging Face provider is enabled before submission. Otherwise remove to reduce review risk. |
 | `https://translate.googleapis.com/*` | Keep | `services/translate.js` | Default free caption translation endpoint. |
 | `https://translation.googleapis.com/*` | Keep | `services/translate.js` | Google Cloud Translation when selected by user with their key. |
 | `https://texttospeech.googleapis.com/*` | Keep | `services/tts-browser.js` | Google Cloud Text to Speech when selected by user with their key. |
@@ -33,7 +32,7 @@ Date: 2026-05-12
 
 1. No broad `<all_urls>` permission found.
 2. YouTube content script matches are limited to YouTube origins.
-3. Hugging Face origins appear reserved but no active fetch call was found. Decide before submission.
+3. Hugging Face origins were removed from `host_permissions`: the provider is not implemented and no code fetched them.
 4. Localhost permissions are justified only by self hosted LibreTranslate.
 
 ## Reviewer notes source

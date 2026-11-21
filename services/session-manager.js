@@ -474,15 +474,20 @@
         },
         setCurrentTexts: (src, tgt) => callbacks.setCurrentTexts?.(src, tgt),
         getCurrentTexts: () => callbacks.getCurrentTexts?.() || { source: "", target: "" },
+        // Replacing a handler detaches the previous one, so a fallback path
+        // inside one session never leaves two listeners on the video.
         setYTPauseHandler: (handler) => {
+          if (videoEl && onYTPause) videoEl.removeEventListener("pause", onYTPause);
           onYTPause = handler;
           if (videoEl) videoEl.addEventListener("pause", onYTPause);
         },
         setYTPlayHandler: (handler) => {
+          if (videoEl && onYTPlay) videoEl.removeEventListener("play", onYTPlay);
           onYTPlay = handler;
           if (videoEl) videoEl.addEventListener("play", onYTPlay);
         },
         setYTSeekHandler: (handler) => {
+          if (videoEl && onYTSeeked) videoEl.removeEventListener("seeking", onYTSeeked);
           onYTSeeked = handler;
           if (videoEl) videoEl.addEventListener("seeking", onYTSeeked);
         }

@@ -215,7 +215,7 @@
       helpUrl: "https://kymaapi.com",
       description: "Kyma Realtime route: mints an ephemeral OpenAI Realtime WebRTC session for sub-second dubbing. Uses the same Kyma key as Standard, but streams live audio instead of chunking.",
     },
-    // Reserved keyFields support stable popup rendering and storage migrations.
+    // Reserved keyFields support stable Options rendering and storage migrations.
     // Runtime key validation ignores providers with status "coming-soon".
     openaiDirectDub: {
       id: "openai-direct-dub",

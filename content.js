@@ -344,9 +344,6 @@
     };
     try {
       window.speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged);
-      if (window.speechSynthesis.onvoiceschanged !== undefined) {
-        window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
-      }
     } catch {}
   }
 

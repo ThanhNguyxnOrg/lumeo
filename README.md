@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/version-2.0.9-ff7a45?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/Chrome-MV3-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome MV3">
-  <img src="https://img.shields.io/badge/tests-306%20passed-2ea043?style=for-the-badge" alt="Tests">
+  <a href="https://github.com/ThanhNguyxnOrg/lumeo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ThanhNguyxnOrg/lumeo/ci.yml?branch=main&style=for-the-badge&label=tests" alt="Tests"></a>
   <img src="https://img.shields.io/badge/license-MIT-2ea043?style=for-the-badge" alt="License">
 </p>
 
@@ -63,7 +63,7 @@ No account required. No telemetry. No Lumeo-operated server. Your API keys stay 
 - Language and voice selector
 - Original audio volume & voice volume controls
 - Mute original audio toggle
-- Keyboard shortcuts (`Esc` to collapse, `?` for help, `Ctrl+Shift+L` to toggle)
+- Keyboard shortcuts (`Alt+L` to open the toolbar, `Esc` to collapse, `?` for help, `Ctrl+Shift+L` to hide)
 
 ### 🔊 Text-to-Speech (Caption Tier)
 
@@ -133,7 +133,7 @@ Pull the repo or download the newer ZIP, then reload the extension card. After r
 ## Usage
 
 1. **Open any YouTube video**
-2. **Click the Lumeo toolbar icon** to open the popup
+2. **Click the Lumeo toolbar icon** (or press `Alt+L`) to open the in-video toolbar. On any other page the icon opens Lumeo Settings, where API keys and providers live.
 3. **Pick a tier:**
 
    | Tier | Setup |
@@ -152,9 +152,11 @@ Pull the repo or download the newer ZIP, then reload the extension card. After r
 
 | Key | Action |
 |-----|--------|
-| `Esc` | Collapse/expand toolbar |
-| `?` or `h` | Show shortcuts help |
-| `Ctrl+Shift+L` | Toggle toolbar visibility |
+| `Alt+L` | Open/collapse the in-video toolbar (browser command; rebind it in the browser's extension shortcut settings) |
+| `Esc` | Collapse the toolbar |
+| `?` or `h` | Show shortcuts help (toolbar focused) |
+| `Ctrl+Shift+L` / `Cmd+Shift+L` | Hide/show the toolbar |
+| `A` / `S` / `D` | Previous / replay / next cue (when navigation hotkeys are enabled) |
 
 ---
 
@@ -162,9 +164,9 @@ Pull the repo or download the newer ZIP, then reload the extension card. After r
 
 ```
 ┌──────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│   Popup UI   │◄────│   Background SW  │◄────│   Content Script │
-│  popup.html  │     │  background.js   │     │   content.js     │
-│  popup.js    │────►│  (state machine) │────►│   (orchestrator) │
+│ Settings page│     │   Background SW  │◄────│   Content Script │
+│ options.html │     │  background.js   │     │   content.js     │
+│ options.js   │────►│  (state machine) │────►│   (orchestrator) │
 └──────────────┘     └──────────────────┘     └──────────────────┘
                                                        │
                             ┌──────────────────────────┤
@@ -183,8 +185,8 @@ Pull the repo or download the newer ZIP, then reload the extension card. After r
 ### Data Flow
 
 ```
-popup ◄── BACKGROUND_STATE_UPDATE ─── background ◄── CONTENT_STATE ─── content
-       ── START / UPDATE_SETTINGS ──►              ── CONTENT_START ──►
+options ── chrome.storage.local ──► background ◄── CONTENT_STATE / START ─── content
+                                                 ── CONTENT_START / CONTENT_UPDATE_* ──►
 ```
 
 ### Pipeline Architecture
@@ -205,7 +207,7 @@ lumeo/
 ├── background.js                   # Service worker — state machine & message router
 ├── content.js                      # Content script — orchestrator, overlay, session management
 ├── content.css                     # All overlay & subtitle styling
-├── popup.html / .css / .js         # Extension popup UI
+├── options.html / .css / .js       # Settings page (providers, API keys, voices)
 │
 ├── pipelines/
 │   ├── caption.js                  # Caption tier — translate & cache YouTube subtitles
@@ -228,8 +230,6 @@ lumeo/
 │   ├── stt-soniox.js               # Soniox WebSocket STT fallback
 │   ├── kyma-client.js              # Kyma API — session, heartbeat, error parsing
 │   ├── providers.js                # Provider/mode/key registry
-│   ├── tier-recommendation.js      # Auto-tier selection logic
-│   ├── translation-bundle.js       # Translation bundle utilities
 │   ├── srt-export.js               # SRT + ZIP subtitle export
 │   ├── sniffer.js                  # Timedtext & caption track interceptor
 │   └── audio-processor.js          # PCM AudioWorklet for STT
@@ -239,7 +239,7 @@ lumeo/
 │   ├── browser-api.js              # Cross-browser API abstraction
 │   └── token-guard.js              # Page-level async token guard
 │
-├── tests/                          # 306 unit tests across 36 test suites (Vitest)
+├── tests/                          # Unit tests (Vitest)
 │   ├── helpers/
 │   │   ├── chrome-mock.mjs         # Chrome API mock for testing
 │   │   └── load-service.mjs        # Service loader helper
@@ -259,7 +259,7 @@ lumeo/
 ## Testing
 
 ```bash
-# Run all 306 unit tests across 36 suites
+# Run the unit tests
 npm test
 
 # Syntax check all JavaScript files
@@ -341,7 +341,7 @@ PRs welcome on `main`. The codebase is **plain vanilla JS** — no build step, n
 Before opening a PR:
 
 ```bash
-npm test                    # All 306 tests must pass
+npm test                    # All tests must pass
 npm run check:all           # Syntax check
 npm run check:versions      # Manifest/package/content/README/CHANGELOG versions
 npm run check:manifest      # Every file referenced by manifest.json exists

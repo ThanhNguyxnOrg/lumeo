@@ -3,7 +3,7 @@
 
   if (window.LumeoTTS?.__loaded) return;
 
-  // Cloud languageCode per target language (BCP-47). Covers every popup
+  // Cloud languageCode per target language (BCP-47). Covers every Options
   // CAPTION_LANGUAGES code; locales without a Cloud voice fail fast into the
   // browser failover (see CHIRP3_HD_LOCALES below) instead of a late HTTP error.
   const LANG_CODE_MAP = {
@@ -225,8 +225,12 @@
   }
   populateVoices();
   if (typeof speechSynthesis !== "undefined") {
-    speechSynthesis.addEventListener?.("voiceschanged", populateVoices);
-    if (speechSynthesis.onvoiceschanged !== undefined) {
+    // One registration only: content.js shares this object, and assigning
+    // onvoiceschanged as well ran every handler twice and let the last
+    // script to load overwrite the others.
+    if (typeof speechSynthesis.addEventListener === "function") {
+      speechSynthesis.addEventListener("voiceschanged", populateVoices);
+    } else if (speechSynthesis.onvoiceschanged !== undefined) {
       speechSynthesis.onvoiceschanged = populateVoices;
     }
   }

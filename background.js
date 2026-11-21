@@ -33,7 +33,7 @@ const DEFAULT_SETTINGS = {
   openRouterModel: "openrouter/free",
   groqApiKey: "",
   groqModel: "llama-3.3-70b-versatile",
-  // Reserved provider fields stay in settings so popup/storage migrations do
+  // Reserved provider fields stay in settings so Options/storage migrations do
   // not churn while the corresponding registry entries remain coming-soon.
   huggingFaceToken: "",
   hfModel: "",
@@ -960,7 +960,7 @@ function contentSafeResult(result, contentSender) {
   };
 }
 
-// Popup → background → content router.
+// Options page / content → background → content router.
 function handleRuntimeMessage(message, sender, sendResponse) {
   const legacyHandled = handleLegacyCaptionMessage(message, sender, sendResponse);
   if (legacyHandled !== null) return legacyHandled;
