@@ -26,6 +26,23 @@ describe("services/kyma-client.js", () => {
       .toBe("Kyma rate limit reached. Wait 30 seconds, then retry.");
   });
 
+  it("maps the error codes Kyma returns today", () => {
+    expect(api.parseError(410, JSON.stringify({ error: { code: "endpoint_retired", message: "Gone" } })).user)
+      .toBe("Kyma has turned this service off (Kyma Realtime is paused). Use Standard Dubbing or Captions instead.");
+    expect(api.parseError(402, JSON.stringify({
+      error: { type: "billing_error", code: "insufficient_credits" },
+      topup_url: "https://kymaapi.com/billing",
+    }))).toEqual({ user: "Out of Kyma balance.", cta: "https://kymaapi.com/billing", ctaLabel: "Top up" });
+    expect(api.parseError(402, JSON.stringify({ error: { type: "billing_error", code: "model_requires_paid" } })).user)
+      .toBe("This Kyma model needs a funded balance. Add credits once, then retry.");
+    expect(api.parseError(401, JSON.stringify({ error: { type: "authentication_error", code: "invalid_api_key" } })).user)
+      .toBe("Kyma rejected the API key. Check the Kyma key in Lumeo Settings.");
+    expect(api.parseError(429, JSON.stringify({ error: { type: "rate_limit_error", code: "rate_limit_exceeded" } })).user)
+      .toBe("Kyma rate limit reached. Wait 30 seconds, then retry.");
+    expect(api.parseError(404, JSON.stringify({ error: { code: "model_not_found", message: "no such model" } })).user)
+      .toContain("Kyma no longer serves this model");
+  });
+
   it("falls back to provider messages and raw response text", () => {
     expect(api.parseError(400, JSON.stringify({ error: { message: "bad payload" } })).user)
       .toBe("Kyma 400: bad payload. Check your Kyma key/session, then retry.");

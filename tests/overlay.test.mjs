@@ -228,6 +228,58 @@ it("keeps the same Standard Dub session when the player language changes after a
   }
 });
 
+it("storage sync in the YouTube tab ignores secrets and never writes back", async () => {
+  const { window } = await createSandboxWindow();
+  window.document.body.innerHTML = '<div id="movie_player"><video class="html5-main-video"></video></div>';
+  const storageListeners = [];
+  const storageSet = vi.fn();
+  window.chrome = {
+    storage: {
+      local: { get: (_keys, callback) => callback({ tier: "caption" }), set: storageSet },
+      onChanged: { addListener: (fn) => storageListeners.push(fn) },
+    },
+  };
+  window.speechSynthesis = Object.assign(new window.EventTarget(), { getVoices: () => [] });
+  window.LumeoBrowserApi = {
+    sendRuntimeMessage: vi.fn(async () => ({ ok: true })),
+    addRuntimeMessageListener: () => {},
+  };
+  window.LumeoAudioUtils = { findVideo: () => window.document.querySelector("video") };
+  for (const file of ["ui/voice-picker.js", "ui/overlay.js", "services/session-manager.js", "content.js"]) {
+    loadService(file, window);
+  }
+  const manager = window.LumeoSessionManager;
+  try {
+    expect(storageListeners).toHaveLength(1);
+    storageSet.mockClear();
+    storageListeners[0]({
+      openaiKey: { newValue: "sk-secret" },
+      kymaKey: { newValue: "kyma-secret" },
+      lumeoCaptionCacheV1: { newValue: { big: "blob" } },
+      fontSize: { oldValue: 20, newValue: 28 },
+      voiceVolume: { oldValue: 100, newValue: 60 },
+      // Firefox reports keys that were written but did not change.
+      bottomOffset: { oldValue: 12, newValue: 12 },
+    }, "local");
+
+    const merged = manager.getSettings();
+    expect(merged).toMatchObject({ fontSize: 28, voiceVolume: 60 });
+    expect(merged).not.toHaveProperty("openaiKey");
+    expect(merged).not.toHaveProperty("kymaKey");
+    expect(merged).not.toHaveProperty("lumeoCaptionCacheV1");
+    expect(merged).not.toHaveProperty("bottomOffset");
+    expect(storageSet).not.toHaveBeenCalled();
+
+    storageListeners[0]({ fontSize: { oldValue: 28, newValue: 28 } }, "local");
+    storageListeners[0]({ fontSize: { oldValue: 28, newValue: 30 } }, "sync");
+    expect(manager.getSettings().fontSize).toBe(28);
+    expect(storageSet).not.toHaveBeenCalled();
+  } finally {
+    manager.stopSession();
+    window.close();
+  }
+});
+
 async function setup() {
   const { window } = await createSandboxWindow();
   loadService("ui/overlay.js", window);

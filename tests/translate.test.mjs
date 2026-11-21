@@ -47,10 +47,11 @@ describe("services/translate.js", () => {
     expect(out).toEqual(["xin chào"]);
   });
 
-  it("calls Gemini generateContent with the API key in the URL", async () => {
+  it("calls Gemini generateContent with the API key in a header, not the URL", async () => {
     window.fetch = vi.fn(async (url, init) => {
       expect(url).toContain("generativelanguage.googleapis.com");
-      expect(url).toContain("key=AIzaFAKE");
+      expect(url).not.toContain("AIzaFAKE");
+      expect(init.headers["x-goog-api-key"]).toBe("AIzaFAKE");
       const body = JSON.parse(init.body);
       expect(body.contents[0].parts[0].text).toMatch(/\[0] hello/);
       return fakeResponse({
@@ -64,6 +65,28 @@ describe("services/translate.js", () => {
       geminiKey: "AIzaFAKE",
     });
     expect(out).toEqual(["xin chào", "thế giới"]);
+  });
+
+  it("replaces retired model ids and drops sampling parameters for Gemini 3", async () => {
+    const calls = [];
+    window.fetch = vi.fn(async (url, init) => {
+      calls.push({ url, body: JSON.parse(init.body) });
+      return url.includes("generativelanguage")
+        ? fakeResponse({ candidates: [{ content: { parts: [{ text: "[0] xin" }, { text: " chào" }] } }] })
+        : fakeResponse({ choices: [{ message: { content: "[0] xin chào" } }] });
+    });
+
+    await api.translateBatch(["hello"], "vi", { provider: "gemini", geminiKey: "k", geminiModel: "gemini-1.5-flash" });
+    await api.translateBatch(["hello"], "vi", { provider: "gemini", geminiKey: "k", geminiModel: "gemini-2.5-flash-lite" });
+    await api.translateBatch(["hello"], "vi", { provider: "groq", groqApiKey: "k", groqModel: "llama-3.3-70b-versatile" });
+    await api.translateBatch(["hello"], "vi", { provider: "groq", groqApiKey: "k", groqModel: "openai/gpt-oss-20b" });
+
+    expect(calls[0].url).toContain("/models/gemini-3.5-flash-lite:generateContent");
+    expect(calls[0].body.generationConfig).toBeUndefined();
+    expect(calls[1].url).toContain("/models/gemini-2.5-flash-lite:generateContent");
+    expect(calls[1].body.generationConfig).toEqual({ temperature: 0.2 });
+    expect(calls[2].body.model).toBe("openai/gpt-oss-120b");
+    expect(calls[3].body.model).toBe("openai/gpt-oss-20b");
   });
 
   it("calls OpenRouter with referer and title headers", async () => {

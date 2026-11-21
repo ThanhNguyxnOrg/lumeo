@@ -60,9 +60,8 @@
       helpUrl: "https://aistudio.google.com/app/apikey",
       description: "Good free-tier/BYOK caption translation.",
       models: [
+        { id: "gemini-3.5-flash-lite", name: "Gemini 3.5 Flash Lite" },
         { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
-        { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
-        { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro" },
       ],
     },
     openrouter: {
@@ -74,12 +73,10 @@
       modes: ["caption"],
       status: "available",
       helpUrl: "https://openrouter.ai/keys",
-      description: "Free model router or user-selected OpenRouter models.",
+      description: "OpenRouter auto-routing or a user-selected OpenRouter model.",
       models: [
         { id: "openrouter/free", name: "OpenRouter Free (Default)" },
-        { id: "google/gemini-2.5-flash-lite:free", name: "Gemini 2.5 Flash Lite (Free)" },
-        { id: "meta-llama/llama-3-8b-instruct:free", name: "Llama 3 8B Instruct (Free)" },
-        { id: "mistralai/mistral-7b-instruct:free", name: "Mistral 7B Instruct (Free)" },
+        { id: "openrouter/auto", name: "OpenRouter Auto" },
       ],
     },
     groq: {
@@ -93,9 +90,8 @@
       helpUrl: "https://console.groq.com/keys",
       description: "Fast BYOK caption translation through Groq chat models.",
       models: [
-        { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B Versatile" },
-        { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B" },
-        { id: "gemma2-9b-it", name: "Gemma 2 9B" },
+        { id: "openai/gpt-oss-120b", name: "GPT OSS 120B" },
+        { id: "openai/gpt-oss-20b", name: "GPT OSS 20B" },
       ],
     },
     openai: {
@@ -111,7 +107,6 @@
       models: [
         { id: "gpt-4o-mini", name: "GPT-4o Mini" },
         { id: "gpt-4o", name: "GPT-4o" },
-        { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo" },
       ],
     },
     googleCloud: {
@@ -202,7 +197,7 @@
       modes: ["standard"],
       status: "available",
       helpUrl: "https://kymaapi.com",
-      description: "Kyma Standard route: Whisper v3 Turbo STT, Gemini 2.5 Flash translation, then MiniMax Speech Turbo TTS. Uses the same Kyma key as Realtime, but a different backend pipeline.",
+      description: "Kyma Standard route: Whisper v3 Turbo STT, Gemini 3.5 Flash-Lite translation, then MiniMax Speech Turbo TTS. Uses the same Kyma key as Realtime, but a different backend pipeline.",
     },
     kymaRealtime: {
       id: "kyma-realtime",
@@ -213,9 +208,9 @@
       modes: ["realtime"],
       status: "available",
       helpUrl: "https://kymaapi.com",
-      description: "Kyma Realtime route: mints an ephemeral OpenAI Realtime WebRTC session for sub-second dubbing. Uses the same Kyma key as Standard, but streams live audio instead of chunking.",
+      description: "Kyma Realtime route: mints an ephemeral OpenAI Realtime WebRTC session for sub-second dubbing. Uses the same Kyma key as Standard, but streams live audio instead of chunking. Kyma has paused this service for now; starting it reports that it is unavailable.",
     },
-    // Reserved keyFields support stable popup rendering and storage migrations.
+    // Reserved keyFields support stable Options rendering and storage migrations.
     // Runtime key validation ignores providers with status "coming-soon".
     openaiDirectDub: {
       id: "openai-direct-dub",
@@ -581,8 +576,8 @@
     }
 
     if (providerId === "gemini") {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`;
-      const res = await fetchFn(url, { signal: options.signal });
+      const url = `https://generativelanguage.googleapis.com/v1beta/models`;
+      const res = await fetchFn(url, { headers: { "x-goog-api-key": cleanKey }, signal: options.signal });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data?.error?.message || `HTTP ${res.status}`);

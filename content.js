@@ -22,7 +22,6 @@
 
   const CAPTION_POLL_MS = 350;
   const LAYOUT_KEY = "lumeoOverlayLayout";
-  const CAPTION_STYLE_KEY = "lumeoCaptionStyle";
   const RTL_LANGS = new Set(["ar", "fa", "he", "ur"]);
 
   const LANGUAGES = [
@@ -344,13 +343,8 @@
     };
     try {
       window.speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged);
-      if (window.speechSynthesis.onvoiceschanged !== undefined) {
-        window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
-      }
     } catch {}
   }
-
-  const IGNORED_STORAGE_KEYS = new Set(["lumeoCaptionCacheV1", "lumeoSubPosition"]);
 
   // Non-secret preferences only. Provider API keys must arrive through the
   // background's pruned CONTENT_START/GET_PROVIDER_KEY paths so a YouTube tab
@@ -413,36 +407,47 @@
         }
       });
 
+      // The only storage listener in the content script. It must never write
+      // back to storage: Firefox fires onChanged for every key passed to
+      // set(), changed or not, so a write here loops forever.
       chrome.storage.onChanged.addListener((changes, area) => {
-        if (area === "local") {
-          const allowedKeys = CONTENT_STORAGE_KEY_SET;
-          const updated = {};
-          for (const [key, change] of Object.entries(changes)) {
-            if (IGNORED_STORAGE_KEYS.has(key)) continue;
-            // Never merge provider keys, endpoint credentials, or unrelated
-            // extension state into the content-script realm.
-            if (!allowedKeys.has(key)) continue;
-            updated[key] = change.newValue;
-          }
-          if (Object.keys(updated).length > 0) {
-            settings = { ...(settings || {}), ...updated };
-            captionStyle = { ...captionStyle, ...updated };
-            if (updated.layoutPreset) {
-              applyLayoutPreset(updated.layoutPreset);
-            }
-            if (updated.targetLanguage && elements.langSelect) {
-              elements.langSelect.value = updated.targetLanguage;
-            }
-            if (updated.tier !== undefined || updated.captionTtsProvider !== undefined ||
-                updated.standardVoice !== undefined || updated.realtimeVoice !== undefined || updated.targetLanguage !== undefined) {
-              applyTierToolbar();
-            }
-            overlayController?.syncCaptionControls?.(captionStyle);
-            applyCaptionStyle();
-            overlayController?.updateMenuLabels?.();
-            if (lastDisplayedCue) setTargetCue(lastDisplayedCue);
+        if (area !== "local") return;
+        const updated = {};
+        for (const [key, change] of Object.entries(changes)) {
+          // Never merge provider keys, endpoint credentials, or unrelated
+          // extension state into the content-script realm.
+          if (!CONTENT_STORAGE_KEY_SET.has(key)) continue;
+          if (!change || !("newValue" in change)) continue;
+          if (JSON.stringify(change.newValue) === JSON.stringify(change.oldValue)) continue;
+          updated[key] = change.newValue;
+        }
+        if (Object.keys(updated).length === 0) return;
+
+        const style = { ...updated };
+        if (typeof style.subBackgroundOpacity === "number" && style.subBackgroundOpacity <= 1) {
+          style.subBackgroundOpacity = Math.round(style.subBackgroundOpacity * 100);
+        }
+        settings = { ...(settings || {}), ...updated };
+        captionStyle = { ...captionStyle, ...style };
+        if (updated.layoutPreset) applyLayoutPreset(updated.layoutPreset);
+        if (updated.targetLanguage && elements.langSelect) {
+          elements.langSelect.value = updated.targetLanguage;
+        }
+        LumeoSessionManager.applySettingsLive(updated);
+
+        if ("originalVolume" in updated || "muteOriginal" in updated) {
+          const isDubbingActive = LumeoSessionManager.getSession?.() && getActiveTier() !== "caption";
+          const vid = LumeoSessionManager.getVideoEl() || findVideo?.() || document.querySelector("video");
+          if (vid && isDubbingActive && typeof settings.originalVolume === "number") {
+            vid.volume = Math.max(0, Math.min(1, settings.originalVolume / 100));
+            vid.muted = !!settings.muteOriginal || settings.originalVolume === 0;
           }
         }
+
+        overlayController?.syncCaptionControls?.(captionStyle);
+        applyCaptionStyle();
+        overlayController?.updateMenuLabels?.();
+        if (lastDisplayedCue) setTargetCue(lastDisplayedCue);
       });
     }
   } catch {}
@@ -584,7 +589,7 @@
       notifyBackground({ type: "UPDATE_SETTINGS", settings: { standardVoice: newVoice } });
       try {
         if (typeof chrome !== "undefined" && chrome.storage?.local) {
-          chrome.storage.local.set({ voice: newVoice, standardVoice: newVoice });
+          chrome.storage.local.set({ standardVoice: newVoice });
         }
       } catch {}
     } else {
@@ -1109,99 +1114,6 @@
     })();
     return true;
   });
-
-  // Live storage sync from Options page or other tabs
-  try {
-    if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
-      chrome.storage.onChanged.addListener((changes, area) => {
-        if (area !== "local") return;
-        let volumeChanged = false;
-        let captionStyleChanged = false;
-        let settingsChanged = false;
-
-        const updatedSettings = { ...(settings || {}) };
-
-        for (const [key, change] of Object.entries(changes)) {
-          if (change && "newValue" in change) {
-            updatedSettings[key] = change.newValue;
-            settingsChanged = true;
-          }
-        }
-
-        if (changes.originalVolume?.newValue != null) {
-          captionStyle.originalVolume = Number(changes.originalVolume.newValue);
-          volumeChanged = true;
-          captionStyleChanged = true;
-        }
-        if (changes.voiceVolume?.newValue != null) {
-          captionStyle.voiceVolume = Number(changes.voiceVolume.newValue);
-          volumeChanged = true;
-          captionStyleChanged = true;
-        }
-        if (changes.muteOriginal?.newValue != null) {
-          captionStyle.muteOriginal = !!changes.muteOriginal.newValue;
-          volumeChanged = true;
-          captionStyleChanged = true;
-        }
-        if (changes.fontSize?.newValue != null) {
-          captionStyle.fontSize = Number(changes.fontSize.newValue);
-          captionStyleChanged = true;
-        }
-        if (changes.bottomOffset?.newValue != null) {
-          captionStyle.bottomOffset = Number(changes.bottomOffset.newValue);
-          captionStyleChanged = true;
-        }
-        if (changes.subBackgroundOpacity?.newValue != null) {
-          const raw = changes.subBackgroundOpacity.newValue;
-          captionStyle.subBackgroundOpacity = typeof raw === "number" && raw <= 1 ? Math.round(raw * 100) : Number(raw);
-          captionStyleChanged = true;
-        }
-        if (changes.subShadowStyle?.newValue != null) {
-          captionStyle.subShadowStyle = changes.subShadowStyle.newValue;
-          captionStyleChanged = true;
-        }
-        if (changes.subtitleOrder?.newValue != null) {
-          captionStyle.subtitleOrder = changes.subtitleOrder.newValue;
-          captionStyleChanged = true;
-        }
-        if (changes.layoutPreset?.newValue != null) {
-          captionStyle.layoutPreset = changes.layoutPreset.newValue;
-          captionStyleChanged = true;
-        }
-        if (changes.targetLanguage?.newValue != null) {
-          if (elements.langSelect) elements.langSelect.value = changes.targetLanguage.newValue;
-          if (captionStyle.targetLanguage !== changes.targetLanguage.newValue) {
-            captionStyle.targetLanguage = changes.targetLanguage.newValue;
-            captionStyleChanged = true;
-          }
-        }
-
-        if (settingsChanged) {
-          settings = updatedSettings;
-          LumeoSessionManager.setSettings(updatedSettings);
-          LumeoSessionManager.applySettingsLive(updatedSettings);
-        }
-
-        if (volumeChanged) {
-          LumeoSessionManager.applyVolumes(settings.originalVolume, settings.voiceVolume);
-          const currentSession = LumeoSessionManager.getSession?.();
-          const isDubbingActive = currentSession && getActiveTier() !== "caption";
-          const vid = LumeoSessionManager.getVideoEl() || findVideo?.() || document.querySelector("video");
-          if (vid && isDubbingActive && typeof settings.originalVolume === "number") {
-            vid.volume = Math.max(0, Math.min(1, settings.originalVolume / 100));
-            vid.muted = !!settings.muteOriginal || settings.originalVolume === 0;
-          }
-        }
-
-        if (captionStyleChanged) {
-          saveCaptionStyle();
-          applyCaptionStyle();
-          overlayController?.syncCaptionControls?.(captionStyle);
-        }
-        overlayController?.updateMenuLabels?.();
-      });
-    }
-  } catch {}
 
   // Eagerly mount overlay structure so controls/listeners are active on page load
   setTimeout(() => {

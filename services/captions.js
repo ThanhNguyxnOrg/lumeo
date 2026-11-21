@@ -79,15 +79,18 @@
         const videoId = parsed.searchParams.get("v") || getVideoId();
         const text = String(data.text || "");
         if (!videoId || text.length <= TIMEDTEXT_MIN_CHARS) return;
+        // An auto-translated body is not the source-language track.
+        if (parsed.searchParams.get("tlang")) return;
         const cues = parseSubtitleText(text);
         if (!cues.length) return;
-        const sourceLanguage = parsed.searchParams.get("lang") || parsed.searchParams.get("tlang") || "";
+        const sourceLanguage = parsed.searchParams.get("lang") || "";
         interceptedCaptionBodies.set(videoId, {
           cues,
           sourceLanguage,
+          kind: parsed.searchParams.get("kind") || "",
           url: parsed.toString(),
           status: data.status,
-          source: data.source || "page",
+          source: data.via || "page",
           receivedAt: Date.now(),
         });
       } catch {
@@ -505,11 +508,20 @@
     ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
   }
 
+  // Lumeo's own overlay has a "Transcript" button, and YouTube keeps hidden
+  // copies of menu buttons in the DOM; neither opens the native transcript.
+  function isNativeVisibleControl(el) {
+    if (el.closest?.(".ec-root, .lumeo-transcript-drawer")) return false;
+    if (el.closest?.("[hidden], [aria-hidden='true']")) return false;
+    return isElementVisible(el);
+  }
+
   function findClickable(patterns) {
     const candidates = Array.from(document.querySelectorAll(
       "button, yt-button-shape button, tp-yt-paper-item, ytd-menu-service-item-renderer, a",
     ));
     return candidates.find((candidate) => {
+      if (!isNativeVisibleControl(candidate)) return false;
       const text = clickableText(candidate);
       return text && patterns.some((pattern) => pattern.test(text));
     }) || null;
@@ -538,13 +550,17 @@
       /xem thêm/i,
     ], 500);
 
-    const scopedTranscriptButton = Array.from(document.querySelectorAll(
-      "ytd-video-description-transcript-section-renderer button, ytd-structured-description-content-renderer button",
-    )).find(isElementVisible);
+    // Only the transcript section: other description buttons (e.g. the
+    // chapters "View all") open unrelated panels.
+    const scopedTranscriptButton = document.querySelector(
+      "ytd-video-description-transcript-section-renderer button",
+    );
     if (scopedTranscriptButton) {
       scopedTranscriptButton.click();
-      await sleep(1200);
-      if (extractTranscriptCuesFromDom().length) return true;
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        await sleep(500);
+        if (extractTranscriptCuesFromDom().length) return true;
+      }
     }
 
     if (await clickIfFound([
@@ -560,8 +576,10 @@
     }
 
     const moreButtons = Array.from(document.querySelectorAll("button")).filter((button) =>
-      /more actions|more options|actions|thêm/i.test(clickableText(button)) ||
-      button.querySelector("svg path[d*='12']"),
+      isNativeVisibleControl(button) && (
+        /more actions|more options|actions|thêm/i.test(clickableText(button)) ||
+        button.querySelector("svg path[d*='12']")
+      ),
     );
     for (const button of moreButtons.slice(0, 4)) {
       try {
@@ -807,12 +825,20 @@
     return null;
   }
 
-  async function waitForInterceptedCaptions(videoId, timeoutMs = 3500) {
+  // The player loads whichever track the viewer selected in YouTube, which is
+  // not necessarily the source track Lumeo chose.
+  function interceptedMatchesTrack(hit, track) {
+    if (!track) return true;
+    return hit.sourceLanguage === (track.languageCode || "") &&
+      (hit.kind === "asr") === (track.kind === "asr");
+  }
+
+  async function waitForInterceptedCaptions(videoId, timeoutMs = 3500, track = null) {
     if (!videoId) return null;
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
       const hit = interceptedCaptionBodies.get(videoId);
-      if (hit?.cues?.length) return hit;
+      if (hit?.cues?.length && interceptedMatchesTrack(hit, track)) return hit;
       await sleep(150);
     }
     return null;
@@ -891,10 +917,11 @@
       languageCode: track.languageCode,
       kind: track.kind || "manual",
     };
+    options.onTrackChosen?.(track);
 
     const sourceLanguage = track.languageCode || "";
     const url = buildTimedTextUrl(track);
-    const interceptedBeforeFetch = await waitForInterceptedCaptions(videoId, 500);
+    const interceptedBeforeFetch = await waitForInterceptedCaptions(videoId, 500, track);
     if (interceptedBeforeFetch?.cues?.length) {
       diagnostics.steps.push(`intercepted-${interceptedBeforeFetch.source || "page"}`);
       return {
@@ -911,7 +938,7 @@
       return null;
     }
     if (xml.length <= TIMEDTEXT_MIN_CHARS) {
-      const intercepted = await waitForInterceptedCaptions(videoId, 2500);
+      const intercepted = await waitForInterceptedCaptions(videoId, 2500, track);
       if (intercepted?.cues?.length) {
         diagnostics.steps.push(`intercepted-${intercepted.source || "page"}`);
         return {
@@ -939,7 +966,24 @@
     };
   }
 
-  async function fetchViaSniff(videoId) {
+  // Point a sniffed player URL (which carries the player's `pot` token) at the
+  // chosen source track instead of the track selected in YouTube's player.
+  function retargetSniffedUrl(parsed, track) {
+    if (!track?.baseUrl) return;
+    let wanted;
+    try {
+      wanted = new URL(String(track.baseUrl).replace(/\\u0026/g, "&"));
+    } catch {
+      return;
+    }
+    for (const key of ["lang", "kind", "name"]) {
+      const value = wanted.searchParams.get(key);
+      if (value) parsed.searchParams.set(key, value);
+      else parsed.searchParams.delete(key);
+    }
+  }
+
+  async function fetchViaSniff(videoId, track = null) {
     let url = sniffedLinks.get(videoId);
     if (!url) {
       for (let i = 0; i < 3 && !url; i++) {
@@ -947,10 +991,15 @@
         url = await waitForSniffedUrl(videoId, 1500);
       }
     }
+    const intercepted = interceptedCaptionBodies.get(videoId);
+    if (intercepted?.cues?.length && interceptedMatchesTrack(intercepted, track)) {
+      return { cues: intercepted.cues, sourceLanguage: intercepted.sourceLanguage, url: intercepted.url };
+    }
     if (!url) return null;
     try {
       const parsed = new URL(url);
       parsed.searchParams.delete("tlang");
+      retargetSniffedUrl(parsed, track);
       if (!parsed.searchParams.has("fmt")) parsed.searchParams.set("fmt", "json3");
       const sourceLanguage = parsed.searchParams.get("lang") || "";
       const xml = await fetchText(parsed.toString());
@@ -1050,9 +1099,10 @@
       // Human-scale bound on the whole discovery cascade: per-hop timeouts
       // cap each request, but sequential fallbacks can still stack minutes of
       // "Loading captions...". On deadline the loud no-tracks error path runs.
+      let chosenTrack = null;
       const cascade = (async () =>
-        await fetchViaPageData(targetLanguage, { diagnostics }) ||
-        await fetchViaSniff(videoId) ||
+        await fetchViaPageData(targetLanguage, { diagnostics, onTrackChosen: (track) => { chosenTrack = track; } }) ||
+        await fetchViaSniff(videoId, chosenTrack) ||
         await fetchViaTranscriptPanel(diagnostics))();
       const deadline = new Promise((resolve) => setTimeout(() => resolve(null), 60000));
       source = await Promise.race([cascade, deadline]);

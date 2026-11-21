@@ -3,7 +3,7 @@ import { createChromeMock } from "./helpers/chrome-mock.mjs";
 
 const owner = { tab: { id: 7, url: "https://www.youtube.com/watch?v=test" } };
 const otherTab = { tab: { id: 8, url: "https://www.youtube.com/watch?v=other" } };
-const popup = { url: "chrome-extension://lumeo/popup.html" };
+const optionsPage = { url: "chrome-extension://lumeo/options.html" };
 const sessionKey = "lumeoSessionTab";
 
 let sessionStorage;
@@ -24,7 +24,7 @@ async function boot(onTabMessage, options = {}) {
   await import("../background.js");
 }
 
-function ask(message, sender = popup) {
+function ask(message, sender = optionsPage) {
   return new Promise((resolve) => chrome.__runtimeListeners[0](message, sender, resolve));
 }
 
@@ -72,7 +72,7 @@ describe("background session ownership", () => {
     });
   });
 
-  it("persists only settings when the standalone popup starts without a YouTube tab", async () => {
+  it("persists only settings when the Options page starts without a YouTube tab", async () => {
     await boot(undefined, { tabs: [] });
     const { state } = await ask({ type: "GET_STATE" });
     await expect(ask({ type: "START", settings: { ...state, targetLanguage: "vi" } })).resolves.toMatchObject({

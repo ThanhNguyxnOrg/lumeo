@@ -18,7 +18,8 @@ describe("services/stt-gemini.js", () => {
   it("builds a Gemini transcription request with audio inlineData and parses response", async () => {
     window.fetch = vi.fn(async (url, init) => {
       expect(url).toContain("generativelanguage.googleapis.com");
-      expect(url).toContain("key=AIza-gemini-key");
+      expect(url).not.toContain("AIza-gemini-key");
+      expect(init.headers["x-goog-api-key"]).toBe("AIza-gemini-key");
       const body = JSON.parse(init.body);
       expect(body.contents[0].parts[0].inlineData.mimeType).toBe("audio/wav");
       expect(body.contents[0].parts[1].text).toContain("Transcribe");
@@ -44,6 +45,21 @@ describe("services/stt-gemini.js", () => {
 
     expect(window.fetch).toHaveBeenCalledTimes(1);
     expect(result.text).toBe("Hello world from Gemini audio transcript!");
+  });
+
+  it("uses the current default model, joins every part, and omits sampling parameters", async () => {
+    window.fetch = vi.fn(async (url, init) => {
+      expect(url).toContain("/models/gemini-3.5-flash-lite:generateContent");
+      expect(JSON.parse(init.body).generationConfig).toBeUndefined();
+      return {
+        ok: true,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: "Hello " }, { text: "world" }] } }] }),
+      };
+    });
+
+    const result = await api.transcribeBlob(new window.Blob(["wav"]), { apiKey: "k", model: "gemini-1.5-flash" });
+
+    expect(result.text).toBe("Hello world");
   });
 
   it("throws clear error on Gemini API failure", async () => {

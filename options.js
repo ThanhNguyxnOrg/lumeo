@@ -21,13 +21,13 @@
     showSourceSub: true,
     showTranslatedSub: true,
     geminiKey: "",
-    geminiModel: "gemini-2.5-flash-lite",
+    geminiModel: "gemini-3.5-flash-lite",
     openaiKey: "",
     openaiModel: "gpt-4o-mini",
     openRouterKey: "",
     openRouterModel: "openrouter/free",
     groqApiKey: "",
-    groqModel: "llama-3.3-70b-versatile",
+    groqModel: "openai/gpt-oss-120b",
     kymaKey: "",
     sonioxApiKey: "",
     elevenLabsKey: "",
@@ -86,6 +86,7 @@
   const openaiKeyInput = document.getElementById("openaiKey");
   const openaiModelInput = document.getElementById("openaiModel");
   const groqApiKeyInput = document.getElementById("groqApiKey");
+  const sonioxApiKeyInput = document.getElementById("sonioxApiKey");
   const kymaKeyInput = document.getElementById("kymaKey");
   const customProxyBaseUrlInput = document.getElementById("customProxyBaseUrl");
   const customProxyApiKeyInput = document.getElementById("customProxyApiKey");
@@ -366,10 +367,15 @@
     if (shouldUpdate(targetLanguageInput)) targetLanguageInput.value = currentSettings.targetLanguage || "en";
     if (shouldUpdate(translationContextInput)) translationContextInput.value = currentSettings.translationContext || "";
     if (shouldUpdate(geminiKeyInput)) geminiKeyInput.value = currentSettings.geminiKey || "";
-    if (shouldUpdate(geminiModelInput)) geminiModelInput.value = currentSettings.geminiModel || "gemini-2.5-flash-lite";
+    if (shouldUpdate(geminiModelInput)) {
+      geminiModelInput.value = currentSettings.geminiModel || "gemini-3.5-flash-lite";
+      // A saved model that is no longer offered leaves the select empty.
+      if (!geminiModelInput.value) geminiModelInput.value = "gemini-3.5-flash-lite";
+    }
     if (shouldUpdate(openaiKeyInput)) openaiKeyInput.value = currentSettings.openaiKey || "";
     if (shouldUpdate(openaiModelInput)) openaiModelInput.value = currentSettings.openaiModel || "gpt-4o-mini";
     if (shouldUpdate(groqApiKeyInput)) groqApiKeyInput.value = currentSettings.groqApiKey || "";
+    if (shouldUpdate(sonioxApiKeyInput)) sonioxApiKeyInput.value = currentSettings.sonioxApiKey || "";
     if (shouldUpdate(kymaKeyInput)) kymaKeyInput.value = currentSettings.kymaKey || "";
     if (shouldUpdate(customProxyBaseUrlInput)) customProxyBaseUrlInput.value = currentSettings.customProxyBaseUrl || "";
     if (shouldUpdate(customProxyApiKeyInput)) customProxyApiKeyInput.value = currentSettings.customProxyApiKey || "";
@@ -491,6 +497,7 @@
     if (openaiKeyInput) currentSettings.openaiKey = openaiKeyInput.value.trim();
     if (openaiModelInput) currentSettings.openaiModel = openaiModelInput.value;
     if (groqApiKeyInput) currentSettings.groqApiKey = groqApiKeyInput.value.trim();
+    if (sonioxApiKeyInput) currentSettings.sonioxApiKey = sonioxApiKeyInput.value.trim();
     if (kymaKeyInput) currentSettings.kymaKey = kymaKeyInput.value.trim();
     if (customProxyBaseUrlInput) currentSettings.customProxyBaseUrl = customProxyBaseUrlInput.value.trim();
     if (customProxyApiKeyInput) currentSettings.customProxyApiKey = customProxyApiKeyInput.value.trim();
@@ -595,7 +602,7 @@
     translateProviderInput, targetLanguageInput, translationContextInput,
     geminiKeyInput, geminiModelInput,
     openaiKeyInput, openaiModelInput,
-    groqApiKeyInput, kymaKeyInput,
+    groqApiKeyInput, sonioxApiKeyInput, kymaKeyInput,
     customProxyBaseUrlInput, customProxyApiKeyInput, customProxyModelIdInput,
     captionTtsProviderInput, browserVoiceInput,
     customTtsPresetInput, customTtsBaseUrlInput, customTtsVoiceIdInput, customTtsApiKeyInput, customTtsModelIdInput,
@@ -696,7 +703,9 @@
         if (provider === "gemini") {
           const key = geminiKeyInput.value.trim();
           if (!key) throw new Error("Please enter a Gemini API Key");
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
+          const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+            headers: { "x-goog-api-key": key },
+          });
           if (res.ok) { msg = "Gemini API Key is valid!"; }
           else { msg = `Error ${res.status}: Check key or permissions`; }
         } else if (provider === "openai") {

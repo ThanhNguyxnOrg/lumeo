@@ -92,6 +92,15 @@ describe("background message boundary", () => {
     expect(unusedKey.error).toMatch(/not in use/i);
   });
 
+  it("serves a fallback STT key once the session tab selects that provider", async () => {
+    await ask({ type: "UPDATE_SETTINGS", settings: { sttProvider: "openai-whisper" } }, YT_TAB_7);
+    await expect(ask({ type: "GET_PROVIDER_KEY", key: "openaiKey" }, YT_TAB_7))
+      .resolves.toEqual({ ok: true, key: "oa-secret" });
+    await ask({ type: "UPDATE_SETTINGS", settings: { sttProvider: "none" } }, YT_TAB_7);
+    await expect(ask({ type: "GET_PROVIDER_KEY", key: "openaiKey" }, YT_TAB_7))
+      .resolves.toMatchObject({ ok: false });
+  });
+
   it("keeps Kyma out of Caption start and serves it only to the owner at the fallback chooser", async () => {
     await ask({ type: "STOP" }, OPTIONS_PAGE);
     chromeMock.__storageData.kymaKey = "kyma-test-key";
@@ -270,6 +279,45 @@ describe("background message boundary", () => {
     }
   });
 
+  it("bounds the transcript a tab can send for summarizing", async () => {
+    const translateApi = globalThis.LumeoTranslate;
+    const original = translateApi.summarizeTranscript;
+    const calls = [];
+    translateApi.summarizeTranscript = async (cues, targetLanguage, options) => {
+      calls.push({ cues, targetLanguage, options });
+      return { summary: "ok", provider: options.provider };
+    };
+
+    try {
+      const reply = await ask(
+        {
+          type: "SUMMARIZE_TRANSCRIPT",
+          cues: [
+            { text: "a".repeat(10000), start: 1, extra: { nested: "x".repeat(50000) } },
+            { translated: "b".repeat(10000), text: "ignored" },
+            { text: "never reached" },
+            null,
+          ],
+          targetLanguage: "v".repeat(500),
+        },
+        YT_TAB_7,
+      );
+      expect(reply.ok).toBe(true);
+      const [{ cues, targetLanguage }] = calls;
+      expect(cues).toHaveLength(2);
+      expect(Object.keys(cues[0])).toEqual(["text"]);
+      expect(cues[1].text).toBe("b".repeat(4999));
+      expect(cues.reduce((sum, cue) => sum + cue.text.length, 0)).toBeLessThanOrEqual(15000);
+      expect(targetLanguage).toHaveLength(32);
+
+      calls.length = 0;
+      await ask({ type: "SUMMARIZE_TRANSCRIPT", cues: "not an array" }, YT_TAB_7);
+      expect(calls[0].cues).toEqual([]);
+    } finally {
+      translateApi.summarizeTranscript = original;
+    }
+  });
+
   it("does not treat look-alike hosts as YouTube", () => {
     const isYouTubeUrl = globalThis.LumeoBackground?.isYouTubeUrl;
     expect(typeof isYouTubeUrl).toBe("function");
@@ -314,7 +362,7 @@ describe("background message boundary", () => {
 
     const soniox = await ask(
       { action: "startSonioxWs", apiKey: "soniox-secret" },
-      { url: "chrome-extension://lumeo/popup.html" },
+      { url: "chrome-extension://lumeo/options.html" },
     );
     expect(soniox.ok).toBe(false);
   });

@@ -1,6 +1,6 @@
 // Lumeo Gemini STT service — Multimodal Audio Speech-to-Text fallback for
 // Caption tier videos that expose no caption track.
-// Uses Google Gemini 2.5/1.5 Flash Free Tier (15 RPM free, zero cost).
+// Uses the Google Gemini Flash-Lite free tier (15 RPM free, zero cost).
 //
 // Transport: we capture YouTube audio with captureStream() (no
 // getDisplayMedia permission prompt) and upload 15s WAV chunks as inlineData
@@ -11,7 +11,7 @@
 
   if (window.LumeoGeminiSTT?.__loaded) return;
 
-  const DEFAULT_MODEL = "gemini-2.5-flash-lite";
+  const DEFAULT_MODEL = "gemini-3.5-flash-lite";
   const DEFAULT_CHUNK_MS = 15_000;
   const MIN_CHUNK_BYTES = 2000;
 
@@ -45,14 +45,15 @@
 
   async function transcribeBlob(wavBlob, options = {}) {
     const key = assertKey(options.apiKey);
-    const model = options.model || DEFAULT_MODEL;
+    // Gemini 1.5 is no longer served; a setting saved earlier may still name it.
+    const model = /^gemini-1\.5/.test(options.model || "") ? DEFAULT_MODEL : options.model || DEFAULT_MODEL;
     const base64Data = await blobToBase64(wavBlob);
 
     const promptText = options.language
       ? `Transcribe the spoken speech in this audio snippet accurately. Output ONLY the verbatim transcript text. If silence or no speech, output nothing.`
       : "Transcribe the spoken speech in this audio snippet accurately. Output ONLY the verbatim transcript text. If silence or no speech, output nothing.";
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
     const payload = {
       contents: [
@@ -70,14 +71,13 @@
           ],
         },
       ],
-      generationConfig: {
-        temperature: 0,
-      },
+      // Gemini 3 and later deprecate the sampling parameters.
+      ...(/^gemini-2\./.test(model) ? { generationConfig: { temperature: 0 } } : {}),
     };
 
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify(payload),
       signal: options.signal,
     });
@@ -88,7 +88,7 @@
       throw new Error(String(detail).slice(0, 240));
     }
 
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const text = (data?.candidates?.[0]?.content?.parts || []).map((part) => part?.text || "").join("");
     return {
       text: String(text).trim(),
       language: options.language || "",

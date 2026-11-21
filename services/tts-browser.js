@@ -3,7 +3,7 @@
 
   if (window.LumeoTTS?.__loaded) return;
 
-  // Cloud languageCode per target language (BCP-47). Covers every popup
+  // Cloud languageCode per target language (BCP-47). Covers every Options
   // CAPTION_LANGUAGES code; locales without a Cloud voice fail fast into the
   // browser failover (see CHIRP3_HD_LOCALES below) instead of a late HTTP error.
   const LANG_CODE_MAP = {
@@ -156,6 +156,49 @@
   let currentAudio = null;
   let cachedVoices = [];
 
+  // Measured speaking pace (speech units per second at 1.0x) and start latency
+  // (seconds between asking for a line and hearing it), keyed by voice. The
+  // caption orchestrator uses them to fit each line to its subtitle slot and
+  // to start the voice early enough to land on the cue boundary.
+  const paceByKey = new Map();
+  const latencyByKey = new Map();
+  const MAX_SPEECH_RATE = 2.0;
+
+  function nowMs() {
+    return typeof performance !== "undefined" && typeof performance.now === "function"
+      ? performance.now()
+      : Date.now();
+  }
+
+  function blend(map, key, sample) {
+    const prev = map.get(key);
+    map.set(key, prev == null ? sample : prev * 0.7 + sample * 0.3);
+  }
+
+  function recordPace(key, units, naturalSeconds) {
+    const count = Number(units);
+    const seconds = Number(naturalSeconds);
+    // Very short lines are dominated by engine start/stop padding.
+    if (!key || !(count >= 4) || !(seconds >= 0.6)) return;
+    const pace = count / seconds;
+    if (pace < 0.5 || pace > 20) return;
+    blend(paceByKey, key, pace);
+  }
+
+  function recordLatency(key, seconds) {
+    const value = Number(seconds);
+    if (!key || !Number.isFinite(value) || value < 0 || value > 5) return;
+    blend(latencyByKey, key, value);
+  }
+
+  function getPace(key) {
+    return paceByKey.get(key) ?? null;
+  }
+
+  function getStartLatency(key) {
+    return latencyByKey.get(key) ?? 0;
+  }
+
   function clampRate(value, min = 0.5, max = 2.0) {
     const rate = Number(value);
     if (!Number.isFinite(rate) || rate <= 0) return 1.0;
@@ -182,8 +225,12 @@
   }
   populateVoices();
   if (typeof speechSynthesis !== "undefined") {
-    speechSynthesis.addEventListener?.("voiceschanged", populateVoices);
-    if (speechSynthesis.onvoiceschanged !== undefined) {
+    // One registration only: content.js shares this object, and assigning
+    // onvoiceschanged as well ran every handler twice and let the last
+    // script to load overwrite the others.
+    if (typeof speechSynthesis.addEventListener === "function") {
+      speechSynthesis.addEventListener("voiceschanged", populateVoices);
+    } else if (speechSynthesis.onvoiceschanged !== undefined) {
       speechSynthesis.onvoiceschanged = populateVoices;
     }
   }
@@ -232,10 +279,6 @@
     if (aliases.includes(v) || aliases.includes(v.split("-")[0])) return true;
     const wBase = w.split("-")[0];
     return v === wBase || v.startsWith(`${wBase}-`);
-  }
-
-  function baseLang(lang) {
-    return String(lang || "").split("-")[0].toLowerCase();
   }
 
   function stripTtsNoise(text) {
@@ -314,9 +357,14 @@
         resolve(ok);
       }
       controller.signal.addEventListener("abort", () => finish(false), { once: true });
+      const requestedAt = nowMs();
       const taskOptions = {
         ...options,
         signal: options.signal || controller.signal,
+        onStart: () => {
+          if (generation !== speechGeneration || settled) return;
+          recordLatency(options.latencyKey, (nowMs() - requestedAt) / 1000);
+        },
         onEnd: (ok) => finish(ok !== false),
       };
       Promise.resolve(speak(text, lang, taskOptions))
@@ -436,7 +484,17 @@
     };
     const utterance = new SpeechSynthesisUtterance(clean);
     activeUtterance = utterance;
-    utterance.onend = () => finish(true);
+    let startedAt = 0;
+    utterance.onstart = () => {
+      startedAt = nowMs();
+      try { options.onStart?.(); } catch {}
+    };
+    utterance.onend = () => {
+      if (startedAt) {
+        recordPace(options.paceKey, options.speechUnits, ((nowMs() - startedAt) / 1000) * utterance.rate);
+      }
+      finish(true);
+    };
     utterance.onerror = (event) => finish(event?.error ? false : true);
     if (voice) {
       utterance.voice = voice;
@@ -448,6 +506,49 @@
     utterance.pitch = Number(options.pitch || 1);
     utterance.volume = Number(options.volume ?? 1);
     speechSynthesis.speak(utterance);
+    return true;
+  }
+
+  // Play a synthesized clip. `bakedRate` is the speed already rendered into the
+  // clip; `fallbackRate` is used until the real duration is known. Once it is,
+  // the clip is sped up just enough to end inside the caller's slot.
+  async function playClip(audioUrl, options = {}, { bakedRate = 1, fallbackRate = 1 } = {}) {
+    if (currentAudio) {
+      try { currentAudio.pause(); } catch {}
+      currentAudio = null;
+    }
+    stopSpeechOnly();
+    const audio = new Audio(audioUrl);
+    currentAudio = audio;
+    audio.volume = Number(options.volume ?? 1);
+    if (fallbackRate !== 1) audio.playbackRate = fallbackRate;
+    let ended = false;
+    const end = (ok) => {
+      if (ended) return;
+      ended = true;
+      if (currentAudio === audio) currentAudio = null;
+      try { options.onEnd?.(ok); } catch {}
+    };
+    const fitToSlot = () => {
+      const duration = Number(audio.duration);
+      if (!Number.isFinite(duration) || duration <= 0) return;
+      recordPace(options.paceKey, options.speechUnits, duration * bakedRate);
+      if (typeof options.getSlotSeconds !== "function") return;
+      const slot = Number(options.getSlotSeconds());
+      if (!Number.isFinite(slot)) return;
+      const ceiling = Math.max(1, MAX_SPEECH_RATE / bakedRate);
+      audio.playbackRate = Math.min(ceiling, Math.max(1, duration / Math.max(slot, 0.05)));
+    };
+    audio.addEventListener?.("ended", () => end(true), { once: true });
+    // Without this a clip that fails to decode holds the queue until the
+    // stall timeout, and every following line starts late.
+    audio.addEventListener?.("error", () => end(false), { once: true });
+    audio.addEventListener?.("playing", () => {
+      try { options.onStart?.(); } catch {}
+    }, { once: true });
+    if (audio.readyState >= 1) fitToSlot();
+    else audio.addEventListener?.("loadedmetadata", fitToSlot, { once: true });
+    await audio.play();
     return true;
   }
 
@@ -473,7 +574,9 @@
     if (!CHIRP3_HD_LOCALES.has(languageCode)) {
       throw new Error(`Google Cloud TTS has no Chirp3-HD voice for ${languageCode}; falling back to browser voice.`);
     }
-    const voiceName = options.voiceName || "Achernar";
+    // The shared voice setting usually holds a browser voice name, which is
+    // not a Chirp3-HD voice; those are single capitalized words.
+    const voiceName = /^[A-Z][a-z]+$/.test(options.voiceName || "") ? options.voiceName : "Achernar";
     const rate = clampRate(options.rate, 0.25, 2.0);
     const cacheKey = [
       languageCode,
@@ -486,9 +589,9 @@
     let pending = googleAudioInflight.get(cacheKey);
     if (!pending) {
       pending = (async () => {
-        const response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(apiKey)}`, {
+        const response = await fetch("https://texttospeech.googleapis.com/v1/text:synthesize", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
           body: JSON.stringify({
             input: { text: clean },
             voice: {
@@ -524,18 +627,7 @@
   async function speakGoogleCloud(text, lang, options = {}) {
     const audioUrl = await synthesizeGoogleCloud(text, lang, options);
     if (!audioUrl || options.signal?.aborted) return false;
-    if (currentAudio) {
-      try { currentAudio.pause(); } catch {}
-      currentAudio = null;
-    }
-    stopSpeechOnly();
-    currentAudio = new Audio(audioUrl);
-    currentAudio.volume = Number(options.volume ?? 1);
-    if (typeof options.onEnd === "function") {
-      currentAudio.addEventListener("ended", options.onEnd, { once: true });
-    }
-    await currentAudio.play();
-    return true;
+    return playClip(audioUrl, options, { bakedRate: clampRate(options.rate, 0.25, 2.0) });
   }
 
   async function synthesizeCustomVoice(text, lang, options = {}) {
@@ -611,21 +703,22 @@
   async function speakCustomVoice(text, lang, options = {}) {
     const audioUrl = await synthesizeCustomVoice(text, lang, options);
     if (!audioUrl || options.signal?.aborted) return false;
-    if (currentAudio) {
-      try { currentAudio.pause(); } catch {}
-      currentAudio = null;
-    }
-    stopSpeechOnly();
-    currentAudio = new Audio(audioUrl);
-    currentAudio.volume = Number(options.volume ?? 1);
-    // ElevenLabs/custom synthesis speed is best-effort; apply the fitted rate
-    // post-hoc so spoken lines keep up without re-synthesis.
-    currentAudio.playbackRate = clampRate(options.rate, 0.9, 2.0);
-    if (typeof options.onEnd === "function") {
-      currentAudio.addEventListener("ended", options.onEnd, { once: true });
-    }
-    await currentAudio.play();
-    return true;
+    // The clip is synthesized at natural speed; the rate is applied at
+    // playback so the same clip can be reused at any speed.
+    return playClip(audioUrl, options, { fallbackRate: clampRate(options.rate, 0.9, 2.0) });
+  }
+
+  async function speakOpenAI(text, lang, options = {}) {
+    if (!window.LumeoOpenAITTS?.synthesize) throw new Error("OpenAI TTS service is not loaded.");
+    const speed = Number(options.rate) > 0 ? Number(options.rate) : 1;
+    const audioUrl = await window.LumeoOpenAITTS.synthesize(text, {
+      apiKey: options.openaiKey,
+      voice: options.openaiVoice || "alloy",
+      speed,
+      signal: options.signal,
+    });
+    if (!audioUrl || options.signal?.aborted) return false;
+    return playClip(audioUrl, options, { bakedRate: clampRate(speed, 0.25, 2.0) });
   }
 
   // Warm the audio cache for a line that will be spoken later. Only network
@@ -645,7 +738,7 @@
         const url = await window.LumeoOpenAITTS.synthesize(text, {
           apiKey: options.openaiKey,
           voice: options.openaiVoice || "alloy",
-          speed: options.rate || 1,
+          speed: Number(options.rate) > 0 ? Number(options.rate) : 1,
           signal: options.signal,
         });
         return !!url;
@@ -666,7 +759,7 @@
       } catch (err) {
         console.warn("[TTS] Custom voice failed, falling back to browser TTS:", err);
         options.onFailover?.({ from: "custom-voice-engine", to: "browser", error: err.message });
-        return speakBrowser(text, lang, options);
+        return speakBrowser(text, lang, { ...options, paceKey: "", onStart: undefined });
       }
     }
     if (provider === "google-cloud") {
@@ -675,24 +768,17 @@
       } catch (err) {
         console.warn("[TTS] Google Cloud TTS failed, falling back to browser TTS:", err);
         options.onFailover?.({ from: "google-cloud", to: "browser", error: err.message });
-        return speakBrowser(text, lang, options);
+        return speakBrowser(text, lang, { ...options, paceKey: "", onStart: undefined });
       }
     }
     if (provider === "openai-tts" || provider === "openai") {
       if (!window.LumeoOpenAITTS) throw new Error("OpenAI TTS service is not loaded.");
       try {
-        return await window.LumeoOpenAITTS.speak(text, lang, {
-          apiKey: options.openaiKey,
-          voice: options.openaiVoice || "alloy",
-          speed: options.rate || 1,
-          volume: options.volume ?? 1,
-          signal: options.signal,
-          onEnd: options.onEnd,
-        });
+        return await speakOpenAI(text, lang, options);
       } catch (err) {
         console.warn("[TTS] OpenAI TTS failed, falling back to browser TTS:", err);
         options.onFailover?.({ from: "openai-tts", to: "browser", error: err.message });
-        return speakBrowser(text, lang, options);
+        return speakBrowser(text, lang, { ...options, paceKey: "", onStart: undefined });
       }
     }
     return speakBrowser(text, lang, options);
@@ -711,6 +797,8 @@
     speakBrowser,
     speakGoogleCloud,
     speakCustomVoice,
+    getPace,
+    getStartLatency,
     synthesizeGoogleCloud,
     synthesizeCustomVoice,
     stop,

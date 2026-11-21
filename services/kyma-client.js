@@ -9,12 +9,23 @@
     try {
       const parsed = JSON.parse(errText);
       const err = parsed.error || {};
-      if (err.code === "insufficient_balance") {
+      if (err.code === "endpoint_retired" || status === 410) {
+        return { user: "Kyma has turned this service off (Kyma Realtime is paused). Use Standard Dubbing or Captions instead." };
+      }
+      if (err.type === "billing_error" || status === 402 || err.code === "insufficient_balance") {
         return {
-          user: "Out of Kyma balance.",
-          cta: err.cta_url || "https://kymaapi.com/billing",
+          user: err.code === "model_requires_paid"
+            ? "This Kyma model needs a funded balance. Add credits once, then retry."
+            : "Out of Kyma balance.",
+          cta: parsed.topup_url || err.cta_url || "https://kymaapi.com/billing",
           ctaLabel: "Top up",
         };
+      }
+      if (err.type === "authentication_error" || status === 401) {
+        return { user: "Kyma rejected the API key. Check the Kyma key in Lumeo Settings." };
+      }
+      if (err.code === "model_not_found") {
+        return { user: `Kyma no longer serves this model${err.message ? ` (${err.message})` : ""}. Update Lumeo.` };
       }
       if (err.code === "too_many_sessions") {
         return { user: "Kyma session limit reached. Stop another Lumeo session, then retry." };
@@ -22,7 +33,7 @@
       if (err.code === "upstream_error") {
         return { user: "Kyma provider is temporarily unavailable. Retry in a minute." };
       }
-      if (err.code === "rate_limited") {
+      if (err.code === "rate_limited" || err.type === "rate_limit_error") {
         return { user: "Kyma rate limit reached. Wait 30 seconds, then retry." };
       }
       if (err.message) return { user: `Kyma ${status}: ${err.message}. Check your Kyma key/session, then retry.` };

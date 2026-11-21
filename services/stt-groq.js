@@ -74,7 +74,8 @@
     constructor(options = {}) {
       this.stream = options.stream;
       this.apiKey = options.apiKey;
-      this.model = options.model || DEFAULT_MODEL;
+      this.provider = options.provider || "";
+      this.model = options.model || (this.provider === "openai" ? DEFAULT_OPENAI_MODEL : DEFAULT_MODEL);
       this.language = options.language || "";
       this.chunkMs = options.chunkMs || DEFAULT_CHUNK_MS;
       this.onText = options.onText || (() => {});
@@ -101,6 +102,7 @@
           const wav = await audioUtils.webmBlobToWav(blob);
           const result = await transcribeBlob(wav, {
             apiKey: this.apiKey,
+            provider: this.provider,
             model: this.model,
             language: this.language,
             signal: this.abortController.signal,

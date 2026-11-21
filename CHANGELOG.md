@@ -6,8 +6,32 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Spoken captions are planned against the subtitle slot:** each line's speaking rate is fitted to the time left before the next cue, using the measured pace and start latency of the selected voice. Adaptive speed ranges `1.0–2.0×`; a manually chosen speed is kept as is.
+- **One playback path for generated audio:** Google Cloud, OpenAI, and custom voice clips share one player that refines the rate from the real clip duration and is stopped by `LumeoTTS.stop()`.
+- **Google API keys travel in the `x-goog-api-key` header** instead of the request URL (Gemini, Cloud Translation, Cloud Text-to-Speech, model listing).
+- The toolbar icon / `Alt+L` now injects Lumeo into a YouTube tab that was open before install or update instead of opening Settings.
+- `CONTENT_SCRIPT_FILES` is read from the manifest, so the injected file list exists in one place.
+- **Model defaults follow what providers serve today:** Groq defaults to `openai/gpt-oss-120b`, OpenRouter to `openrouter/auto`, Gemini to `gemini-3.5-flash-lite`. Saved settings that still name a retired model fall back to the default at request time.
+- Settings has a Soniox API key field, and the Soniox key now stays in the extension background.
+
+### Removed
+
+- The unused popup (`popup.html/js/css`), its `OPEN_POPUP_TO_SLOT` / state-broadcast messages, and the popup-only `tier-recommendation.js` and `translation-bundle.js` services.
+- Hugging Face host permissions: the provider is not implemented and nothing fetched those origins.
+
 ### Fixed
 
+- Spoken lines no longer pile up behind the subtitle: a line that can no longer fit its slot is skipped, and pausing or seeking stops the current voice immediately.
+- The YouTube tab no longer copies every changed storage key (API keys, caption cache) into its settings, and no longer writes settings back from the storage listener, which could loop on Firefox.
+- `SUMMARIZE_TRANSCRIPT` input from the page is bounded before it reaches the model.
+- `voiceschanged` handlers ran twice and overwrote each other through `onvoiceschanged`.
+- Captions the YouTube player loads itself are now used when Lumeo's own caption request comes back empty or rate-limited; they were received but discarded. Only the track Lumeo chose as the source is accepted, so a different caption language selected in YouTube cannot replace the original line.
+- The Transcript-panel fallback opens YouTube's own “Show transcript” button instead of hidden or unrelated controls.
+- The no-caption speech-to-text fallback (Groq, OpenAI, Gemini) reported a missing key even when one was saved.
+- Kyma Standard Dubbing sent the direct-Gemini model id to Kyma; Kyma errors for balance, key, rate limit, and retired models or endpoints now show a specific message.
+- OpenAI speech requests send `response_format`; Gemini 3 requests no longer send `temperature`; Google Cloud TTS no longer receives a browser voice name.
 - On Firefox, Start Translation now starts caption discovery instead of getting stuck on “Loading captions…” before contacting the extension background.
 
 ## [2.0.9] - 2026-11-07 — Spoken Sync: Prefetched TTS & Video-Anchored Dub

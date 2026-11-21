@@ -126,11 +126,6 @@ Caption tier — used only when the user supplies their own OpenRouter key and p
 Caption tier — used only when the user supplies their own Groq key and picks Groq translation or STT options.
 ```
 
-### `host_permissions: https://api-inference.huggingface.co/*` and `https://huggingface.co/*`
-```
-Caption tier — reserved for the advanced Hugging Face Inference Providers option. It is used only when the user supplies a Hugging Face token and explicitly selects that provider.
-```
-
 ### `host_permissions: https://translate.googleapis.com/*`
 ```
 Caption tier — used as the default free translation provider for translating YouTube subtitle text into the user's chosen target language. No authentication required; the public endpoint is what Google Translate's web UI itself uses.

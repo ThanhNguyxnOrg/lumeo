@@ -30,7 +30,6 @@
   let onYTPause = null;
   let onYTPlay = null;
   let onYTSeeked = null;
-  let onYTRateChange = null;
 
   let heartbeatTimer = null;
   let warningTimer = null;
@@ -343,13 +342,9 @@
         }
       }
     };
-    onYTRateChange = () => {
-      // Sync or adjust if rate changes
-    };
     video.addEventListener("pause", onYTPause);
     video.addEventListener("play", onYTPlay);
     video.addEventListener("seeked", onYTSeeked);
-    video.addEventListener("ratechange", onYTRateChange);
 
     window.LumeoStandardPipeline.runChunkLoop(newSession, {
       getActiveSession: () => session,
@@ -458,7 +453,6 @@
         onSessionEnded: (reason, msg) => { stopSession(reason); callbacks.emitEnded?.(msg || reason); },
         onStateChange: (partial) => { callbacks.emitState?.(partial); },
         onUpdateSettings: (newSettings) => { callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: newSettings }); },
-        onOpenPopup: (slot) => { callbacks.notifyBackground?.({ type: "OPEN_POPUP_TO_SLOT", slot }); },
         onSwitchToStandard: async (requestKymaKey) => {
           const fallbackSession = session;
           if (!fallbackSession?.choiceOnly || switchingToStandard) return;
@@ -480,13 +474,22 @@
         },
         setCurrentTexts: (src, tgt) => callbacks.setCurrentTexts?.(src, tgt),
         getCurrentTexts: () => callbacks.getCurrentTexts?.() || { source: "", target: "" },
+        // Replacing a handler detaches the previous one, so a fallback path
+        // inside one session never leaves two listeners on the video.
         setYTPauseHandler: (handler) => {
+          if (videoEl && onYTPause) videoEl.removeEventListener("pause", onYTPause);
           onYTPause = handler;
           if (videoEl) videoEl.addEventListener("pause", onYTPause);
         },
         setYTPlayHandler: (handler) => {
+          if (videoEl && onYTPlay) videoEl.removeEventListener("play", onYTPlay);
           onYTPlay = handler;
           if (videoEl) videoEl.addEventListener("play", onYTPlay);
+        },
+        setYTSeekHandler: (handler) => {
+          if (videoEl && onYTSeeked) videoEl.removeEventListener("seeking", onYTSeeked);
+          onYTSeeked = handler;
+          if (videoEl) videoEl.addEventListener("seeking", onYTSeeked);
         }
       });
     }
@@ -636,8 +639,10 @@
     if (videoEl) {
       if (onYTPause) videoEl.removeEventListener("pause", onYTPause);
       if (onYTPlay) videoEl.removeEventListener("play", onYTPlay);
-      if (onYTSeeked) videoEl.removeEventListener("seeked", onYTSeeked);
-      if (onYTRateChange) videoEl.removeEventListener("ratechange", onYTRateChange);
+      if (onYTSeeked) {
+        videoEl.removeEventListener("seeked", onYTSeeked);
+        videoEl.removeEventListener("seeking", onYTSeeked);
+      }
       if (reason !== "restart") {
         videoEl.muted = initialVideoMuted;
         videoEl.volume = initialVideoVolume;
@@ -651,7 +656,6 @@
     onYTPause = null;
     onYTPlay = null;
     onYTSeeked = null;
-    onYTRateChange = null;
     if (activeStartingPipeline) {
       try { activeStartingPipeline.stop(); } catch {}
       activeStartingPipeline = null;

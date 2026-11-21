@@ -21,9 +21,6 @@ const RUNTIME_ROOT_FILES = new Set([
   "options.css",
   "options.html",
   "options.js",
-  "popup.css",
-  "popup.html",
-  "popup.js",
 ]);
 
 const RUNTIME_DIRS = [

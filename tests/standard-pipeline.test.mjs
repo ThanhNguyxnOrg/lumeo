@@ -111,7 +111,7 @@ describe("pipelines/standard.js", () => {
     await api.processChunk(session, { size: 3000 }, {
       getActiveSession: () => session,
       getPageToken: () => 7,
-      getSettings: () => ({ targetLanguage: "vi", standardVoice }),
+      getSettings: () => ({ targetLanguage: "vi", standardVoice, geminiModel: "gemini-2.5-flash-lite" }),
       langNameByCode: { vi: "Vietnamese" },
       kymaBase: "https://kyma.test/v1",
       audioUtils: { webmBlobToWav: vi.fn(async () => new Blob(["wav"])) },
@@ -123,6 +123,8 @@ describe("pipelines/standard.js", () => {
 
     expect(formData.append).toHaveBeenCalledWith("model", "whisper-v3-turbo");
     expect(fetch).toHaveBeenCalledTimes(3);
+    const [, chatRequest] = fetch.mock.calls.find(([url]) => url.endsWith("/chat/completions"));
+    expect(JSON.parse(chatRequest.body).model).toBe("gemini-3.5-flash-lite");
     const [, speechRequest] = fetch.mock.calls.find(([url]) => url.endsWith("/audio/speech"));
     expect(JSON.parse(speechRequest.body).voice_id).toBe(voiceId);
     expect(callbacks.onSourceText).toHaveBeenCalledWith("hello");
