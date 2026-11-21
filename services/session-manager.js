@@ -453,7 +453,6 @@
         onSessionEnded: (reason, msg) => { stopSession(reason); callbacks.emitEnded?.(msg || reason); },
         onStateChange: (partial) => { callbacks.emitState?.(partial); },
         onUpdateSettings: (newSettings) => { callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: newSettings }); },
-        onOpenPopup: (slot) => { callbacks.notifyBackground?.({ type: "OPEN_POPUP_TO_SLOT", slot }); },
         onSwitchToStandard: async (requestKymaKey) => {
           const fallbackSession = session;
           if (!fallbackSession?.choiceOnly || switchingToStandard) return;

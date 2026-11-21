@@ -211,7 +211,6 @@
           missingProviders: ["gemini-stt"],
           slotsMissingKeys: ["stt"],
         });
-        ctx.onOpenPopup("stt");
         return;
       }
       const reply = await this.startCaptionGeminiFallback(video, token, pipeline, reason, ctx);
@@ -243,7 +242,6 @@
           missingProviders: ["openai-whisper"],
           slotsMissingKeys: ["stt"],
         });
-        ctx.onOpenPopup("stt");
         return;
       }
       const reply = await this.startCaptionOpenAIFallback(video, token, pipeline, reason, ctx);
@@ -275,7 +273,6 @@
           missingProviders: ["groq-whisper"],
           slotsMissingKeys: ["stt"],
         });
-        ctx.onOpenPopup("stt");
         return;
       }
       const reply = await this.startCaptionGroqFallback(video, token, pipeline, reason, ctx);
@@ -298,7 +295,7 @@
         } catch {}
       }
       if (!settings.sonioxApiKey) {
-        ctx.showToast("Add a Soniox key in the popup marketplace.", 7000);
+        ctx.showToast("Add a Soniox key in Lumeo Settings.", 7000);
         ctx.onStateChange({
           running: true,
           status: "Add Soniox key",
@@ -307,7 +304,6 @@
           missingProviders: ["soniox"],
           slotsMissingKeys: ["stt"],
         });
-        ctx.onOpenPopup("stt");
         return;
       }
       const reply = await this.startCaptionSonioxFallback(video, token, pipeline, reason, ctx);

@@ -1,13 +1,12 @@
 // Lumeo — background service worker.
-// Single source of truth for session state across the popup and content script.
+// Single source of truth for session state across the Options page and the
+// content script.
 //
-// Popup is a passive renderer: it never reads chrome.storage to decide running
-// state. Content script owns the WebRTC PeerConnection lifecycle for the
+// Content script owns the WebRTC PeerConnection lifecycle for the
 // Standard / Realtime dubbing pipelines, and the timedtext fetch loop for the
 // Caption pipeline. Background glues them: ensureContentScript(tabId) makes
-// Start work without a refresh, state.* is the canonical snapshot,
-// BACKGROUND_STATE_UPDATE pushes to popup, CONTENT_UPDATE pushes to the active
-// YT tab.
+// Start work without a refresh, state.* is the canonical snapshot, and
+// CONTENT_UPDATE_* pushes to the active YT tab.
 //
 // Inherits the Echoly v0.2.1 state machine (2026-05-08 baseline) and extends
 // it with Caption-tier scaffolding for the v2.0 merge.
@@ -98,9 +97,6 @@ const state = { ...DEFAULT_SESSION_STATE, ...DEFAULT_SETTINGS };
 // Storage access level left default so Content Scripts on YouTube can read/write
 // persistent user preferences (layout, font size, subtitle styles) and receive onChanged.
 
-let lastBroadcastAt = 0;
-let broadcastTimer = null;
-const BROADCAST_DEBOUNCE_MS = 50;
 let sonioxWs = null;
 let sonioxTabId = null;
 
@@ -192,15 +188,6 @@ function filterContentSettings(partial) {
   return filtered;
 }
 
-// Broadcast state intentionally omits provider keys: runtime broadcasts can
-// reach content scripts, and the popup already has the key values it needs
-// from its own GET_STATE request.
-function stateForBroadcast() {
-  const safe = snapshot();
-  for (const key of SENSITIVE_KEY_FIELDS) delete safe[key];
-  return safe;
-}
-
 globalThis.LumeoBackground = {
   pruneSettingsForContent,
   providerKeyFieldsForSettings,
@@ -208,26 +195,6 @@ globalThis.LumeoBackground = {
   ensureSniffer,
   isYouTubeUrl,
 };
-
-function broadcastToPopup() {
-  const now = Date.now();
-  if (now - lastBroadcastAt < BROADCAST_DEBOUNCE_MS) {
-    if (!broadcastTimer) {
-      broadcastTimer = setTimeout(() => {
-        broadcastTimer = null;
-        lastBroadcastAt = Date.now();
-        browserApi.sendRuntimeMessage({ type: "BACKGROUND_STATE_UPDATE", state: stateForBroadcast() }).catch(() => { });
-      }, BROADCAST_DEBOUNCE_MS);
-    }
-    return;
-  }
-  if (broadcastTimer) {
-    clearTimeout(broadcastTimer);
-    broadcastTimer = null;
-  }
-  lastBroadcastAt = now;
-  browserApi.sendRuntimeMessage({ type: "BACKGROUND_STATE_UPDATE", state: stateForBroadcast() }).catch(() => { });
-}
 
 async function relayToContent(tabId, message, retries = 3) {
   if (!tabId) throw new Error("No active tab to relay to.");
@@ -321,33 +288,10 @@ async function activeYouTubeTab() {
   throw new Error("Open a YouTube video first.");
 }
 
-const CONTENT_SCRIPT_FILES = [
-  "lib/browser-api.js",
-  "lib/platform-adapters.js",
-  "lib/token-guard.js",
-  "lib/audio-utils.js",
-  "ui/overlay.js",
-  "ui/subtitle-overlay.js",
-  "ui/transcript.js",
-  "ui/voice-picker.js",
-  "ui/caption-fallback-choice.js",
-  "services/providers.js",
-  "services/translate.js",
-  "services/srt-export.js",
-  "services/tts-browser.js",
-  "services/tts-openai.js",
-  "services/stt-soniox.js",
-  "services/stt-groq.js",
-  "services/stt-gemini.js",
-  "services/captions.js",
-  "services/kyma-client.js",
-  "pipelines/caption.js",
-  "pipelines/caption-orchestrator.js",
-  "pipelines/realtime.js",
-  "pipelines/standard.js",
-  "services/session-manager.js",
-  "content.js",
-];
+// Injected into tabs that were open before the extension loaded. Read from
+// the manifest so the list and its order exist in one place only.
+const CONTENT_SCRIPT_FILES = (chrome.runtime.getManifest()?.content_scripts || [])
+  .find((entry) => entry.js?.includes("content.js"))?.js || [];
 const EXPECTED_CONTENT_VERSION = chrome.runtime.getManifest()?.version || "2.0.0";
 const CAPTION_CACHE_KEY = "lumeoCaptionCacheV1";
 const SESSION_TAB_KEY = "lumeoSessionTab";
@@ -559,7 +503,6 @@ async function startForTab(settings, explicitTab, attempt) {
   state.missingProviders = [];
   state.slotsMissingKeys = [];
   state.status = "Connecting";
-  broadcastToPopup();
 
   try {
     await ensureContentScript(tab.id);
@@ -579,7 +522,6 @@ async function startForTab(settings, explicitTab, attempt) {
       state.missingProviders = reply?.missingProviders || [];
       state.slotsMissingKeys = reply?.slotsMissingKeys || [];
       state.status = state.errorMessage;
-      broadcastToPopup();
       return {
         ok: false,
         error: state.errorMessage,
@@ -594,7 +536,6 @@ async function startForTab(settings, explicitTab, attempt) {
     state.status = "Translating";
     await saveSessionTab(tab.id);
     if (startAttempt !== attempt) return cancelled;
-    broadcastToPopup();
     return { ok: true, state: snapshot() };
   } catch (err) {
     if (startAttempt !== attempt) return cancelled;
@@ -607,7 +548,6 @@ async function startForTab(settings, explicitTab, attempt) {
     state.missingProviders = err.missingProviders || [];
     state.slotsMissingKeys = err.slotsMissingKeys || [];
     state.status = state.errorMessage;
-    broadcastToPopup();
     return { ok: false, error: state.errorMessage };
   }
 }
@@ -626,7 +566,6 @@ async function handleStop() {
   state.slotsMissingKeys = [];
   state.status = "Stopped";
   const clearSessionTab = saveSessionTab(null);
-  broadcastToPopup();
   if (tabId) {
     try {
       await browserApi.sendTabMessage(tabId, { type: "CONTENT_STOP" });
@@ -647,7 +586,6 @@ async function handleUpdateSettings(settings) {
     state.slotsMissingKeys = [];
     state.status = "Ready";
   }
-  broadcastToPopup();
   if (state.tabId && (state.running || state.connecting)) {
     try {
       await relayToContent(state.tabId, {
@@ -656,7 +594,6 @@ async function handleUpdateSettings(settings) {
       });
     } catch (err) {
       state.errorMessage = err.message || String(err);
-      broadcastToPopup();
     }
   }
   return { ok: true, state: snapshot() };
@@ -695,7 +632,7 @@ function handleContentEvent(message, senderTabId) {
   if (message.type === "UPDATE_SETTINGS" && message.settings && typeof message.settings === "object") {
     const filtered = filterContentSettings(message.settings);
     if (Object.keys(filtered).length) {
-      void persistSettings(filtered).then(() => broadcastToPopup());
+      void persistSettings(filtered);
     }
   }
   if (message.type === "CONTENT_STATE") {
@@ -707,12 +644,6 @@ function handleContentEvent(message, senderTabId) {
     if (typeof message.errorCode === "string") state.errorCode = message.errorCode;
     if (Array.isArray(message.missingProviders)) state.missingProviders = message.missingProviders;
     if (Array.isArray(message.slotsMissingKeys)) state.slotsMissingKeys = message.slotsMissingKeys;
-    broadcastToPopup();
-  }
-  if (message.type === "OPEN_POPUP_TO_SLOT") {
-    browserApi
-      .sendRuntimeMessage({ type: "OPEN_POPUP_TO_SLOT", slot: message.slot || message.provider || "" })
-      .catch(() => { });
   }
   if (message.type === "CONTENT_ENDED") {
     if (senderTabId !== state.tabId) return;
@@ -724,7 +655,6 @@ function handleContentEvent(message, senderTabId) {
     state.tabId = null;
     void saveSessionTab(null);
     state.status = message.reason || "Stopped";
-    broadcastToPopup();
   }
 }
 
@@ -1205,12 +1135,6 @@ function handleRuntimeMessage(message, sender, sendResponse) {
             message.voiceVolume,
           ));
           break;
-        case "OPEN_POPUP_TO_SLOT":
-          browserApi
-            .sendRuntimeMessage({ type: "OPEN_POPUP_TO_SLOT", slot: message.slot || message.provider || "" })
-            .catch(() => { });
-          sendResponse({ ok: true });
-          break;
         default:
           sendResponse({ ok: false, error: "Unknown message: " + message?.type });
       }
@@ -1283,13 +1207,10 @@ void browserApi.native?.storage?.local?.remove?.(Object.keys(DEFAULT_SESSION_STA
 if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "local") {
-      let changed = false;
       for (const [key, change] of Object.entries(changes)) {
         if (!Object.hasOwn(DEFAULT_SETTINGS, key)) continue;
         state[key] = change.newValue === undefined ? DEFAULT_SETTINGS[key] : change.newValue;
-        changed = true;
       }
-      if (changed) broadcastToPopup();
     }
   });
 }
