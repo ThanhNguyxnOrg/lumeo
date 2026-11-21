@@ -209,7 +209,7 @@
     applyVolumes(settings.originalVolume, settings.voiceVolume);
   }
 
-  async function startStandardSession() {
+  async function startStandardSession(fallbackSession = null) {
     if (!settings.kymaKey) {
       return {
         ok: false,
@@ -224,18 +224,19 @@
     if (!video) return { ok: false, error: "No YouTube video on this page." };
     videoEl = video;
 
-    const token = ++pageToken;
+    const token = fallbackSession ? pageToken : ++pageToken;
+    const cancelled = () => token !== pageToken || (fallbackSession && session !== fallbackSession);
     let stream;
     try {
       callbacks.buildOverlay?.();
       callbacks.setStatusText?.("Acquiring audio");
       stream = await audioUtils.captureWithRetry(video);
     } catch (err) {
-      if (token !== pageToken) return { ok: false, error: "Start cancelled." };
-      callbacks.removeOverlay?.();
+      if (cancelled()) return { ok: false, error: "Start cancelled." };
+      if (!fallbackSession) callbacks.removeOverlay?.();
       return { ok: false, error: err.message || "YouTube audio cannot be captured. Click Play on the video, then retry." };
     }
-    if (token !== pageToken) {
+    if (cancelled()) {
       disposeSession({ stream });
       return { ok: false, error: "Start cancelled." };
     }
@@ -243,7 +244,7 @@
     const recorderMime = window.LumeoStandardPipeline.pickRecorderMime(audioUtils);
     if (!recorderMime) {
       stream.getTracks().forEach((t) => t.stop());
-      callbacks.removeOverlay?.();
+      if (!fallbackSession) callbacks.removeOverlay?.();
       return { ok: false, error: "This browser cannot record YouTube audio for Standard Dub. Try Chrome/Edge, then retry." };
     }
 
@@ -253,15 +254,19 @@
       if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
     } catch (err) {
       stream.getTracks().forEach((t) => t.stop());
-      callbacks.removeOverlay?.();
+      if (!fallbackSession) callbacks.removeOverlay?.();
       return { ok: false, error: "AudioContext unavailable: " + err.message };
     }
     const outputGain = audioCtx.createGain();
     outputGain.gain.value = computeGain(settings.voiceVolume ?? 100);
     outputGain.connect(audioCtx.destination);
 
+    if (fallbackSession) {
+      disposeSession(fallbackSession);
+      settings = { ...settings, tier: "standard" };
+    }
     const newSession = {
-      token,
+      token: fallbackSession ? ++pageToken : token,
       type: "standard",
       stream,
       audioCtx,
@@ -353,7 +358,12 @@
       processChunk: (sessionRef, blob) => window.LumeoStandardPipeline.processChunk(sessionRef, blob, standardPipelineContext()),
       chunkMs: window.LumeoStandardPipeline.DEFAULT_CHUNK_MS || 5000,
     });
-    callbacks.emitState?.({ running: true, paused: false, status: "Translating" });
+    callbacks.emitState?.({
+      running: true,
+      paused: false,
+      status: "Translating",
+      ...(fallbackSession && { errorMessage: "", errorCode: "", missingProviders: [], slotsMissingKeys: [] }),
+    });
     return { ok: true };
   }
 
@@ -419,6 +429,7 @@
       }
       videoEl = videoEl || audioUtils?.findVideo();
       const token = ++pageToken;
+      let switchingToStandard = false;
       return window.LumeoCaptionOrchestrator.start({
         getSession: () => session,
         setActivePipeline: (p) => { if (token === pageToken) activeStartingPipeline = p; },
@@ -448,20 +459,22 @@
         onStateChange: (partial) => { callbacks.emitState?.(partial); },
         onUpdateSettings: (newSettings) => { callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: newSettings }); },
         onOpenPopup: (slot) => { callbacks.notifyBackground?.({ type: "OPEN_POPUP_TO_SLOT", slot }); },
-        onSwitchToStandard: async (pipeline) => {
-          callbacks.setCaptionFallbackChoice?.(null);
-          if (session) {
-            disposeSession(session);
-            session = null;
-          } else {
-            pipeline?.stop?.();
-          }
-          settings = { ...settings, tier: "standard" };
-          callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { tier: "standard" } });
-          const reply = await startStandardSession();
-          if (!reply?.ok) {
-            callbacks.showToast?.(reply?.error || "Could not start Standard Dub.", 7000);
-            callbacks.emitState?.({ running: false, status: "Standard error", errorMessage: reply?.error || "Standard error" });
+        onSwitchToStandard: async () => {
+          const fallbackSession = session;
+          if (!fallbackSession?.choiceOnly || switchingToStandard) return;
+          switchingToStandard = true;
+          try {
+            const reply = await startStandardSession(fallbackSession);
+            if (reply?.ok) {
+              callbacks.setCaptionFallbackChoice?.(null);
+              callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { tier: "standard" } });
+            } else if (session === fallbackSession) {
+              callbacks.setStatusText?.("Choose fallback");
+              callbacks.setOverlayState?.("error");
+              callbacks.showToast?.(reply?.error || "Could not start Standard Dub.", 7000);
+            }
+          } finally {
+            switchingToStandard = false;
           }
         },
         setCurrentTexts: (src, tgt) => callbacks.setCurrentTexts?.(src, tgt),
