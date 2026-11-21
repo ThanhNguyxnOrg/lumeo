@@ -574,7 +574,9 @@
     if (!CHIRP3_HD_LOCALES.has(languageCode)) {
       throw new Error(`Google Cloud TTS has no Chirp3-HD voice for ${languageCode}; falling back to browser voice.`);
     }
-    const voiceName = options.voiceName || "Achernar";
+    // The shared voice setting usually holds a browser voice name, which is
+    // not a Chirp3-HD voice; those are single capitalized words.
+    const voiceName = /^[A-Z][a-z]+$/.test(options.voiceName || "") ? options.voiceName : "Achernar";
     const rate = clampRate(options.rate, 0.25, 2.0);
     const cacheKey = [
       languageCode,

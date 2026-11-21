@@ -45,7 +45,7 @@ describe("services/tts-openai.js", () => {
         Authorization: "Bearer openai-key",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model: "tts-1-hd", voice: "nova", input: "hello", format: "mp3", speed: 1.1 }),
+      body: JSON.stringify({ model: "tts-1-hd", voice: "nova", input: "hello", response_format: "mp3", speed: 1.1 }),
     }));
   });
 

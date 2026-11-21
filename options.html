@@ -242,9 +242,8 @@
             <div class="key-sub-options">
               <label for="geminiModel">Model:</label>
               <select id="geminiModel" class="form-select select-compact">
-                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (Recommended, Fast & Lightweight)</option>
-                <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Recommended, Fast & Lightweight)</option>
+                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (existing Gemini 2.5 users only)</option>
               </select>
             </div>
           </div>
@@ -277,6 +276,17 @@
               <input type="password" id="groqApiKey" class="form-input mono" placeholder="gsk_..." autocomplete="off" />
               <button type="button" class="btn-eye" data-target="groqApiKey" title="Toggle visibility">👁</button>
               <button type="button" class="btn-test" data-test="groq">Test</button>
+            </div>
+          </div>
+
+          <div class="key-field">
+            <div class="key-label-row">
+              <label for="sonioxApiKey">Soniox API Key (Live STT when a video has no captions)</label>
+              <a href="https://console.soniox.com" target="_blank" rel="noopener" class="get-key-link">Get Soniox Key ↗</a>
+            </div>
+            <div class="key-input-wrap">
+              <input type="password" id="sonioxApiKey" class="form-input mono" placeholder="Soniox API key..." autocomplete="off" />
+              <button type="button" class="btn-eye" data-target="sonioxApiKey" title="Toggle visibility">👁</button>
             </div>
           </div>
 

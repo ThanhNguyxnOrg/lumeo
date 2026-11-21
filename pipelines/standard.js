@@ -4,6 +4,9 @@
   if (window.LumeoStandardPipeline?.__loaded) return;
 
   const DEFAULT_CHUNK_MS = 5000;
+  // Kyma serves exact model ids only; the Gemini model chosen for direct
+  // Gemini translation is not a Kyma id.
+  const KYMA_TRANSLATE_MODEL = "gemini-3.5-flash-lite";
   const MIN_CHUNK_BYTES = 2000;
   const RECORDER_MIMES = Object.freeze([
     "audio/webm;codecs=opus",
@@ -308,7 +311,7 @@
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: settings.geminiModel || "gemini-2.5-flash",
+          model: KYMA_TRANSLATE_MODEL,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: sourceText },

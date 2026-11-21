@@ -21,6 +21,27 @@
     });
   }
 
+  // The background serves a key only to the provider that is selected, so the
+  // fallback provider has to be selected before its key is requested.
+  async function selectSttProviderKey(settings, providerId, keyName, ctx) {
+    if (settings[keyName]) return true;
+    try {
+      await globalThis.LumeoBrowserApi?.sendRuntimeMessage?.({
+        type: "UPDATE_SETTINGS",
+        settings: { sttProvider: providerId },
+      });
+    } catch {}
+    const key = await requestProviderKey(keyName);
+    if (!key) return false;
+    // The settings update above may have replaced the live settings object.
+    for (const target of [settings, ctx?.getSettings?.()]) {
+      if (!target) continue;
+      target[keyName] = key;
+      target.sttProvider = providerId;
+    }
+    return true;
+  }
+
   const MAX_SPEECH_RATE = 2.0;
   // Speech units per second at 1.0x: words for most languages, syllables for
   // Vietnamese (space-separated), characters for zh/ja.
@@ -127,7 +148,7 @@
           volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
           onSkip: () => ctx.showToast("⚠️ Spoken audio is catching up; oldest line skipped.", 3500),
           onFailover: () => {
-            ctx.showToast("⚠️ Custom voice error. Temporarily fell back to browser speech.", 5000);
+            ctx.showToast("⚠️ Voice provider error. Temporarily fell back to browser speech.", 5000);
           },
         }).catch(() => { });
       }
@@ -191,18 +212,9 @@
 
     async startGeminiChoice(video, token, pipeline, reason, ctx) {
       const settings = ctx.getSettings() || {};
+      await selectSttProviderKey(settings, "gemini-stt", "geminiKey", ctx);
       if (!settings.geminiKey) {
-        try {
-          const key = await requestProviderKey("geminiKey");
-          if (key) {
-            settings.geminiKey = key;
-            settings.sttProvider = "gemini-stt";
-            ctx.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { sttProvider: "gemini-stt" } });
-          }
-        } catch {}
-      }
-      if (!settings.geminiKey) {
-        ctx.showToast("Add a Gemini key in the no-caption fallback card.", 7000);
+        ctx.showToast("Add a Gemini key in Lumeo Settings.", 7000);
         ctx.onStateChange({
           running: true,
           status: "Add Gemini key",
@@ -222,18 +234,9 @@
 
     async startOpenAIChoice(video, token, pipeline, reason, ctx) {
       const settings = ctx.getSettings() || {};
+      await selectSttProviderKey(settings, "openai-whisper", "openaiKey", ctx);
       if (!settings.openaiKey) {
-        try {
-          const key = await requestProviderKey("openaiKey");
-          if (key) {
-            settings.openaiKey = key;
-            settings.sttProvider = "openai-whisper";
-            ctx.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { sttProvider: "openai-whisper" } });
-          }
-        } catch {}
-      }
-      if (!settings.openaiKey) {
-        ctx.showToast("Add an OpenAI key in the no-caption fallback card.", 7000);
+        ctx.showToast("Add an OpenAI key in Lumeo Settings.", 7000);
         ctx.onStateChange({
           running: true,
           status: "Add OpenAI key",
@@ -253,18 +256,9 @@
 
     async startGroqChoice(video, token, pipeline, reason, ctx) {
       const settings = ctx.getSettings() || {};
+      await selectSttProviderKey(settings, "groq-whisper", "groqApiKey", ctx);
       if (!settings.groqApiKey) {
-        try {
-          const key = await requestProviderKey("groqApiKey");
-          if (key) {
-            settings.groqApiKey = key;
-            settings.sttProvider = "groq-whisper";
-            ctx.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { sttProvider: "groq-whisper" } });
-          }
-        } catch {}
-      }
-      if (!settings.groqApiKey) {
-        ctx.showToast("Add a Groq key in the no-caption fallback card.", 7000);
+        ctx.showToast("Add a Groq key in Lumeo Settings.", 7000);
         ctx.onStateChange({
           running: true,
           status: "Add Groq key",
@@ -284,16 +278,7 @@
 
     async startSonioxChoice(video, token, pipeline, reason, ctx) {
       const settings = ctx.getSettings() || {};
-      if (!settings.sonioxApiKey) {
-        try {
-          const key = await requestProviderKey("sonioxApiKey");
-          if (key) {
-            settings.sonioxApiKey = key;
-            settings.sttProvider = "soniox";
-            ctx.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { sttProvider: "soniox" } });
-          }
-        } catch {}
-      }
+      await selectSttProviderKey(settings, "soniox", "sonioxApiKey", ctx);
       if (!settings.sonioxApiKey) {
         ctx.showToast("Add a Soniox key in Lumeo Settings.", 7000);
         ctx.onStateChange({
@@ -484,7 +469,7 @@
         const loop = window.LumeoGeminiSTT.create({
           stream,
           apiKey: settings.geminiKey,
-          model: settings.geminiModel || "gemini-2.5-flash-lite",
+          model: settings.geminiModel,
           language: settings.sourceLanguage || "",
           onText: (result) => {
             void this.appendLiveSttCue(video, pipeline, result?.text || "", ctx);
@@ -1030,7 +1015,7 @@
         isStale: () => tooLate(this.buildCueSpeechPlan(cue, nextCue, settings, planOptions()) || plan),
         onSkip: () => ctx?.showToast?.("⚠️ Spoken audio is catching up; oldest line skipped.", 3500),
         onFailover: () => {
-          ctx?.showToast?.("⚠️ Custom voice error. Temporarily fell back to browser speech.", 5000);
+          ctx?.showToast?.("⚠️ Voice provider error. Temporarily fell back to browser speech.", 5000);
         },
       }).then((ok) => {
         if (ok && session.lastSpokenKey === key) session.finishedSpeechKey = key;

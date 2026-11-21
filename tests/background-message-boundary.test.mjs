@@ -92,6 +92,15 @@ describe("background message boundary", () => {
     expect(unusedKey.error).toMatch(/not in use/i);
   });
 
+  it("serves a fallback STT key once the session tab selects that provider", async () => {
+    await ask({ type: "UPDATE_SETTINGS", settings: { sttProvider: "openai-whisper" } }, YT_TAB_7);
+    await expect(ask({ type: "GET_PROVIDER_KEY", key: "openaiKey" }, YT_TAB_7))
+      .resolves.toEqual({ ok: true, key: "oa-secret" });
+    await ask({ type: "UPDATE_SETTINGS", settings: { sttProvider: "none" } }, YT_TAB_7);
+    await expect(ask({ type: "GET_PROVIDER_KEY", key: "openaiKey" }, YT_TAB_7))
+      .resolves.toMatchObject({ ok: false });
+  });
+
   it("keeps Kyma out of Caption start and serves it only to the owner at the fallback chooser", async () => {
     await ask({ type: "STOP" }, OPTIONS_PAGE);
     chromeMock.__storageData.kymaKey = "kyma-test-key";

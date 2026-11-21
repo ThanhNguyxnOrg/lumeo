@@ -85,6 +85,29 @@
     return Array.from({ length: count }, (_, i) => lines[i] || fallbackTexts[i] || "");
   }
 
+  const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
+  const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+  // Models the provider no longer serves. Settings saved earlier still name
+  // them, so they resolve to the current default.
+  const RETIRED_MODELS = new Set([
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "mixtral-8x7b-32768",
+    "gemma2-9b-it",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
+  ]);
+
+  // Gemini 3 and later deprecate the sampling parameters; only 2.x reads them.
+  function geminiGenerationConfig(model, temperature) {
+    return /^gemini-2\./.test(model) ? { generationConfig: { temperature } } : {};
+  }
+
+  function liveModel(model, fallback) {
+    const id = String(model || "").trim();
+    return id && !RETIRED_MODELS.has(id) ? id : fallback;
+  }
+
   async function requestJSON(url, options = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs || DEFAULT_TIMEOUT_MS);
@@ -327,7 +350,7 @@
       : isOpenRouter
         ? options.openRouterModel || "openrouter/free"
         : isGroq
-          ? options.groqModel || "llama-3.3-70b-versatile"
+          ? liveModel(options.groqModel, DEFAULT_GROQ_MODEL)
           : options.openaiModel || "gpt-4o-mini";
     let url;
     if (isCustomGateway) {
@@ -372,7 +395,7 @@
 
   async function translateGemini(texts, targetLanguage, options) {
     const key = assertKey(options.geminiKey || options.apiKey, "Gemini");
-    const model = options.geminiModel || "gemini-2.5-flash-lite";
+    const model = liveModel(options.geminiModel, DEFAULT_GEMINI_MODEL);
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}` +
       `:generateContent`;
@@ -386,7 +409,7 @@
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: `${system}\n\n${input}` }] }],
-        generationConfig: { temperature: 0.2 },
+        ...geminiGenerationConfig(model, 0.2),
       }),
       signal: options.signal,
     });
@@ -490,18 +513,18 @@
 
     if (provider === PROVIDERS.GEMINI) {
       const key = assertKey(options.geminiKey || options.apiKey, "Gemini");
-      const model = options.geminiModel || "gemini-2.5-flash-lite";
+      const model = liveModel(options.geminiModel, DEFAULT_GEMINI_MODEL);
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
       const data = await requestJSON(url, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": key },
         body: JSON.stringify({
           contents: [{ parts: [{ text: `${system}\n\n${userPrompt}` }] }],
-          generationConfig: { temperature: 0.2 },
+          ...geminiGenerationConfig(model, 0.2),
         }),
         signal: options.signal,
       });
-      const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const raw = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
       return parseExplanation(raw);
     }
 
@@ -524,7 +547,7 @@
         : isOpenRouter
           ? options.openRouterModel || "openrouter/free"
           : isGroq
-            ? options.groqModel || "llama-3.3-70b-versatile"
+            ? liveModel(options.groqModel, DEFAULT_GROQ_MODEL)
             : options.openaiModel || "gpt-4o-mini";
       let url;
       if (isCustomGateway) {
@@ -602,14 +625,14 @@
 
     if (provider === PROVIDERS.GEMINI) {
       const key = assertKey(options.geminiKey || options.apiKey, "Gemini");
-      const model = options.geminiModel || "gemini-2.5-flash-lite";
+      const model = liveModel(options.geminiModel, DEFAULT_GEMINI_MODEL);
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
       const data = await requestJSON(url, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": key },
         body: JSON.stringify({
           contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
-          generationConfig: { temperature: 0.3 },
+          ...geminiGenerationConfig(model, 0.3),
         }),
         signal: options.signal,
       });
@@ -635,7 +658,7 @@
       : isOpenRouter
         ? options.openRouterModel || "openrouter/free"
         : isGroq
-          ? options.groqModel || "llama-3.3-70b-versatile"
+          ? liveModel(options.groqModel, DEFAULT_GROQ_MODEL)
           : options.openaiModel || "gpt-4o-mini";
 
     let url;

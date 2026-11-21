@@ -55,7 +55,7 @@
             model: options.model || DEFAULT_MODEL,
             voice,
             input: clean,
-            format,
+            response_format: format,
             speed,
           }),
           signal: options.signal,

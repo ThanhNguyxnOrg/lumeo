@@ -28,11 +28,11 @@ const DEFAULT_SETTINGS = {
   openaiKey: "",
   openaiModel: "gpt-4o-mini",
   geminiKey: "",
-  geminiModel: "gemini-2.5-flash-lite",
+  geminiModel: "gemini-3.5-flash-lite",
   openRouterKey: "",
   openRouterModel: "openrouter/free",
   groqApiKey: "",
-  groqModel: "llama-3.3-70b-versatile",
+  groqModel: "openai/gpt-oss-120b",
   // Reserved provider fields stay in settings so Options/storage migrations do
   // not churn while the corresponding registry entries remain coming-soon.
   huggingFaceToken: "",

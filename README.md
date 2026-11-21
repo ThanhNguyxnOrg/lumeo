@@ -41,7 +41,7 @@ No account required. No telemetry. No Lumeo-operated server. Your API keys stay 
 | Tier | How it works | Latency | Cost |
 |------|-------------|---------|------|
 | **Caption** | Translates YouTube's existing subtitles into 100+ languages. Shows a bilingual in-video overlay with optional TTS read-aloud. Falls back to Groq Whisper or Soniox STT when no captions exist. | Instant | Free (Google Translate default) |
-| **Standard** | Captures audio → Kyma Whisper v3 Turbo → Gemini 2.5 Flash → MiniMax Speech Turbo. Full multilingual dub over the original audio. | ~5 seconds | ~$0.25 / 10 min |
+| **Standard** | Captures audio → Kyma Whisper v3 Turbo → Gemini 3.5 Flash-Lite → MiniMax Speech Turbo. Full multilingual dub over the original audio. | ~5 seconds | ~$0.25 / 10 min |
 | **Realtime** | Captures audio → WebRTC P2P with OpenAI Realtime via Kyma. Sub-second dubbing with selectable voices. | <1 second | ~$0.46 / 10 min |
 
 ### 🌍 Language Support

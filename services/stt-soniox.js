@@ -55,11 +55,24 @@
 
     active = true;
     emit("status", "Connecting to Soniox");
-    chrome.runtime.sendMessage({
-      action: "startSonioxWs",
-      apiKey,
-      langHints: options.langHints || detectLangHints(),
+    // The background owns the key and the socket; it can refuse to start.
+    const reply = await new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage({
+          action: "startSonioxWs",
+          langHints: options.langHints || detectLangHints(),
+        }, (res) => {
+          void chrome.runtime.lastError;
+          resolve(res);
+        });
+      } catch (err) {
+        resolve({ ok: false, error: err?.message || String(err) });
+      }
     });
+    if (!reply?.ok) {
+      stop();
+      throw new Error(reply?.error || "Could not connect to Soniox.");
+    }
 
     audioCtx = new AudioContext({ sampleRate: 16000 });
     source = audioCtx.createMediaStreamSource(stream);

@@ -47,6 +47,21 @@ describe("services/stt-gemini.js", () => {
     expect(result.text).toBe("Hello world from Gemini audio transcript!");
   });
 
+  it("uses the current default model, joins every part, and omits sampling parameters", async () => {
+    window.fetch = vi.fn(async (url, init) => {
+      expect(url).toContain("/models/gemini-3.5-flash-lite:generateContent");
+      expect(JSON.parse(init.body).generationConfig).toBeUndefined();
+      return {
+        ok: true,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: "Hello " }, { text: "world" }] } }] }),
+      };
+    });
+
+    const result = await api.transcribeBlob(new window.Blob(["wav"]), { apiKey: "k", model: "gemini-1.5-flash" });
+
+    expect(result.text).toBe("Hello world");
+  });
+
   it("throws clear error on Gemini API failure", async () => {
     window.fetch = vi.fn(async () => ({
       ok: false,
