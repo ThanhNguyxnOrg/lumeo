@@ -434,17 +434,22 @@
         showToast: (txt, o, d) => callbacks.showToast?.(txt, o, d),
         setTargetCue: (cue) => callbacks.setTargetCue?.(cue),
         setTargetText: (txt) => callbacks.setTargetText?.(txt),
+        setCaptionFallbackChoice: (choice) => callbacks.setCaptionFallbackChoice?.(choice),
         applySourceVisibility: () => callbacks.applySourceVisibility?.(),
         removeOverlay: () => callbacks.removeOverlay?.(),
         buildOverlay: () => callbacks.buildOverlay?.(),
         captureWithRetry: audioUtils?.captureWithRetry,
         readYTCaptions: window.LumeoCaptions?.readYTCaptions || (() => ""),
-        onSessionCreated: (newSession) => { session = newSession; },
+        onSessionCreated: (newSession) => {
+          session = newSession;
+          if (!newSession?.choiceOnly) callbacks.setCaptionFallbackChoice?.(null);
+        },
         onSessionEnded: (reason, msg) => { stopSession(reason); callbacks.emitEnded?.(msg || reason); },
         onStateChange: (partial) => { callbacks.emitState?.(partial); },
         onUpdateSettings: (newSettings) => { callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: newSettings }); },
         onOpenPopup: (slot) => { callbacks.notifyBackground?.({ type: "OPEN_POPUP_TO_SLOT", slot }); },
         onSwitchToStandard: async (pipeline) => {
+          callbacks.setCaptionFallbackChoice?.(null);
           if (session) {
             disposeSession(session);
             session = null;

@@ -871,6 +871,7 @@
 
   function clearSessionUI() {
     subtitleOverlay?.remove();
+    overlayController?.setCaptionFallbackChoice(null);
     overlayController?.setSessionState?.({ isTranslating: false, isLoading: false, statusText: "" });
     currentTargetText = "";
     currentSourceText = "";
@@ -922,6 +923,7 @@
     setTargetText,
     buildOverlay,
     removeOverlay,
+    setCaptionFallbackChoice: (choice) => overlayController?.setCaptionFallbackChoice(choice),
     applyTierToolbar,
     applySourceVisibility,
     startCaptionPoll,

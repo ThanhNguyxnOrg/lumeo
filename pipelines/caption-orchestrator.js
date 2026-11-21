@@ -143,8 +143,6 @@
 
       const elements = ctx.getElements();
       if (elements.history) elements.history.hidden = true;
-      if (!elements.target) return;
-      elements.target.textContent = "";
 
       const wrap = window.LumeoCaptionFallbackChoice.create({
         reason,
@@ -168,7 +166,7 @@
         onRetry: () => this.retryCaptionChoice(pipeline, ctx),
         onCancel: () => ctx.onSessionEnded("caption-fallback-cancel", "Caption fallback cancelled."),
       });
-      elements.target.appendChild(wrap);
+      ctx.setCaptionFallbackChoice(wrap);
 
       ctx.onStateChange({
         running: true,

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { createSandboxWindow, loadService } from "./helpers/load-service.mjs";
 
 it("resets the in-player controls when the background stops a recovered caption session", async () => {
@@ -40,6 +41,55 @@ it("resets the in-player controls when the background stops a recovered caption 
     expect(toggle.getAttribute("aria-label")).toBe("Start Translation");
     expect(badge.style.display).toBe("none");
     expect(badge.textContent).toBe("");
+  } finally {
+    window.close();
+  }
+});
+
+it("opens a visible, scrollable fallback chooser in the player and removes it on Cancel", async () => {
+  const { window } = await createSandboxWindow();
+  try {
+    const { document } = window;
+    document.body.innerHTML = '<div id="movie_player"><video class="html5-main-video"></video></div>';
+    const style = document.createElement("style");
+    style.textContent = readFileSync("content.css", "utf8");
+    document.head.appendChild(style);
+    let listener;
+    window.LumeoBrowserApi = {
+      sendRuntimeMessage: vi.fn(async () => ({ ok: true })),
+      addRuntimeMessageListener: (fn) => { listener = fn; },
+      supportsChromeLiveCaption: () => true,
+    };
+    for (const file of ["lib/audio-utils.js", "ui/overlay.js", "ui/caption-fallback-choice.js",
+      "pipelines/caption-orchestrator.js", "services/session-manager.js", "content.js"]) {
+      loadService(file, window);
+    }
+    const orchestrator = window.LumeoCaptionOrchestrator;
+    orchestrator.start = async (ctx) => {
+      orchestrator.renderCaptionFallbackChoice(ctx.getVideo(), ctx.getPageToken(), {}, "No track", {}, ctx);
+      return { ok: true };
+    };
+    const send = (msg) => new Promise((resolve) => listener(msg, {}, resolve));
+    await send({ type: "TOGGLE_OVERLAY" });
+    await send({ type: "TOGGLE_OVERLAY" });
+    const root = document.querySelector(".ec-root");
+    expect(window.getComputedStyle(root).display).toBe("none");
+
+    await expect(send({ type: "CONTENT_START", settings: { tier: "caption" } })).resolves.toEqual({ ok: true });
+    const host = root.querySelector("[data-lumeo-caption-fallback]");
+    const chooser = root.querySelector(".ec-choice");
+    expect(chooser.parentElement).toBe(host);
+    expect(host.closest(".ytp-lumeo-popover")).not.toBeNull();
+    expect(host.closest(".ec-body")).toBeNull();
+    expect(window.getComputedStyle(host.closest(".ytp-lumeo-body")).overflowY).toBe("auto");
+    for (let parent = chooser; parent; parent = parent.parentElement) {
+      expect(window.getComputedStyle(parent).display).not.toBe("none");
+    }
+
+    const cancel = [...chooser.querySelectorAll("button")].find((button) => button.textContent === "Cancel");
+    cancel.click();
+    expect(host.hidden).toBe(true);
+    expect(host.childElementCount).toBe(0);
   } finally {
     window.close();
   }
