@@ -21,6 +21,16 @@
     });
   }
 
+  const MAX_SPEECH_RATE = 2.0;
+  // Speech units per second at 1.0x: words for most languages, syllables for
+  // Vietnamese (space-separated), characters for zh/ja.
+  const NATURAL_PACE = { default: 2.8, vi: 4.0, zh: 5.5, ja: 6.5 };
+  const BAKED_RATE_PROVIDERS = new Set(["google-cloud", "openai-tts", "openai"]);
+  const MAX_LEAD_SECONDS = 0.4;
+  const LATE_START_SECONDS = 0.4;
+  const STALE_GAP_SECONDS = 1.5;
+  const CAPTION_TICK_MS = 80;
+
   window.LumeoCaptionOrchestrator = {
     missingCaptionDependencies() {
       const required = [
@@ -723,92 +733,142 @@
       return { ok: true };
     },
 
-    fitRateForCue({ text = "", targetLanguage = "en", duration = 3.0, playbackRate = 1 } = {}) {
+    // Speech units are what a voice spends time on: characters for zh/ja,
+    // segmented words for Thai, whitespace tokens elsewhere.
+    countSpeechUnits(text = "", targetLanguage = "en") {
       const clean = String(text || "").trim();
+      if (!clean) return 0;
       const lang = String(targetLanguage || "en").split("-")[0].toLowerCase();
-      const isCjkCharLang = lang === "zh" || lang === "ja";
-      const isThai = lang === "th";
-      let tokenCount = 0;
-      if (clean) {
-        if (isCjkCharLang) {
-          tokenCount = clean.replace(/\s+/g, "").length;
-        } else if (isThai) {
-          try {
-            if (typeof Intl !== "undefined" && Intl.Segmenter) {
-              tokenCount = [...new Intl.Segmenter("th", { granularity: "word" }).segment(clean)].filter((s) => s.isWordLike).length || Math.ceil(clean.replace(/\s+/g, "").length / 3.5);
-            } else {
-              tokenCount = Math.ceil(clean.replace(/\s+/g, "").length / 3.5);
-            }
-          } catch {
-            tokenCount = Math.ceil(clean.replace(/\s+/g, "").length / 3.5);
+      if (lang === "zh" || lang === "ja") return clean.replace(/\s+/g, "").length;
+      if (lang === "th") {
+        const approx = Math.ceil(clean.replace(/\s+/g, "").length / 3.5);
+        try {
+          if (typeof Intl !== "undefined" && Intl.Segmenter) {
+            return [...new Intl.Segmenter("th", { granularity: "word" }).segment(clean)]
+              .filter((s) => s.isWordLike).length || approx;
           }
-        } else {
-          tokenCount = clean.split(/\s+/).length;
-        }
+        } catch {}
+        return approx;
       }
+      return clean.split(/\s+/).length;
+    },
+
+    // Units per second a voice speaks at 1.0x. The table is only the starting
+    // guess: once the active voice has spoken a few lines, its measured pace
+    // replaces it (kept within a sane band of the default).
+    speechPace(targetLanguage = "en", measured = null) {
+      const lang = String(targetLanguage || "en").split("-")[0].toLowerCase();
+      const base = NATURAL_PACE[lang] || NATURAL_PACE.default;
+      const value = Number(measured);
+      if (!Number.isFinite(value) || value <= 0) return base;
+      return Math.min(base * 1.8, Math.max(base * 0.55, value));
+    },
+
+    estimateSpeechSeconds({ text = "", targetLanguage = "en", pace = null } = {}) {
+      const units = this.countSpeechUnits(text, targetLanguage);
+      return units > 0 ? units / this.speechPace(targetLanguage, pace) : 0;
+    },
+
+    // Rate at which a line ends exactly when its slot does. `duration` is in
+    // video seconds, so a faster video leaves less real time to speak.
+    fitRateForCue({ text = "", targetLanguage = "en", duration = 3.0, playbackRate = 1, pace = null } = {}) {
+      const needed = this.estimateSpeechSeconds({ text, targetLanguage, pace });
       const rate = Number(playbackRate) || 1;
       const available = Number(duration) > 0 ? Number(duration) / rate : 3.0;
-      const trigger = lang === "ja" ? 6.5 : lang === "zh" ? 5.5 : 2.8;
-      if (!(tokenCount > 0 && available > 0)) return 1.0;
-      const tokensPerSec = tokenCount / available;
-      if (tokensPerSec > trigger) {
-        return Math.min(1.6, 1.0 + (tokensPerSec - trigger) * 0.12);
-      }
-      if (tokensPerSec < trigger * 0.7 && available > 1.0) {
-        return Math.max(0.9, 1.0 - (trigger * 0.7 - tokensPerSec) * 0.05);
-      }
-      return 1.0;
+      if (!(needed > 0 && available > 0)) return 1.0;
+      return this.rateForRemaining(needed, available);
     },
 
-    // How much extra speed the voice needs to catch a cue that has already
-    // been on screen for `lagSeconds`. Capped at the product ceiling (2.0x).
-    catchUpRateForLag(lagSeconds) {
-      const lag = Number(lagSeconds);
-      if (!Number.isFinite(lag) || lag <= 0) return 1.0;
-      return Math.min(2.0, 1.0 + lag * 0.25);
+    // Never slower than natural speech, never faster than the product ceiling.
+    rateForRemaining(neededSeconds, remainingSeconds) {
+      const needed = Number(neededSeconds);
+      const remaining = Number(remainingSeconds);
+      if (!(needed > 0)) return 1.0;
+      if (!(remaining > 0)) return MAX_SPEECH_RATE;
+      return Math.min(MAX_SPEECH_RATE, Math.max(1.0, needed / remaining));
     },
 
-    // A cue is stale once the video has moved past its display window plus a
-    // short grace period. Skipping stale queued cues is what keeps the voice
-    // from drifting minutes behind the subtitles.
-    isCueStale(mediaNow, cue, graceSeconds = 0.25) {
+    // Where a cue's speech slot ends, in video time. A line may use the
+    // natural gap until the next cue starts, not only its own display window.
+    cueSlotEnd(cue, nextCue) {
+      const start = Number(cue?.start) || 0;
+      const nextStart = Number(nextCue?.start);
+      const cueEnd = Number(cue?.end);
+      if (Number.isFinite(nextStart) && nextStart > start) return nextStart;
+      return Number.isFinite(cueEnd) && cueEnd > start ? cueEnd : start + 3.0;
+    },
+
+    // A cue is stale once the video has moved past the point where the next
+    // subtitle replaces it (plus a short grace period). Skipping stale cues is
+    // what keeps the voice from drifting behind the subtitles.
+    isCueStale(mediaNow, cue, graceSeconds = 0.25, nextCue = null) {
       const now = Number(mediaNow);
       if (!Number.isFinite(now)) return false;
       const start = Number(cue?.start) || 0;
-      const end = cue?.end != null && Number(cue.end) > start ? Number(cue.end) : start + 3.0;
+      let end = cue?.end != null && Number(cue.end) > start ? Number(cue.end) : start + 3.0;
+      const nextStart = Number(nextCue?.start);
+      if (Number.isFinite(nextStart) && nextStart > start) {
+        // Overlapping auto-caption cues end when the next one starts; a real
+        // gap may be borrowed, but only briefly.
+        end = Math.min(nextStart, end + STALE_GAP_SECONDS);
+      }
       return now > end + (Number(graceSeconds) || 0);
     },
 
-    // Auto mode adapts to the line and the lag; manual mode is a fixed user
-    // speed (the old numeric `ttsRate` migrates to manual). Both clamp to the
-    // 0.5-2.0 product band.
-    resolveSpeechRate({ calculatedRate = 1, catchUpRate = 1, settings = {} } = {}) {
-      const legacy = Number(settings.ttsRate);
-      const isManual = settings.ttsSpeedMode === "manual"
-        || (!settings.ttsSpeedMode && Number.isFinite(legacy) && legacy > 0);
-      if (isManual) {
-        const manual = Number(settings.ttsSpeed) > 0 ? Number(settings.ttsSpeed) : legacy;
-        return Math.min(2.0, Math.max(0.5, Number.isFinite(manual) && manual > 0 ? manual : 1));
-      }
-      const desired = Math.max(Number(calculatedRate) || 1, Number(catchUpRate) || 1);
-      return Math.min(2.0, Math.max(0.5, desired));
+    // A line that starts late and could not get even a third of itself out
+    // before its slot ends is dropped: speaking it would only push the next
+    // line late as well.
+    cannotFitLateCue({ lagSeconds = 0, neededSeconds = 0, remainingSeconds = 0 } = {}) {
+      if (!(Number(lagSeconds) > LATE_START_SECONDS)) return false;
+      return Number(remainingSeconds) * MAX_SPEECH_RATE < Number(neededSeconds) * 0.35;
     },
 
-    // Pick the rate for a cue that is starting now. Providers that bake the
-    // speaking rate into the generated clip (Google, OpenAI) can only hit their
-    // prefetched cache if playback uses the exact same rate; while the line is
-    // still on time, reuse the prefetched plan instead of recomputing a
-    // slightly higher catch-up rate.
-    selectCuePlaybackPlan({ plan, prefetchedPlan, mediaNow = 0, cue = null, provider = "" } = {}) {
-      const bakedRate = provider === "google-cloud"
-        || provider === "openai-tts"
-        || provider === "openai";
-      const lag = Math.max(0, Number(mediaNow) - (Number(cue?.start) || 0));
-      const reusePrefetched = !!(bakedRate && prefetchedPlan && lag <= 1.0);
+    isManualSpeed(settings = {}) {
+      const legacy = Number(settings.ttsRate);
+      return settings.ttsSpeedMode === "manual"
+        || (!settings.ttsSpeedMode && Number.isFinite(legacy) && legacy > 0);
+    },
+
+    // Auto mode adapts to the line and the time left; manual mode is a fixed
+    // user speed (the old numeric `ttsRate` migrates to manual). Both clamp to
+    // the 0.5-2.0 product band.
+    resolveSpeechRate({ calculatedRate = 1, settings = {} } = {}) {
+      if (this.isManualSpeed(settings)) {
+        const legacy = Number(settings.ttsRate);
+        const manual = Number(settings.ttsSpeed) > 0 ? Number(settings.ttsSpeed) : legacy;
+        return Math.min(MAX_SPEECH_RATE, Math.max(0.5, Number.isFinite(manual) && manual > 0 ? manual : 1));
+      }
+      return Math.min(MAX_SPEECH_RATE, Math.max(1.0, Number(calculatedRate) || 1));
+    },
+
+    // Providers that bake the speaking rate into the generated clip (Google,
+    // OpenAI) only hit their prefetched cache if playback asks for the exact
+    // same rate. The clip player closes any remaining gap with playbackRate,
+    // so a prefetched clip is always reused instead of synthesized again.
+    selectCuePlaybackPlan({ plan, prefetchedPlan, provider = "" } = {}) {
+      const reusePrefetched = !!(BAKED_RATE_PROVIDERS.has(provider) && prefetchedPlan);
       return {
         rate: reusePrefetched ? prefetchedPlan.rate : plan?.rate,
         reusePrefetched,
       };
+    },
+
+    // Identifies the voice whose pace and start latency are being measured.
+    speechVoiceKey(settings = {}) {
+      return [
+        settings.captionTtsProvider || "browser",
+        settings.targetLanguage || "en",
+        settings.standardVoice || settings.customTtsVoiceId || "",
+      ].join("|");
+    },
+
+    // How early (real seconds) to ask for a line so it is heard on the cue
+    // boundary. Measured per voice; capped so a bad sample cannot make the
+    // voice run ahead of the subtitle.
+    speechLeadSeconds(settings = {}) {
+      const latency = Number(window.LumeoTTS?.getStartLatency?.(this.speechVoiceKey(settings)));
+      if (!Number.isFinite(latency) || latency <= 0) return 0;
+      return Math.min(MAX_LEAD_SECONDS, latency);
     },
 
     // Stable key for the prefetched plan of one cue. Start time + text means a
@@ -820,29 +880,39 @@
       ].join("\u0001");
     },
 
-    // Build the rate/slot plan for one cue. Prefetch and playback call this
-    // with the same arguments, so the cached TTS clip matches the rate used
-    // when the cue starts.
-    buildCueSpeechPlan(cue, nextCue, settings = {}, { videoNow = 0, videoRate = 1, includeCatchUp = true } = {}) {
+    // Build the rate/slot plan for one cue. Prefetch calls this for the whole
+    // slot (`fromNow: false`); playback calls it for the time actually left.
+    buildCueSpeechPlan(cue, nextCue, settings = {}, { videoNow = 0, videoRate = 1, fromNow = true, leadSeconds = 0 } = {}) {
       const text = String(cue?.translated || cue?.text || "").trim();
       if (!text) return null;
+      const targetLanguage = settings.targetLanguage || "en";
       const start = Number(cue?.start) || 0;
-      const nextStart = Number(nextCue?.start);
-      const cueEnd = Number(cue?.end);
-      const slotEnd = Number.isFinite(nextStart) && nextStart > start
-        ? nextStart
-        : (Number.isFinite(cueEnd) && cueEnd > start ? cueEnd : start + 3.0);
+      const slotEnd = this.cueSlotEnd(cue, nextCue);
       const duration = Math.max(0.5, slotEnd - start);
-      const calculatedRate = this.fitRateForCue({
+      const rate = Number(videoRate) || 1;
+      const pace = window.LumeoTTS?.getPace?.(this.speechVoiceKey(settings)) ?? null;
+      const units = this.countSpeechUnits(text, targetLanguage);
+      const neededSeconds = this.estimateSpeechSeconds({ text, targetLanguage, pace });
+      // Asked for early, a line still starts on its cue; asked for late, it
+      // starts one start-latency from now.
+      const fullSlot = (slotEnd - start) / rate;
+      const remainingSeconds = fromNow
+        ? Math.min(fullSlot, (slotEnd - (Number(videoNow) || 0)) / rate - (Number(leadSeconds) || 0))
+        : fullSlot;
+      const lagSeconds = Math.max(0, (Number(videoNow) || 0) - start) / rate;
+      return {
         text,
-        targetLanguage: settings.targetLanguage || "en",
+        units,
+        slotEnd,
         duration,
-        playbackRate: videoRate || 1,
-      });
-      const lag = Math.max(0, Number(videoNow) - start);
-      const catchUpRate = includeCatchUp ? this.catchUpRateForLag(lag) : 1;
-      const rate = this.resolveSpeechRate({ calculatedRate, catchUpRate, settings });
-      return { text, duration, calculatedRate, catchUpRate, rate };
+        neededSeconds,
+        remainingSeconds,
+        lagSeconds,
+        rate: this.resolveSpeechRate({
+          calculatedRate: this.rateForRemaining(neededSeconds, Math.max(0.5 / rate, remainingSeconds)),
+          settings,
+        }),
+      };
     },
 
     // Pre-synthesize a future cue for network TTS providers. This removes the
@@ -851,17 +921,18 @@
     prefetchCueSpeech(cue, nextCue, settings = {}, video = null, ctx = null, session = null) {
       const provider = settings.captionTtsProvider;
       if (!cue?.translated || !provider || provider === "off" || provider === "browser") return false;
-      const videoNow = Number(video?.currentTime) || 0;
-      const videoRate = Number(video?.playbackRate) || 1;
-      const plan = this.buildCueSpeechPlan(cue, nextCue, settings, {
-        videoNow,
-        videoRate,
-        includeCatchUp: false,
-      });
-      if (!plan) return false;
       const plans = session?.prefetchedTtsPlans
         || (session ? (session.prefetchedTtsPlans = new Map()) : null);
-      const cueKey = this.cueSpeechKey(cue, plan.text);
+      const cueKey = this.cueSpeechKey(cue, cue.translated);
+      // One plan per line. The measured pace moves a little after every clip;
+      // re-planning would re-synthesize (and bill) the same line at a new rate.
+      if (plans?.has(cueKey)) return false;
+      const plan = this.buildCueSpeechPlan(cue, nextCue, settings, {
+        videoNow: Number(video?.currentTime) || 0,
+        videoRate: Number(video?.playbackRate) || 1,
+        fromNow: false,
+      });
+      if (!plan) return false;
       plans?.set(cueKey, plan);
       const key = [
         provider,
@@ -886,6 +957,80 @@
         voiceName: settings.standardVoice,
       });
       Promise.resolve(pending).catch(() => {});
+      return true;
+    },
+
+    // Speak the line that is due. Runs on every tick; the cue is looked up a
+    // little ahead of the video (the voice's measured start latency) so the
+    // sound lands on the cue boundary instead of after it.
+    speakDueCue({ pipeline, video, settings = {}, session, ctx } = {}) {
+      const provider = settings.captionTtsProvider;
+      if (!provider || provider === "off" || !pipeline || !session) return false;
+      const mediaNow = Number(video?.currentTime) || 0;
+      const videoRate = Number(video?.playbackRate) || 1;
+      const leadSeconds = this.speechLeadSeconds(settings);
+      const due = pipeline.cueAt(mediaNow + leadSeconds * videoRate);
+      const cue = due?.cue;
+      // Untranslated and failed-translation lines hold source-language text,
+      // which the target-language voice would mispronounce. They are retried
+      // on the next tick, so a late translation is still spoken.
+      const text = String(cue?.translated || "").trim();
+      if (!cue || !text || cue.__fallback) return false;
+      const key = this.cueSpeechKey(cue, text);
+      if (key === session.lastSpokenKey) return false;
+      session.lastSpokenKey = key;
+
+      const nextCue = pipeline.cues?.[due.index + 1];
+      const planOptions = () => ({
+        videoNow: Number(video?.currentTime) || 0,
+        videoRate: Number(video?.playbackRate) || 1,
+        leadSeconds,
+      });
+      const plan = this.buildCueSpeechPlan(cue, nextCue, settings, planOptions());
+      if (!plan) return false;
+      const manual = this.isManualSpeed(settings);
+      const tooLate = (livePlan) => this.isCueStale(Number(video?.currentTime) || 0, cue, 0.25, nextCue)
+        || (!manual && this.cannotFitLateCue(livePlan));
+      if (tooLate(plan)) return false;
+
+      const prefetchedPlan = session.prefetchedTtsPlans?.get(key);
+      const { rate, reusePrefetched } = this.selectCuePlaybackPlan({ plan, prefetchedPlan, provider });
+      const voiceKey = this.speechVoiceKey(settings);
+
+      pipeline.speakCue(cue, {
+        provider,
+        targetLanguage: settings.targetLanguage || "en",
+        googleCloudKey: settings.googleCloudKey,
+        openaiKey: settings.openaiKey,
+        openaiVoice: settings.openaiVoice,
+        customTtsBaseUrl: settings.customTtsBaseUrl,
+        customTtsVoiceId: settings.customTtsVoiceId,
+        customTtsApiKey: settings.customTtsApiKey,
+        customTtsModelId: settings.customTtsModelId,
+        voiceName: settings.standardVoice,
+        rate,
+        // If the line waited behind the previous one, refit it to the time
+        // that is left when the queue actually starts it.
+        getRate: reusePrefetched
+          ? undefined
+          : () => this.buildCueSpeechPlan(cue, nextCue, settings, planOptions())?.rate,
+        // Network clips report their real length, so the player can fit them
+        // to the slot exactly instead of relying on the estimate above.
+        getSlotSeconds: manual
+          ? undefined
+          : () => this.buildCueSpeechPlan(cue, nextCue, settings, { ...planOptions(), leadSeconds: 0 })?.remainingSeconds,
+        speechUnits: plan.units,
+        paceKey: voiceKey,
+        latencyKey: voiceKey,
+        volume: Math.min((settings.voiceVolume ?? 100) / 100, 1),
+        isStale: () => tooLate(this.buildCueSpeechPlan(cue, nextCue, settings, planOptions()) || plan),
+        onSkip: () => ctx?.showToast?.("⚠️ Spoken audio is catching up; oldest line skipped.", 3500),
+        onFailover: () => {
+          ctx?.showToast?.("⚠️ Custom voice error. Temporarily fell back to browser speech.", 5000);
+        },
+      }).then((ok) => {
+        if (ok && session.lastSpokenKey === key) session.finishedSpeechKey = key;
+      }).catch(() => { });
       return true;
     },
 
@@ -1024,8 +1169,8 @@
         if (video.paused) return;
         const liveSettings = ctx.getSettings() || settings;
         const orchestrator = window.LumeoCaptionOrchestrator;
-        const current = pipeline.cueAt(video.currentTime);
         const mediaNow = Number(video?.currentTime) || 0;
+        const current = pipeline.cueAt(mediaNow);
 
         // While the current line is on screen, synthesize the next one or two
         // lines. Network TTS then starts on the cue boundary instead of after a
@@ -1046,7 +1191,15 @@
           }
         }
 
-        if (current.index === currentSession.lastCueIndex) return;
+        orchestrator.speakDueCue({ pipeline, video, settings: liveSettings, session: currentSession, ctx });
+
+        // Keyed on the text as well as the index: a translation that lands
+        // while its line is already on screen must replace the source text.
+        const displayKey = current.cue
+          ? `${current.index}\u0001${current.cue.translated || ""}`
+          : "";
+        if (displayKey === currentSession.lastCueKey) return;
+        currentSession.lastCueKey = displayKey;
         currentSession.lastCueIndex = current.index;
 
         if (!current.cue) {
@@ -1066,81 +1219,23 @@
           elements.source.textContent = sourceText.slice(-260);
         }
         ctx.getTranscriptController()?.updateCaptionTranscriptHighlight(current.index);
-
-        if (liveSettings.captionTtsProvider && liveSettings.captionTtsProvider !== "off") {
-          const cue = current.cue;
-
-          // The previous line is allowed to finish, but do not start a line the
-          // video has already moved past: that is how audio and subtitles drift
-          // apart. Drop it and let the queue catch up to the current cue.
-          if (orchestrator.isCueStale(mediaNow, cue)) {
-            ctx.showToast("⚠️ Spoken audio caught up by skipping a past line.", 2500);
-            return;
-          }
-
-          // Slot widening: a line may use the natural gap until the next cue
-          // starts, not only its own display window. This avoids unnecessary
-          // speed-ups and keeps more lines at a natural pace.
-          const nextCue = pipeline.cues?.[current.index + 1];
-          const plan = orchestrator.buildCueSpeechPlan(cue, nextCue, liveSettings, {
-            videoNow: mediaNow,
-            videoRate: Number(video?.playbackRate) || 1,
-          });
-          if (!plan) return;
-
-          // Google/OpenAI bake the speaking rate into the audio blob, and the
-          // blob is cached by that rate. When the line starts on time, reuse
-          // the exact rate its prefetched clip was synthesized with so playback
-          // does not trigger a second network request. Custom voice applies the
-          // rate at playback time, so it can keep adapting from the queue.
-          const provider = liveSettings.captionTtsProvider;
-          const prefetchedPlan = currentSession.prefetchedTtsPlans?.get(
-            orchestrator.cueSpeechKey(cue, plan.text)
-          );
-          const startAt = Number(cue.start) || 0;
-          const { rate: effectiveRate, reusePrefetched } = orchestrator.selectCuePlaybackPlan({
-            plan,
-            prefetchedPlan,
-            mediaNow,
-            cue,
-            provider,
-          });
-
-          pipeline.speakCue(cue, {
-            provider,
-            targetLanguage: liveSettings.targetLanguage || "en",
-            googleCloudKey: liveSettings.googleCloudKey,
-            openaiKey: liveSettings.openaiKey,
-            customTtsBaseUrl: liveSettings.customTtsBaseUrl,
-            customTtsVoiceId: liveSettings.customTtsVoiceId,
-            customTtsApiKey: liveSettings.customTtsApiKey,
-            customTtsModelId: liveSettings.customTtsModelId,
-            voiceName: liveSettings.standardVoice,
-            rate: effectiveRate,
-            // If the line waited behind the previous one, recompute the rate
-            // at the moment the queue actually starts it.
-            getRate: reusePrefetched ? undefined : () => orchestrator.resolveSpeechRate({
-              calculatedRate: plan.calculatedRate,
-              catchUpRate: orchestrator.catchUpRateForLag(
-                (Number(video?.currentTime) || 0) - startAt
-              ),
-              settings: liveSettings,
-            }),
-            volume: Math.min((liveSettings.voiceVolume ?? 100) / 100, 1),
-            isStale: () => orchestrator.isCueStale(Number(video?.currentTime) || 0, cue),
-            onSkip: () => ctx.showToast("⚠️ Spoken audio is catching up; oldest line skipped.", 3500),
-            onFailover: () => {
-              ctx.showToast("⚠️ Custom voice error. Temporarily fell back to browser speech.", 5000);
-            },
-          }).catch(() => { });
-        }
       };
 
-      session.captionTimer = setInterval(tick, 120);
+      session.captionTimer = setInterval(tick, CAPTION_TICK_MS);
       tick();
 
-      ctx.setYTPauseHandler(() => {
+      const resetSpeech = () => {
         window.LumeoTTS?.stop?.();
+        const currentSession = ctx.getSession();
+        if (currentSession?.token !== token) return;
+        // A line that was cut off may be spoken again; one that already
+        // finished must not repeat.
+        if (currentSession.lastSpokenKey !== currentSession.finishedSpeechKey) {
+          currentSession.lastSpokenKey = null;
+        }
+      };
+      ctx.setYTPauseHandler(() => {
+        resetSpeech();
         ctx.setStatusText("Paused");
         ctx.setOverlayState("paused");
         ctx.onStateChange({ paused: true, status: "Paused" });
@@ -1149,6 +1244,15 @@
         ctx.setStatusText("Captioning");
         ctx.setOverlayState("live");
         ctx.onStateChange({ paused: false, status: "Captioning" });
+      });
+      // Without this the voice keeps reading the old position after a seek
+      // and every line queued behind it starts late.
+      ctx.setYTSeekHandler?.(() => {
+        window.LumeoTTS?.stop?.();
+        const currentSession = ctx.getSession();
+        if (currentSession?.token !== token) return;
+        currentSession.lastSpokenKey = null;
+        currentSession.finishedSpeechKey = null;
       });
       return { ok: true };
     }

@@ -17,15 +17,26 @@ describe("caption fitRateForCue (multilingual)", () => {
     expect(api.fitRateForCue({ text: "hello world foo bar baz qux quux corge grault garply waldo fred", targetLanguage: "en", duration: 5, playbackRate: 1 })).toBe(1.0);
   });
 
-  it("speeds up dense EN within 1.6 cap", () => {
+  it("speeds dense EN up by exactly what the slot needs, capped at 2.0", () => {
+    // 20 words need 20 / 2.8 = 7.14s of natural speech for a 5s slot.
     const dense = Array(20).fill("word").join(" ");
-    expect(api.fitRateForCue({ text: dense, targetLanguage: "en", duration: 5, playbackRate: 1 })).toBeCloseTo(1.144, 3);
+    expect(api.fitRateForCue({ text: dense, targetLanguage: "en", duration: 5, playbackRate: 1 })).toBeCloseTo(1.429, 3);
     const veryDense = Array(50).fill("word").join(" ");
-    expect(api.fitRateForCue({ text: veryDense, targetLanguage: "en", duration: 5, playbackRate: 1 })).toBe(1.6);
+    expect(api.fitRateForCue({ text: veryDense, targetLanguage: "en", duration: 5, playbackRate: 1 })).toBe(2.0);
   });
 
-  it("slows down sparse EN to floor 0.90", () => {
-    expect(api.fitRateForCue({ text: "hi there", targetLanguage: "en", duration: 5, playbackRate: 1 })).toBeCloseTo(0.922, 3);
+  it("never slows a sparse line below natural speed", () => {
+    expect(api.fitRateForCue({ text: "hi there", targetLanguage: "en", duration: 5, playbackRate: 1 })).toBe(1.0);
+  });
+
+  it("uses the measured pace of the active voice once it is known", () => {
+    const dense = Array(20).fill("word").join(" ");
+    // A voice measured at 4 words/s fits 20 words in 5s without speeding up.
+    expect(api.fitRateForCue({ text: dense, targetLanguage: "en", duration: 5, pace: 4 })).toBe(1.0);
+    // An absurd sample is clamped to a band around the default.
+    expect(api.speechPace("en", 100)).toBeCloseTo(2.8 * 1.8, 5);
+    expect(api.speechPace("en", 0.1)).toBeCloseTo(2.8 * 0.55, 5);
+    expect(api.speechPace("vi")).toBe(4.0);
   });
 
   it("does not speed normal zh/ja (char triggers 5.5/6.5)", () => {
@@ -35,14 +46,14 @@ describe("caption fitRateForCue (multilingual)", () => {
     expect(api.fitRateForCue({ text: jaNormal, targetLanguage: "ja", duration: 5, playbackRate: 1 })).toBe(1.0);
   });
 
-  it("caps dense zh at 1.6", () => {
+  it("caps dense zh at 2.0", () => {
     const zhDense = "你".repeat(60);
-    expect(api.fitRateForCue({ text: zhDense, targetLanguage: "zh", duration: 5, playbackRate: 1 })).toBe(1.6);
+    expect(api.fitRateForCue({ text: zhDense, targetLanguage: "zh", duration: 5, playbackRate: 1 })).toBe(2.0);
   });
 
   it("accounts for video playbackRate", () => {
     const ten = Array(10).fill("word").join(" ");
-    expect(api.fitRateForCue({ text: ten, targetLanguage: "en", duration: 5, playbackRate: 2 })).toBeCloseTo(1.144, 3);
+    expect(api.fitRateForCue({ text: ten, targetLanguage: "en", duration: 5, playbackRate: 2 })).toBeCloseTo(1.429, 3);
   });
 
   it("returns 1.0 for empty text", () => {
@@ -51,24 +62,40 @@ describe("caption fitRateForCue (multilingual)", () => {
 
   it("keeps th fit within bounds", () => {
     const rate = api.fitRateForCue({ text: "สวัสดีครับ ยินดีต้อนรับ", targetLanguage: "th", duration: 4, playbackRate: 1 });
-    expect(rate).toBeGreaterThanOrEqual(0.9);
-    expect(rate).toBeLessThanOrEqual(1.6);
+    expect(rate).toBeGreaterThanOrEqual(1.0);
+    expect(rate).toBeLessThanOrEqual(2.0);
   });
 
-  it("accelerates a late cue toward the 2.0x catch-up cap", () => {
-    expect(api.catchUpRateForLag(0)).toBe(1.0);
-    expect(api.catchUpRateForLag(-2)).toBe(1.0);
-    expect(api.catchUpRateForLag(1)).toBeCloseTo(1.25, 3);
-    expect(api.catchUpRateForLag(10)).toBe(2.0);
+  it("refits a late line to the time that is left", () => {
+    const cue = { start: 10, end: 15, translated: Array(14).fill("word").join(" ") };
+    const next = { start: 15, end: 18 };
+    const settings = { targetLanguage: "en" };
+    // 14 words need exactly the 5s slot.
+    expect(api.buildCueSpeechPlan(cue, next, settings, { videoNow: 10 }).rate).toBe(1.0);
+    // 2.5s late: half the slot is left, so the line must go twice as fast.
+    const late = api.buildCueSpeechPlan(cue, next, settings, { videoNow: 12.5 });
+    expect(late.rate).toBe(2.0);
+    expect(late.lagSeconds).toBe(2.5);
+    expect(late.remainingSeconds).toBe(2.5);
+    // Asked for early (start-latency lead), it still gets the whole slot.
+    expect(api.buildCueSpeechPlan(cue, next, settings, { videoNow: 9.7, leadSeconds: 0.3 }).rate).toBe(1.0);
+    // A 2x video halves the real time available.
+    expect(api.buildCueSpeechPlan(cue, next, settings, { videoNow: 10, videoRate: 2 }).rate).toBe(2.0);
+  });
+
+  it("drops a late line that could not get a third of itself out", () => {
+    expect(api.cannotFitLateCue({ lagSeconds: 3, neededSeconds: 6, remainingSeconds: 0.5 })).toBe(true);
+    expect(api.cannotFitLateCue({ lagSeconds: 3, neededSeconds: 6, remainingSeconds: 2 })).toBe(false);
+    // On time, a dense line is still spoken (at the ceiling).
+    expect(api.cannotFitLateCue({ lagSeconds: 0, neededSeconds: 6, remainingSeconds: 0.5 })).toBe(false);
   });
 
   it("uses adaptive rate in auto mode and a fixed capped rate in manual mode", () => {
-    expect(api.resolveSpeechRate({ calculatedRate: 1.2, catchUpRate: 1.5 })).toBe(1.5);
-    expect(api.resolveSpeechRate({ calculatedRate: 0.9, catchUpRate: 1 })).toBe(1);
-    expect(api.resolveSpeechRate({ calculatedRate: 1, catchUpRate: 5 })).toBe(2.0);
+    expect(api.resolveSpeechRate({ calculatedRate: 1.5 })).toBe(1.5);
+    expect(api.resolveSpeechRate({ calculatedRate: 0.9 })).toBe(1);
+    expect(api.resolveSpeechRate({ calculatedRate: 5 })).toBe(2.0);
     expect(api.resolveSpeechRate({
-      calculatedRate: 1.2,
-      catchUpRate: 1.5,
+      calculatedRate: 1.5,
       settings: { ttsSpeedMode: "manual", ttsSpeed: 0.9 },
     })).toBe(0.9);
     expect(api.resolveSpeechRate({
@@ -83,6 +110,11 @@ describe("caption fitRateForCue (multilingual)", () => {
     expect(api.isCueStale(13.5, cue)).toBe(true);
     expect(api.isCueStale(5, { start: 10 })).toBe(false);
     expect(api.isCueStale(14.5, { start: 10 })).toBe(true);
+    // Overlapping auto-caption cue: gone as soon as the next line replaces it.
+    expect(api.isCueStale(12.5, { start: 10, end: 16 }, 0.25, { start: 12 })).toBe(true);
+    // A real gap before the next line may be borrowed, but only briefly.
+    expect(api.isCueStale(14, cue, 0.25, { start: 30 })).toBe(false);
+    expect(api.isCueStale(15, cue, 0.25, { start: 30 })).toBe(true);
   });
 });
 
@@ -125,7 +157,7 @@ describe("caption TTS prefetch", () => {
     )).toBe(false);
   });
 
-  it("reuses the prefetched rate for baked-rate providers while on time", async () => {
+  it("always reuses the prefetched clip for baked-rate providers", async () => {
     const { window } = await createSandboxWindow();
     loadService("pipelines/caption-orchestrator.js", window);
     const api = window.LumeoCaptionOrchestrator;
@@ -134,18 +166,18 @@ describe("caption TTS prefetch", () => {
     const prefetchedPlan = { rate: 1.0 };
 
     expect(api.selectCuePlaybackPlan({
-      plan, prefetchedPlan, mediaNow: 10.2, cue, provider: "google-cloud",
+      plan, prefetchedPlan, provider: "google-cloud",
     })).toEqual({ rate: 1.0, reusePrefetched: true });
 
-    // Late enough that the voice should catch up instead of replaying the
-    // prefetched pace.
+    // Late: still the prefetched clip. The player closes the gap with
+    // playbackRate instead of paying for a second synthesis round-trip.
     expect(api.selectCuePlaybackPlan({
-      plan: { rate: 1.4 }, prefetchedPlan, mediaNow: 12, cue, provider: "google-cloud",
-    })).toEqual({ rate: 1.4, reusePrefetched: false });
+      plan: { rate: 1.4 }, prefetchedPlan, provider: "google-cloud",
+    })).toEqual({ rate: 1.0, reusePrefetched: true });
 
     // Custom voice applies rate at playback, so it keeps adapting.
     expect(api.selectCuePlaybackPlan({
-      plan: { rate: 1.2 }, prefetchedPlan, mediaNow: 10.2, cue, provider: "custom-voice-engine",
+      plan: { rate: 1.2 }, prefetchedPlan, provider: "custom-voice-engine",
     })).toEqual({ rate: 1.2, reusePrefetched: false });
   });
 
@@ -160,7 +192,7 @@ describe("caption TTS prefetch", () => {
     const prefetch = api.buildCueSpeechPlan(cue, next, settings, {
       videoNow: 10,
       videoRate: 1,
-      includeCatchUp: false,
+      fromNow: false,
     });
     const playback = api.buildCueSpeechPlan(cue, next, settings, {
       videoNow: 10,
@@ -168,6 +200,95 @@ describe("caption TTS prefetch", () => {
     });
 
     expect(playback.rate).toBe(prefetch.rate);
+  });
+});
+
+describe("caption speakDueCue", () => {
+  async function setupDue({ latency = 0 } = {}) {
+    const { window } = await createSandboxWindow();
+    loadService("pipelines/caption-orchestrator.js", window);
+    const api = window.LumeoCaptionOrchestrator;
+    window.LumeoTTS = { getStartLatency: () => latency, getPace: () => null };
+    const cues = [
+      { start: 10, end: 13, translated: "dòng một" },
+      { start: 13, end: 16, translated: "" },
+      { start: 16, end: 19, translated: "source text", __fallback: true },
+    ];
+    const spoken = [];
+    const pipeline = {
+      cues,
+      cueAt: (t) => {
+        const index = cues.findIndex((c, i) => t >= c.start && t < (cues[i + 1]?.start ?? c.end));
+        return index >= 0 ? { cue: cues[index], index } : { cue: null, index: -1 };
+      },
+      speakCue: vi.fn((cue, options) => {
+        spoken.push({ cue, options });
+        return Promise.resolve(true);
+      }),
+    };
+    const video = { currentTime: 0, playbackRate: 1 };
+    const session = {};
+    const settings = { captionTtsProvider: "browser", targetLanguage: "vi" };
+    const run = () => api.speakDueCue({ pipeline, video, settings, session, ctx: {} });
+    return { api, cues, pipeline, spoken, video, session, settings, run };
+  }
+
+  it("speaks each line once", async () => {
+    const { run, video, spoken } = await setupDue();
+    video.currentTime = 10.05;
+    expect(run()).toBe(true);
+    expect(run()).toBe(false);
+    expect(spoken).toHaveLength(1);
+    expect(spoken[0].options.rate).toBe(1.0);
+  });
+
+  it("asks for the line early by the voice's start latency", async () => {
+    const { run, video, spoken } = await setupDue({ latency: 0.3 });
+    video.currentTime = 9.6;
+    expect(run()).toBe(false);
+    video.currentTime = 9.75;
+    expect(run()).toBe(true);
+    expect(spoken[0].cue.start).toBe(10);
+  });
+
+  it("caps the lead so a bad latency sample cannot run ahead of the subtitle", async () => {
+    const { api, settings } = await setupDue({ latency: 3 });
+    expect(api.speechLeadSeconds(settings)).toBe(0.4);
+  });
+
+  it("speaks a translation that arrives while its line is on screen", async () => {
+    const { run, video, cues, spoken } = await setupDue();
+    video.currentTime = 13.1;
+    expect(run()).toBe(false);
+    cues[1] = { ...cues[1], translated: "dòng hai" };
+    video.currentTime = 13.3;
+    expect(run()).toBe(true);
+    expect(spoken[0].cue.translated).toBe("dòng hai");
+  });
+
+  it("does not read a failed translation in the target voice", async () => {
+    const { run, video, spoken } = await setupDue();
+    video.currentTime = 16.1;
+    expect(run()).toBe(false);
+    expect(spoken).toHaveLength(0);
+  });
+
+  it("skips a line the video is about to leave", async () => {
+    const { run, video, cues, spoken } = await setupDue();
+    cues[0] = { ...cues[0], translated: Array(30).fill("từ").join(" ") };
+    video.currentTime = 12.8;
+    expect(run()).toBe(false);
+    expect(spoken).toHaveLength(0);
+  });
+
+  it("repeats a line cut off by a pause but not one that finished", async () => {
+    const { run, video, session, spoken } = await setupDue();
+    video.currentTime = 10.05;
+    run();
+    await Promise.resolve();
+    expect(session.finishedSpeechKey).toBe(session.lastSpokenKey);
+    expect(run()).toBe(false);
+    expect(spoken).toHaveLength(1);
   });
 });
 

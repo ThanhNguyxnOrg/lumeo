@@ -37,9 +37,17 @@ describe("services/tts-browser.js", () => {
     ({ window, api } = await setup());
   });
 
-  it("delegates OpenAI TTS provider to LumeoOpenAITTS", async () => {
-    const speak = vi.fn(async () => true);
-    window.LumeoOpenAITTS = { speak };
+  it("synthesizes OpenAI TTS through LumeoOpenAITTS and plays the clip itself", async () => {
+    const synthesize = vi.fn(async () => "blob:openai");
+    window.LumeoOpenAITTS = { synthesize };
+    const pause = vi.fn();
+    const audios = [];
+    window.Audio = class {
+      constructor(url) { this.url = url; audios.push(this); }
+      addEventListener() {}
+      play() { return Promise.resolve(); }
+      pause() { pause(); }
+    };
 
     await expect(api.speak("hello", "en", {
       provider: "openai-tts",
@@ -48,12 +56,99 @@ describe("services/tts-browser.js", () => {
       volume: 0.7,
     })).resolves.toBe(true);
 
-    expect(speak).toHaveBeenCalledWith("hello", "en", {
+    expect(synthesize).toHaveBeenCalledWith("hello", expect.objectContaining({
       apiKey: "sk-test",
       voice: "alloy",
       speed: 1.1,
-      volume: 0.7,
+    }));
+    expect(audios[0].url).toBe("blob:openai");
+    expect(audios[0].volume).toBe(0.7);
+    expect(window.speechSynthesis.cancel).toHaveBeenCalled();
+
+    // stop() must silence OpenAI audio too, or the voice keeps talking after
+    // the video is paused.
+    api.stop();
+    expect(pause).toHaveBeenCalledOnce();
+  });
+
+  it("speeds a network clip up just enough to end inside its slot", async () => {
+    window.fetch = vi.fn(async () => ({ ok: true, blob: async () => ({}) }));
+    window.URL.createObjectURL = () => "blob:custom";
+    const audios = [];
+    window.Audio = class {
+      constructor() { this.readyState = 1; this.duration = 6; this.playbackRate = 1; audios.push(this); }
+      addEventListener() {}
+      play() { return Promise.resolve(); }
+      pause() {}
+    };
+    const base = {
+      provider: "custom-voice-engine",
+      customTtsBaseUrl: "https://api.example.com/v1",
+      customTtsVoiceId: "voice-1",
+      rate: 1.9,
+    };
+
+    await api.speak("a six second clip", "en", { ...base, getSlotSeconds: () => 4 });
+    expect(audios[0].playbackRate).toBeCloseTo(1.5, 5);
+
+    // Shorter than the slot: natural speed, never slowed down.
+    await api.speak("a six second clip", "en", { ...base, getSlotSeconds: () => 10 });
+    expect(audios[1].playbackRate).toBe(1);
+
+    // No time left: product ceiling.
+    await api.speak("a six second clip", "en", { ...base, getSlotSeconds: () => 0 });
+    expect(audios[2].playbackRate).toBe(2);
+
+    // Manual speed: no slot, the requested rate is used as-is.
+    await api.speak("a six second clip", "en", base);
+    expect(audios[3].playbackRate).toBe(1.9);
+  });
+
+  it("reports a clip that fails to decode so the queue moves on", async () => {
+    window.fetch = vi.fn(async () => ({ ok: true, blob: async () => ({}) }));
+    window.URL.createObjectURL = () => "blob:custom";
+    const listeners = {};
+    window.Audio = class {
+      addEventListener(type, cb) { listeners[type] = cb; }
+      play() { return Promise.resolve(); }
+      pause() {}
+    };
+    const onEnd = vi.fn();
+    await api.speak("broken clip", "en", {
+      provider: "custom-voice-engine",
+      customTtsBaseUrl: "https://api.example.com/v1",
+      customTtsVoiceId: "voice-1",
+      onEnd,
     });
+    listeners.error();
+    expect(onEnd).toHaveBeenCalledWith(false);
+  });
+
+  it("learns a voice's pace and start latency from what it actually spoke", async () => {
+    let clock = 1000;
+    window.performance.now = () => clock;
+    let utterance;
+    window.speechSynthesis.speak = (u) => { utterance = u; };
+
+    const task = api.speakQueued("one two three four five six", "en", {
+      rate: 1.5,
+      speechUnits: 6,
+      paceKey: "browser|en|",
+      latencyKey: "browser|en|",
+    });
+    await Promise.resolve();
+    expect(api.getPace("browser|en|")).toBeNull();
+    expect(api.getStartLatency("browser|en|")).toBe(0);
+
+    clock += 300;
+    utterance.onstart();
+    clock += 2000;
+    utterance.onend();
+    await expect(task).resolves.toBe(true);
+
+    // 2s at 1.5x is 3s of natural speech for 6 words.
+    expect(api.getPace("browser|en|")).toBeCloseTo(2, 5);
+    expect(api.getStartLatency("browser|en|")).toBeCloseTo(0.3, 5);
   });
 
   it("throws a clear error if OpenAI TTS provider is selected but not loaded", async () => {

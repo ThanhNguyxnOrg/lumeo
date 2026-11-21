@@ -82,29 +82,6 @@ describe("services/tts-openai.js", () => {
       .rejects.toThrow("OpenAI TTS 401: bad key");
   });
 
-  it("plays synthesized audio and stop pauses current playback", async () => {
-    window.fetch = vi.fn(async () => ({ ok: true, blob: async () => new window.Blob(["mp3"]) }));
-    const addEventListener = vi.fn();
-    const pause = vi.fn();
-    const play = vi.fn(async () => {});
-    window.Audio = vi.fn(function Audio(url) {
-      this.url = url;
-      this.addEventListener = addEventListener;
-      this.pause = pause;
-      this.play = play;
-    });
-    const onEnd = vi.fn();
-
-    await expect(api.speak("hello", "en", { apiKey: "openai-key", volume: 0.4, onEnd })).resolves.toBe(true);
-
-    expect(window.Audio).toHaveBeenCalledWith("blob:tts");
-    expect(addEventListener).toHaveBeenCalledWith("ended", onEnd, { once: true });
-    expect(play).toHaveBeenCalledOnce();
-
-    api.stop();
-    expect(pause).toHaveBeenCalledOnce();
-  });
-
   it("clearCache revokes cached blob URLs", async () => {
     window.fetch = vi.fn(async () => ({ ok: true, blob: async () => new window.Blob(["mp3"]) }));
     await api.synthesize("hello", { apiKey: "openai-key" });
@@ -112,18 +89,5 @@ describe("services/tts-openai.js", () => {
     api.clearCache();
 
     expect(window.URL.revokeObjectURL).toHaveBeenCalledWith("blob:tts");
-  });
-
-  it("cancels in-flight browser speech before playing network audio", async () => {
-    window.fetch = vi.fn(async () => ({ ok: true, blob: async () => new window.Blob(["mp3"]) }));
-    const cancel = vi.fn();
-    window.speechSynthesis = { cancel };
-    window.Audio = vi.fn(function Audio() {
-      this.addEventListener = () => {};
-      this.play = () => Promise.resolve();
-    });
-
-    await expect(api.speak("hello", "en", { apiKey: "openai-key" })).resolves.toBe(true);
-    expect(cancel).toHaveBeenCalled();
   });
 });
