@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- On Firefox, Start Translation now starts caption discovery instead of getting stuck on “Loading captions…” before contacting the extension background.
+
 ## [2.0.9] - 2026-11-07 — Spoken Sync: Prefetched TTS & Video-Anchored Dub
 
 ### Added

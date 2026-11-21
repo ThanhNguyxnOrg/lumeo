@@ -54,6 +54,11 @@ describe("ui/voice-picker.js", () => {
     expect(select.value).toBe("English_ConfidentWoman");
   });
 
+  it("shows the Standard default instead of a stored Caption browser voice", () => {
+    api.populate(select, "standard", { standardVoice: "Browser Japanese" });
+    expect(select.value).toBe(api.STANDARD_DEFAULT_VOICE);
+  });
+
   it("renders realtime Auto plus named voices", () => {
     api.populate(select, "realtime", { realtimeVoice: "verse" });
     expect(optionValues(select)[0]).toBe("");

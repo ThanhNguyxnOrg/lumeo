@@ -458,8 +458,8 @@ async function ensureContentScript(tabId) {
         target: { tabId },
         func: () => {
           delete window.__lumeoContentVersion;
+          delete globalThis.LumeoBrowserApi;
           for (const key of [
-            "LumeoBrowserApi",
             "LumeoTokenGuard",
             "LumeoAudioUtils",
             "LumeoOverlay",
@@ -1042,11 +1042,13 @@ function handleRuntimeMessage(message, sender, sendResponse) {
       sendResponse({ ok: false, error: "Blocked non-YouTube sender." });
       return false;
     }
-    if (!state.tabId || sender?.tab?.id !== state.tabId || !(state.running || state.connecting)) {
+    const tabId = sender?.tab?.id;
+    const ownsSession = () => state.tabId && tabId === state.tabId && (state.running || state.connecting);
+    if (!ownsSession()) {
       sendResponse({ ok: false, error: "No active Lumeo session for this tab." });
       return false;
     }
-    const allowedKeys = new Set(["geminiKey", "openaiKey", "groqApiKey", "sonioxApiKey"]);
+    const allowedKeys = new Set(["geminiKey", "openaiKey", "groqApiKey", "sonioxApiKey", "kymaKey"]);
     const keyName = String(message.key || "");
     if (!allowedKeys.has(keyName)) {
       sendResponse({ ok: false, error: "Unknown provider key." });
@@ -1054,6 +1056,15 @@ function handleRuntimeMessage(message, sender, sendResponse) {
     }
     (async () => {
       await loadSettings();
+      if (keyName === "kymaKey") {
+        const session = ownsSession() && await browserApi.sendTabMessage(tabId, { type: "CONTENT_SESSION_STATE" });
+        if (!ownsSession() || state.tier !== "caption" || session?.choosingCaptionFallback !== true) {
+          sendResponse({ ok: false, error: "Provider key is not in use." });
+          return;
+        }
+        sendResponse({ ok: true, key: state.kymaKey || "" });
+        return;
+      }
       const neededKeys = providerKeyFieldsForSettings(state);
       if (!neededKeys.has(keyName)) {
         sendResponse({ ok: false, error: "Provider key is not in use." });
@@ -1105,11 +1116,14 @@ function handleRuntimeMessage(message, sender, sendResponse) {
       sendResponse?.({ ok: false, error: "Blocked sender." });
       return false;
     }
-    if (typeof chrome !== "undefined" && chrome.tabs?.create) {
-      chrome.tabs.create({ url: "chrome://settings/accessibility" });
+    if (!browserApi.supportsChromeLiveCaption()) {
+      sendResponse({ ok: false, error: "Chrome Live Caption is not available in this browser." });
+      return false;
     }
-    sendResponse?.( { ok: true });
-    return false;
+    chrome.tabs.create({ url: "chrome://settings/accessibility" })
+      .then(() => sendResponse({ ok: true }))
+      .catch(() => sendResponse({ ok: false, error: "Could not open Chrome accessibility settings." }));
+    return true;
   }
 
   // Content-originated messages (have sender.tab from non-extension origin).

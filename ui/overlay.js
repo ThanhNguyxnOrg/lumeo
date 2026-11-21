@@ -655,6 +655,7 @@
                 </button>
                 <div class="ytp-lumeo-status-badge" data-lumeo-status-badge style="display: none;"></div>
               </div>
+              <div class="ytp-lumeo-caption-fallback" data-lumeo-caption-fallback hidden></div>
 
               <div class="ytp-lumeo-menu-list">
                 <!-- Subtitles / Display mode -->
@@ -868,6 +869,7 @@
         rootView: root.querySelector("[data-lumeo-root-view]"),
         subContainer: root.querySelector("[data-lumeo-sub-container]"),
         statusBadge: root.querySelector("[data-lumeo-status-badge]"),
+        captionFallback: root.querySelector("[data-lumeo-caption-fallback]"),
         source: null,
         history: null,
       };
@@ -1004,6 +1006,17 @@
       }
       if (elements.status) {
         elements.status.title = currentStatusText ? `Lumeo: ${currentStatusText}` : "Lumeo: Ready";
+      }
+    }
+
+    function setCaptionFallbackChoice(choice) {
+      const host = elements.captionFallback;
+      if (!host) return;
+      host.replaceChildren(...(choice ? [choice] : []));
+      host.hidden = !choice;
+      if (choice) {
+        closeSubmenu();
+        toggleSideCollapsed(false);
       }
     }
 
@@ -1497,6 +1510,7 @@
       setState,
       setStatusText,
       setSessionState,
+      setCaptionFallbackChoice,
       isTranslating: () => isTranslating,
       showToast,
       toggleSideCollapsed,

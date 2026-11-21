@@ -121,6 +121,58 @@ describe("services/session-manager.js", () => {
     expect(manager.getSettings().targetLanguage).toBe("ja");
   });
 
+  it.each(["configured", "on-demand"])("keeps the chooser after a failed Standard switch with a %s key, and clears it on success", async (source) => {
+    const capture = Promise.withResolvers();
+    const fallback = { type: "caption", choiceOnly: true, pipeline: { stop: vi.fn() } };
+    let ctx;
+    window.LumeoCaptionOrchestrator.start.mockImplementation(async (context) => {
+      ctx = context;
+      ctx.onSessionCreated(fallback);
+      return { ok: true };
+    });
+    callbacks.setCaptionFallbackChoice = vi.fn();
+    callbacks.showToast = vi.fn();
+    window.LumeoAudioUtils.captureWithRetry = vi.fn().mockReturnValueOnce(capture.promise)
+      .mockResolvedValue({ getTracks: () => [] });
+    window.LumeoStandardPipeline = {
+      pickRecorderMime: () => "audio/webm",
+      runChunkLoop: vi.fn(),
+    };
+    window.AudioContext = class {
+      createGain() { return { gain: {}, connect() {} }; }
+      close() { return Promise.resolve(); }
+    };
+    const requestKey = vi.fn().mockResolvedValue("test-key");
+    await manager.startSession({ tier: "caption", kymaKey: source === "configured" ? "test-key" : "" });
+    try {
+      expect(requestKey).not.toHaveBeenCalled();
+      const token = ctx.getPageToken();
+      const switching = ctx.onSwitchToStandard(requestKey);
+      expect(manager.getSession()).toBe(fallback);
+      expect(callbacks.setCaptionFallbackChoice).not.toHaveBeenCalled();
+      capture.reject(new Error("Capture denied"));
+      await switching;
+
+      expect(manager.getSession()).toBe(fallback);
+      expect(ctx.getPageToken()).toBe(token);
+      expect(manager.getSettings().tier).toBe("caption");
+      expect(fallback.pipeline.stop).not.toHaveBeenCalled();
+      expect(callbacks.setCaptionFallbackChoice).not.toHaveBeenCalled();
+      expect(callbacks.removeOverlay).not.toHaveBeenCalled();
+      expect(callbacks.setStatusText).toHaveBeenLastCalledWith("Choose fallback");
+      expect(callbacks.showToast).toHaveBeenCalledWith("Capture denied", 7000);
+
+      await ctx.onSwitchToStandard(requestKey);
+      expect(manager.getSession()).toMatchObject({ type: "standard", kymaKey: "test-key" });
+      expect(manager.getSettings().tier).toBe("standard");
+      expect(fallback.pipeline.stop).toHaveBeenCalledOnce();
+      expect(callbacks.setCaptionFallbackChoice).toHaveBeenCalledExactlyOnceWith(null);
+      expect(requestKey).toHaveBeenCalledTimes(source === "on-demand" ? 2 : 0);
+    } finally {
+      manager.stopSession();
+    }
+  });
+
   it.each(["standard", "realtime"])("discards %s audio that arrives after Stop", async (tier) => {
     const capture = Promise.withResolvers();
     const track = { stop: vi.fn() };

@@ -143,16 +143,18 @@
 
       const elements = ctx.getElements();
       if (elements.history) elements.history.hidden = true;
-      if (!elements.target) return;
-      elements.target.textContent = "";
 
       const wrap = window.LumeoCaptionFallbackChoice.create({
         reason,
         diagnostics,
-        onChromeLiveCaption: () => {
-          try {
-            chrome.runtime?.sendMessage?.({ type: "OPEN_CHROME_ACCESSIBILITY_SETTINGS" });
-          } catch {}
+        onChromeLiveCaption: async () => {
+          const reply = await globalThis.LumeoBrowserApi
+            .sendRuntimeMessage({ type: "OPEN_CHROME_ACCESSIBILITY_SETTINGS" }).catch(() => null);
+          if (token !== ctx.getPageToken()) return;
+          if (!reply?.ok) {
+            ctx.showToast(reply?.error || "Could not open Chrome accessibility settings.", 7000);
+            return;
+          }
           ctx.showToast("⚡ Opened Chrome Settings. Turn on 'Live Caption' for free offline speech recognition.", 8000);
           ctx.onSessionEnded("chrome-live-caption", "Using Chrome Live Caption");
         },
@@ -160,11 +162,11 @@
         onGroq: () => this.startGroqChoice(video, token, pipeline, reason, ctx),
         onOpenAI: () => this.startOpenAIChoice(video, token, pipeline, reason, ctx),
         onSoniox: () => this.startSonioxChoice(video, token, pipeline, reason, ctx),
-        onStandard: () => ctx.onSwitchToStandard(pipeline),
+        onStandard: () => ctx.onSwitchToStandard(() => requestProviderKey("kymaKey")),
         onRetry: () => this.retryCaptionChoice(pipeline, ctx),
         onCancel: () => ctx.onSessionEnded("caption-fallback-cancel", "Caption fallback cancelled."),
       });
-      elements.target.appendChild(wrap);
+      ctx.setCaptionFallbackChoice(wrap);
 
       ctx.onStateChange({
         running: true,

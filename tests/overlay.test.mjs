@@ -1,5 +1,32 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { createSandboxWindow, loadService } from "./helpers/load-service.mjs";
+
+it("starts Caption when the isolated script global is separate from the page window", async () => {
+  const { window } = await createSandboxWindow();
+  try {
+    window.document.body.innerHTML = '<div id="movie_player"><video class="html5-main-video"></video></div>';
+    const runtime = {
+      sendMessage: vi.fn(async () => ({ ok: true, state: { tier: "caption" } })),
+      onMessage: { addListener: vi.fn() },
+    };
+    Object.defineProperty(window, "globalThis", { value: { browser: { runtime } } });
+    for (const file of ["lib/browser-api.js", "lib/audio-utils.js", "ui/overlay.js",
+      "services/session-manager.js", "content.js"]) {
+      loadService(file, window);
+    }
+    expect(window.LumeoBrowserApi).toBeUndefined();
+    const [[listener]] = runtime.onMessage.addListener.mock.calls;
+    const send = (message) => new Promise((resolve) => listener(message, {}, resolve));
+    await expect(send({ type: "CONTENT_PING" })).resolves.toMatchObject({ ok: true, browserApi: true });
+    await send({ type: "TOGGLE_OVERLAY" });
+    window.document.querySelector("[data-lumeo-toggle-session]").click();
+    await vi.waitFor(() => expect(runtime.sendMessage).toHaveBeenCalledWith({ type: "START" }));
+    expect(runtime.sendMessage).toHaveBeenCalledWith({ type: "GET_STATE" });
+  } finally {
+    window.close();
+  }
+});
 
 it("resets the in-player controls when the background stops a recovered caption session", async () => {
   const { window } = await createSandboxWindow();
@@ -41,6 +68,162 @@ it("resets the in-player controls when the background stops a recovered caption 
     expect(badge.style.display).toBe("none");
     expect(badge.textContent).toBe("");
   } finally {
+    window.close();
+  }
+});
+
+it("opens a visible, scrollable fallback chooser in the player and removes it on Cancel", async () => {
+  const { window } = await createSandboxWindow();
+  try {
+    const { document } = window;
+    document.body.innerHTML = '<div id="movie_player"><video class="html5-main-video"></video></div>';
+    const style = document.createElement("style");
+    style.textContent = readFileSync("content.css", "utf8");
+    document.head.appendChild(style);
+    let listener;
+    window.LumeoBrowserApi = {
+      sendRuntimeMessage: vi.fn(async () => ({ ok: true })),
+      addRuntimeMessageListener: (fn) => { listener = fn; },
+      supportsChromeLiveCaption: () => true,
+    };
+    for (const file of ["lib/audio-utils.js", "ui/overlay.js", "ui/caption-fallback-choice.js",
+      "pipelines/caption-orchestrator.js", "services/session-manager.js", "content.js"]) {
+      loadService(file, window);
+    }
+    const createChoice = vi.spyOn(window.LumeoCaptionFallbackChoice, "create");
+    const orchestrator = window.LumeoCaptionOrchestrator;
+    orchestrator.start = async (ctx) => {
+      orchestrator.renderCaptionFallbackChoice(ctx.getVideo(), ctx.getPageToken(), {}, "No track", {}, ctx);
+      return { ok: true };
+    };
+    const send = (msg) => new Promise((resolve) => listener(msg, {}, resolve));
+    await send({ type: "TOGGLE_OVERLAY" });
+    await send({ type: "TOGGLE_OVERLAY" });
+    const root = document.querySelector(".ec-root");
+    expect(window.getComputedStyle(root).display).toBe("none");
+
+    await expect(send({ type: "CONTENT_START", settings: { tier: "caption" } })).resolves.toEqual({ ok: true });
+    const host = root.querySelector("[data-lumeo-caption-fallback]");
+    const chooser = root.querySelector(".ec-choice");
+    expect(chooser.parentElement).toBe(host);
+    expect(host.closest(".ytp-lumeo-popover")).not.toBeNull();
+    expect(host.closest(".ec-body")).toBeNull();
+    expect(window.getComputedStyle(host.closest(".ytp-lumeo-body")).overflowY).toBe("auto");
+    for (let parent = chooser; parent; parent = parent.parentElement) {
+      expect(window.getComputedStyle(parent).display).not.toBe("none");
+    }
+
+    await expect(send({ type: "CONTENT_SESSION_STATE" })).resolves.toMatchObject({ choosingCaptionFallback: true });
+    const sendMessage = vi.fn((_message, callback) => callback({ ok: true, key: "" }));
+    window.chrome = { runtime: { sendMessage } };
+    const [{ onStandard, onCancel }] = createChoice.mock.calls[0];
+    await onStandard();
+    expect(sendMessage).toHaveBeenCalledWith({ type: "GET_PROVIDER_KEY", key: "kymaKey" }, expect.any(Function));
+    await vi.waitFor(() => expect(root.textContent).toContain("Add your Kyma key"));
+    expect(host.firstElementChild).toBe(chooser);
+
+    onCancel();
+    expect(host.hidden).toBe(true);
+    expect(host.childElementCount).toBe(0);
+  } finally {
+    window.close();
+  }
+});
+
+it("keeps the same Standard Dub session when the player language changes after a Caption fallback", async () => {
+  const { window } = await createSandboxWindow();
+  const { document } = window;
+  document.body.innerHTML = '<div id="movie_player"><video class="html5-main-video"></video></div>';
+  let listener;
+  let captionContext;
+  const storageListeners = [];
+  const storageSet = vi.fn();
+  window.chrome = {
+    storage: {
+      local: { get: (_keys, callback) => callback({ tier: "caption" }), set: storageSet },
+      onChanged: { addListener: (fn) => storageListeners.push(fn) },
+    },
+  };
+  const browserVoice = "Browser Japanese";
+  window.speechSynthesis = Object.assign(new window.EventTarget(), {
+    getVoices: () => [{ name: browserVoice, lang: "ja-JP" }],
+  });
+  window.LumeoBrowserApi = {
+    sendRuntimeMessage: vi.fn(async () => ({ ok: true })),
+    addRuntimeMessageListener: (fn) => { listener = fn; },
+  };
+  window.LumeoCaptionOrchestrator = {
+    start: vi.fn(async (ctx) => {
+      captionContext = ctx;
+      ctx.onSessionCreated({ type: "caption", choiceOnly: true });
+      return { ok: true };
+    }),
+  };
+  const track = { stop: vi.fn() };
+  window.LumeoAudioUtils = {
+    findVideo: () => document.querySelector("video"),
+    captureWithRetry: async () => ({ getTracks: () => [track] }),
+  };
+  window.AudioContext = class {
+    createGain() { return { gain: {}, connect() {} }; }
+    close() { return Promise.resolve(); }
+  };
+  window.LumeoStandardPipeline = {
+    pickRecorderMime: () => "audio/webm",
+    runChunkLoop: vi.fn(),
+  };
+  for (const file of ["ui/voice-picker.js", "ui/overlay.js", "services/session-manager.js", "content.js"]) {
+    loadService(file, window);
+  }
+
+  const manager = window.LumeoSessionManager;
+  const send = (msg) => new Promise((resolve) => listener(msg, {}, resolve));
+  try {
+    const standardVoice = "English_ConfidentWoman";
+    await expect(send({ type: "CONTENT_START", settings: { tier: "caption", targetLanguage: "en", kymaKey: "", standardVoice } }))
+      .resolves.toEqual({ ok: true });
+    await captionContext.onSwitchToStandard(async () => "kyma-test-key");
+    const standard = manager.getSession();
+    expect(standard.type).toBe("standard");
+
+    const root = document.querySelector(".ec-root");
+    const picker = root.querySelector("[data-ec-voice]");
+    const expectDubVoices = () => {
+      expect(picker.getAttribute("aria-label")).toBe("Dub voice");
+      expect([...picker.options].map(({ value }) => value)).toEqual(
+        window.LumeoVoicePicker.STANDARD_VOICES.map(([id]) => id),
+      );
+      expect(picker.value).toBe(standardVoice);
+    };
+    expectDubVoices();
+    const chooseJapanese = (menu) => {
+      root.querySelector(`[data-open-sub="${menu}"]`).click();
+      const button = [...root.querySelectorAll(".ytp-lumeo-sub-item")].find((item) => item.textContent.includes("Japanese"));
+      button.click();
+    };
+    chooseJapanese("language");
+    expect(manager.getSettings()).toMatchObject({ tier: "standard", targetLanguage: "ja", kymaKey: "kyma-test-key", standardVoice });
+    expect(manager.getSession()).toBe(standard);
+    expect(storageSet).not.toHaveBeenCalledWith(expect.objectContaining({ standardVoice: browserVoice }));
+    expect(window.LumeoBrowserApi.sendRuntimeMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      settings: expect.objectContaining({ standardVoice: browserVoice }),
+    }));
+    for (const fn of storageListeners) {
+      fn({ tier: { newValue: "caption" }, targetLanguage: { newValue: "ja" } }, "local");
+    }
+    expectDubVoices();
+    window.speechSynthesis.dispatchEvent(new window.Event("voiceschanged"));
+    expectDubVoices();
+
+    chooseJapanese("secondarylanguage");
+    expect(manager.getSession()).toBe(standard);
+    expect(track.stop).not.toHaveBeenCalled();
+    expect(window.LumeoCaptionOrchestrator.start).toHaveBeenCalledOnce();
+    await expect(send({ type: "CONTENT_STOP" })).resolves.toEqual({ ok: true });
+    expect(picker.getAttribute("aria-label")).toBe("Caption speech voice");
+    expect([...picker.options].map(({ value }) => value)).toContain(browserVoice);
+  } finally {
+    manager.stopSession();
     window.close();
   }
 });

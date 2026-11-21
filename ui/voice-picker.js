@@ -26,6 +26,10 @@
   const STANDARD_DEFAULT_VOICE = STANDARD_VOICES[0][0];
   const REALTIME_DEFAULT_VOICE = "marin";
 
+  function resolveStandardVoice(voice) {
+    return STANDARD_VOICES.some(([id]) => id === voice) ? voice : STANDARD_DEFAULT_VOICE;
+  }
+
   function titleCase(value) {
     const text = String(value || "");
     return text ? text.charAt(0).toUpperCase() + text.slice(1) : "";
@@ -206,7 +210,7 @@
       selectEl.setAttribute("aria-label", "Dub voice");
       selectEl.removeAttribute("title");
       for (const [id, name] of STANDARD_VOICES) appendOption(selectEl, id, name);
-      selectEl.value = settings.standardVoice || STANDARD_DEFAULT_VOICE;
+      selectEl.value = resolveStandardVoice(settings.standardVoice);
       return;
     }
 
@@ -224,6 +228,7 @@
     REALTIME_DEFAULT_VOICE,
     STANDARD_VOICES,
     STANDARD_DEFAULT_VOICE,
+    resolveStandardVoice,
     cleanVoiceLabel,
     autoPairVoice,
     getTopVoicesForLanguage,

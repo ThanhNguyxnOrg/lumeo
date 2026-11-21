@@ -14,7 +14,9 @@
     button.type = "button";
     button.className = className;
     button.textContent = text;
-    button.addEventListener("click", onClick);
+    button.addEventListener("click", (event) => {
+      if (event.isTrusted) onClick();
+    });
     return button;
   }
 
@@ -52,7 +54,7 @@
     const actions = doc.createElement("div");
     actions.className = "ec-choice-actions";
 
-    if (options.onChromeLiveCaption) {
+    if (options.onChromeLiveCaption && globalThis.LumeoBrowserApi?.supportsChromeLiveCaption()) {
       actions.append(
         createButton(doc, "ec-choice-btn ec-choice-btn-accent", "Chrome Live Caption (0-Key · Free)", () => options.onChromeLiveCaption?.())
       );

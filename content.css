@@ -683,6 +683,12 @@
 .ec-hide-translated-line .ec-target-translated { display: none !important; }
 
 /* ─── Fallback choice card ─── */
+.ytp-lumeo-body:has(.ytp-lumeo-caption-fallback:not([hidden])) {
+  box-sizing: border-box;
+  max-height: min(240px, 40vh);
+  overflow-y: auto;
+}
+
 .ec-choice {
   display: flex;
   flex-direction: column;

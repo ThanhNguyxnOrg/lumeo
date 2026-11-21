@@ -21,8 +21,9 @@ describe("background content script injection", () => {
     const background = fs.readFileSync("background.js", "utf8");
     const content = fs.readFileSync("content.js", "utf8");
 
+    expect(content).toContain("browserApi: !!globalThis.LumeoBrowserApi");
+    expect(background).toContain("reply.browserApi");
     for (const key of [
-      "browserApi",
       "captionPipeline",
       "realtimePipeline",
       "standardPipeline",

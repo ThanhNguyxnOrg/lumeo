@@ -209,8 +209,8 @@
     applyVolumes(settings.originalVolume, settings.voiceVolume);
   }
 
-  async function startStandardSession() {
-    if (!settings.kymaKey) {
+  async function startStandardSession(fallbackSession = null, kymaKey = settings.kymaKey) {
+    if (!kymaKey) {
       return {
         ok: false,
         error: "Add your Kyma key in Standard Dub, then Start again.",
@@ -224,18 +224,19 @@
     if (!video) return { ok: false, error: "No YouTube video on this page." };
     videoEl = video;
 
-    const token = ++pageToken;
+    const token = fallbackSession ? pageToken : ++pageToken;
+    const cancelled = () => token !== pageToken || (fallbackSession && session !== fallbackSession);
     let stream;
     try {
       callbacks.buildOverlay?.();
       callbacks.setStatusText?.("Acquiring audio");
       stream = await audioUtils.captureWithRetry(video);
     } catch (err) {
-      if (token !== pageToken) return { ok: false, error: "Start cancelled." };
-      callbacks.removeOverlay?.();
+      if (cancelled()) return { ok: false, error: "Start cancelled." };
+      if (!fallbackSession) callbacks.removeOverlay?.();
       return { ok: false, error: err.message || "YouTube audio cannot be captured. Click Play on the video, then retry." };
     }
-    if (token !== pageToken) {
+    if (cancelled()) {
       disposeSession({ stream });
       return { ok: false, error: "Start cancelled." };
     }
@@ -243,7 +244,7 @@
     const recorderMime = window.LumeoStandardPipeline.pickRecorderMime(audioUtils);
     if (!recorderMime) {
       stream.getTracks().forEach((t) => t.stop());
-      callbacks.removeOverlay?.();
+      if (!fallbackSession) callbacks.removeOverlay?.();
       return { ok: false, error: "This browser cannot record YouTube audio for Standard Dub. Try Chrome/Edge, then retry." };
     }
 
@@ -253,15 +254,19 @@
       if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
     } catch (err) {
       stream.getTracks().forEach((t) => t.stop());
-      callbacks.removeOverlay?.();
+      if (!fallbackSession) callbacks.removeOverlay?.();
       return { ok: false, error: "AudioContext unavailable: " + err.message };
     }
     const outputGain = audioCtx.createGain();
     outputGain.gain.value = computeGain(settings.voiceVolume ?? 100);
     outputGain.connect(audioCtx.destination);
 
+    if (fallbackSession) {
+      disposeSession(fallbackSession);
+      settings = { ...settings, tier: "standard", kymaKey };
+    }
     const newSession = {
-      token,
+      token: fallbackSession ? ++pageToken : token,
       type: "standard",
       stream,
       audioCtx,
@@ -270,7 +275,7 @@
       pc: null,
       dc: null,
       kymaSessionId: null,
-      kymaKey: settings.kymaKey,
+      kymaKey,
       recorderMime,
       activeRecorder: null,
       nextPlayAt: 0,
@@ -353,7 +358,12 @@
       processChunk: (sessionRef, blob) => window.LumeoStandardPipeline.processChunk(sessionRef, blob, standardPipelineContext()),
       chunkMs: window.LumeoStandardPipeline.DEFAULT_CHUNK_MS || 5000,
     });
-    callbacks.emitState?.({ running: true, paused: false, status: "Translating" });
+    callbacks.emitState?.({
+      running: true,
+      paused: false,
+      status: "Translating",
+      ...(fallbackSession && { errorMessage: "", errorCode: "", missingProviders: [], slotsMissingKeys: [] }),
+    });
     return { ok: true };
   }
 
@@ -419,6 +429,7 @@
       }
       videoEl = videoEl || audioUtils?.findVideo();
       const token = ++pageToken;
+      let switchingToStandard = false;
       return window.LumeoCaptionOrchestrator.start({
         getSession: () => session,
         setActivePipeline: (p) => { if (token === pageToken) activeStartingPipeline = p; },
@@ -434,29 +445,37 @@
         showToast: (txt, o, d) => callbacks.showToast?.(txt, o, d),
         setTargetCue: (cue) => callbacks.setTargetCue?.(cue),
         setTargetText: (txt) => callbacks.setTargetText?.(txt),
+        setCaptionFallbackChoice: (choice) => callbacks.setCaptionFallbackChoice?.(choice),
         applySourceVisibility: () => callbacks.applySourceVisibility?.(),
         removeOverlay: () => callbacks.removeOverlay?.(),
         buildOverlay: () => callbacks.buildOverlay?.(),
         captureWithRetry: audioUtils?.captureWithRetry,
         readYTCaptions: window.LumeoCaptions?.readYTCaptions || (() => ""),
-        onSessionCreated: (newSession) => { session = newSession; },
+        onSessionCreated: (newSession) => {
+          session = newSession;
+          if (!newSession?.choiceOnly) callbacks.setCaptionFallbackChoice?.(null);
+        },
         onSessionEnded: (reason, msg) => { stopSession(reason); callbacks.emitEnded?.(msg || reason); },
         onStateChange: (partial) => { callbacks.emitState?.(partial); },
         onUpdateSettings: (newSettings) => { callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: newSettings }); },
         onOpenPopup: (slot) => { callbacks.notifyBackground?.({ type: "OPEN_POPUP_TO_SLOT", slot }); },
-        onSwitchToStandard: async (pipeline) => {
-          if (session) {
-            disposeSession(session);
-            session = null;
-          } else {
-            pipeline?.stop?.();
-          }
-          settings = { ...settings, tier: "standard" };
-          callbacks.notifyBackground?.({ type: "UPDATE_SETTINGS", settings: { tier: "standard" } });
-          const reply = await startStandardSession();
-          if (!reply?.ok) {
-            callbacks.showToast?.(reply?.error || "Could not start Standard Dub.", 7000);
-            callbacks.emitState?.({ running: false, status: "Standard error", errorMessage: reply?.error || "Standard error" });
+        onSwitchToStandard: async (requestKymaKey) => {
+          const fallbackSession = session;
+          if (!fallbackSession?.choiceOnly || switchingToStandard) return;
+          switchingToStandard = true;
+          try {
+            const kymaKey = settings.kymaKey || await requestKymaKey();
+            if (session !== fallbackSession) return;
+            const reply = await startStandardSession(fallbackSession, kymaKey);
+            if (reply?.ok) {
+              callbacks.setCaptionFallbackChoice?.(null);
+            } else if (session === fallbackSession) {
+              callbacks.setStatusText?.("Choose fallback");
+              callbacks.setOverlayState?.("error");
+              callbacks.showToast?.(reply?.error || "Could not start Standard Dub.", 7000);
+            }
+          } finally {
+            switchingToStandard = false;
           }
         },
         setCurrentTexts: (src, tgt) => callbacks.setCurrentTexts?.(src, tgt),
