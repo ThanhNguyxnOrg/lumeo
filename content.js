@@ -22,7 +22,6 @@
 
   const CAPTION_POLL_MS = 350;
   const LAYOUT_KEY = "lumeoOverlayLayout";
-  const CAPTION_STYLE_KEY = "lumeoCaptionStyle";
   const RTL_LANGS = new Set(["ar", "fa", "he", "ur"]);
 
   const LANGUAGES = [
@@ -590,7 +589,7 @@
       notifyBackground({ type: "UPDATE_SETTINGS", settings: { standardVoice: newVoice } });
       try {
         if (typeof chrome !== "undefined" && chrome.storage?.local) {
-          chrome.storage.local.set({ voice: newVoice, standardVoice: newVoice });
+          chrome.storage.local.set({ standardVoice: newVoice });
         }
       } catch {}
     } else {

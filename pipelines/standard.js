@@ -236,7 +236,6 @@
     if (!shouldProcessChunk(sessionRef, activeSession, pageToken, blob)) return;
 
     const settings = context.getSettings?.() || {};
-    const token = sessionRef.token;
     const kymaKey = sessionRef.kymaKey;
     const language = settings.targetLanguage || "en";
     const languageName = context.langNameByCode?.[language] || language;

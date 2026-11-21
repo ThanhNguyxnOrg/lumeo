@@ -281,10 +281,6 @@
     return v === wBase || v.startsWith(`${wBase}-`);
   }
 
-  function baseLang(lang) {
-    return String(lang || "").split("-")[0].toLowerCase();
-  }
-
   function stripTtsNoise(text) {
     return String(text || "")
       .replace(/\[[^\]]*\]|\([^)]*\)/g, "")
