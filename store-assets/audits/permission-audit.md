@@ -18,7 +18,7 @@ Date: 2026-05-12
 | `https://*.youtube.com/*`, `https://youtube.com/*` | Keep | `manifest.json`, `services/captions.js`, content scripts | Reads YouTube captions, captures active video audio when user starts dub, renders overlay on YouTube. |
 | `https://api.kymaapi.com/*` | Keep | `services/kyma-client.js`, `pipelines/standard.js` | Standard and Realtime tiers call Kyma with the user's Kyma key. No Lumeo server. |
 | `https://api.openai.com/*` | Keep | `pipelines/realtime.js`, `services/tts-openai.js`, `services/translate.js` | Realtime WebRTC call setup, OpenAI TTS, or OpenAI translation when selected by user. |
-| `https://generativelanguage.googleapis.com/*` | Keep | `services/translate.js` | Gemini translation when selected by user with their key. |
+| `https://generativelanguage.googleapis.com/*` | Keep | `services/translate.js`, `services/stt-gemini.js` | Receives subtitle text for translation or video audio clips for transcription when the user selects the corresponding Gemini option with their key. |
 | `https://openrouter.ai/*` | Keep | `services/translate.js` | OpenRouter translation when selected by user with their key. |
 | `https://api.groq.com/*` | Keep | `services/stt-groq.js`, `services/translate.js` | Groq STT or translation when selected by user with their key. |
 | `https://translate.googleapis.com/*` | Keep | `services/translate.js` | Default free caption translation endpoint. |
