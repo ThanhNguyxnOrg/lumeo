@@ -828,21 +828,9 @@ async function handleExplainWordContext(message) {
 
   // The provider is background-owned. A content script must not be able to
   // spend any stored AI key by naming a different provider in the message.
-  let provider = state.translateProvider;
-  if (!["gemini", "groq", "openai", "openrouter", "custom-gateway"].includes(provider)) {
-    if (state.geminiKey) {
-      provider = "gemini";
-    } else if (state.groqApiKey) {
-      provider = "groq";
-    } else if (state.openaiKey) {
-      provider = "openai";
-    } else if (state.openRouterKey) {
-      provider = "openrouter";
-    } else if (state.customProxyApiKey || state.customProxyBaseUrl) {
-      provider = "custom-gateway";
-    } else {
-      provider = "google-free";
-    }
+  const provider = state.translateProvider;
+  if (!["gemini", "groq", "openai", "openrouter", "custom-gateway", "google-free"].includes(provider)) {
+    return { ok: false, error: "Word explanations are unavailable for the selected provider." };
   }
 
   const cacheKey = `${provider}::${targetLanguage}::${word.toLowerCase()}::${sentence}`;
@@ -880,15 +868,6 @@ async function handleExplainWordContext(message) {
 
     return { ok: true, data: result };
   } catch (err) {
-    if (provider !== "google-free") {
-      try {
-        const fallbackResult = await globalThis.LumeoTranslate?.explainWordInContext(word, sentence, targetLanguage, { provider: "google-free" });
-        if (fallbackResult) {
-          fallbackResult.provider = "google-free (fallback)";
-          return { ok: true, data: fallbackResult, warning: err?.message };
-        }
-      } catch { }
-    }
     return { ok: false, error: err?.message || String(err) };
   }
 }

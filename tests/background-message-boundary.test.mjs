@@ -279,6 +279,66 @@ describe("background message boundary", () => {
     }
   });
 
+  it.each(["gemini", "groq", "openai", "openrouter", "custom-gateway", "google-free"])(
+    "returns %s explanation errors without calling another provider",
+    async (provider) => {
+      const originalProvider = globalThis.chrome.__storageData.translateProvider;
+      globalThis.chrome.__storageData.translateProvider = provider;
+      const explain = vi.spyOn(globalThis.LumeoTranslate, "explainWordInContext")
+        .mockRejectedValue(new Error("Chosen provider failed."));
+      try {
+        const reply = await ask({ type: "EXPLAIN_WORD_CONTEXT", word: "failure" }, YT_TAB_7);
+        expect(reply).toEqual({ ok: false, error: "Chosen provider failed." });
+        expect(explain).toHaveBeenCalledTimes(1);
+        expect(explain.mock.calls[0][3].provider).toBe(provider);
+      } finally {
+        explain.mockRestore();
+        globalThis.chrome.__storageData.translateProvider = originalProvider;
+      }
+    },
+  );
+
+  it("keeps Google Free selected even when other provider keys are stored", async () => {
+    const originalProvider = globalThis.chrome.__storageData.translateProvider;
+    globalThis.chrome.__storageData.translateProvider = "google-free";
+    const explain = vi.spyOn(globalThis.LumeoTranslate, "explainWordInContext")
+      .mockResolvedValue({ meaning: "selected provider" });
+    try {
+      const reply = await ask({ type: "EXPLAIN_WORD_CONTEXT", word: "selected" }, YT_TAB_7);
+      expect(reply).toEqual({ ok: true, data: { meaning: "selected provider", provider: "google-free" } });
+      expect(explain).toHaveBeenCalledTimes(1);
+      expect(explain.mock.calls[0][3].provider).toBe("google-free");
+    } finally {
+      explain.mockRestore();
+      globalThis.chrome.__storageData.translateProvider = originalProvider;
+    }
+  });
+
+  it.each(["google-cloud", "libretranslate"])("does not substitute another provider for unsupported %s explanations", async (provider) => {
+    const originalProvider = globalThis.chrome.__storageData.translateProvider;
+    globalThis.chrome.__storageData.translateProvider = provider;
+    const explain = vi.spyOn(globalThis.LumeoTranslate, "explainWordInContext");
+    try {
+      const reply = await ask({ type: "EXPLAIN_WORD_CONTEXT", word: "unsupported" }, YT_TAB_7);
+      expect(reply).toEqual({ ok: false, error: "Word explanations are unavailable for the selected provider." });
+      expect(explain).not.toHaveBeenCalled();
+    } finally {
+      explain.mockRestore();
+      globalThis.chrome.__storageData.translateProvider = originalProvider;
+    }
+  });
+
+  it("does not call a provider for an empty explanation word", async () => {
+    const explain = vi.spyOn(globalThis.LumeoTranslate, "explainWordInContext");
+    try {
+      expect(await ask({ type: "EXPLAIN_WORD_CONTEXT", word: " " }, YT_TAB_7))
+        .toEqual({ ok: false, error: "No word provided." });
+      expect(explain).not.toHaveBeenCalled();
+    } finally {
+      explain.mockRestore();
+    }
+  });
+
   it("bounds the transcript a tab can send for summarizing", async () => {
     const translateApi = globalThis.LumeoTranslate;
     const original = translateApi.summarizeTranscript;
