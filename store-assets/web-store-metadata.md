@@ -68,7 +68,7 @@ Standard and Realtime dub
 Privacy
 • No account, no telemetry, no analytics, no Lumeo-operated server.
 • Any API key you save (Kyma, Gemini, OpenRouter, Groq, Hugging Face, OpenAI, Google Cloud, LibreTranslate, Soniox) stays on your device in `chrome.storage.local`, which page scripts cannot read. Content scripts read only non-secret preferences; only the key for the provider selected for the running session is sent to that YouTube tab, and other stored keys stay in the extension background.
-• Audio and subtitle text are sent only to the provider you pick to produce the requested translation. Provider retention follows that provider's terms.
+• You choose the provider for each feature. Gemini translation sends subtitle text; choosing Gemini speech-to-text when captions are unavailable sends audio clips from the video to Google Gemini for transcription. Provider retention follows that provider's terms.
 
 Get a Kyma key (only needed for Standard + Realtime tiers): kymaapi.com — free starter credit on signup; pay-as-you-go after that.
 ```
@@ -113,7 +113,7 @@ Required only when the user picks the Realtime dub tier (peer-to-peer WebRTC aft
 
 ### `host_permissions: https://generativelanguage.googleapis.com/*`
 ```
-Caption tier — used only when the user supplies their own Gemini API key and explicitly picks Gemini as the translation provider.
+Caption tier — with the user's Gemini API key, Lumeo sends subtitle text to Google Gemini if the user selects Gemini translation, or video audio clips for transcription if the user selects Gemini speech-to-text when captions are unavailable.
 ```
 
 ### `host_permissions: https://openrouter.ai/*`
@@ -157,7 +157,7 @@ Caption tier — used only when the user chooses LibreTranslate. The user can us
   per host. Ready text:
 
 ```
-Lumeo reads the captions or audio of the YouTube video the user chooses to translate and sends that text or audio only to the translation provider the user selects. youtube.com access is required to read subtitle tracks, capture the video tab audio through HTMLMediaElement.captureStream(), and draw the translation overlay. Provider hosts (Kyma, OpenAI, Google Gemini/Translate/Cloud TTS, OpenRouter, Groq, Hugging Face, Soniox, LibreTranslate) are contacted only when the user picks that provider and supplies their own API key; each request is authenticated with the user key and is never proxied through a Lumeo server. localhost and 127.0.0.1 are used only when the user runs a self-hosted LibreTranslate instance. No host is accessed unless the user presses Start.
+Lumeo reads the captions or audio of the YouTube video the user chooses to translate. Selecting Gemini speech-to-text sends video audio clips to Google Gemini for transcription; selecting Gemini translation sends subtitle text. youtube.com access is required to read subtitle tracks, capture the video tab audio through HTMLMediaElement.captureStream(), and draw the translation overlay. Provider hosts (Kyma, OpenAI, Google Gemini/Translate/Cloud TTS, OpenRouter, Groq, Hugging Face, Soniox, LibreTranslate) are contacted only when the user picks that provider and supplies their own API key; each request is authenticated with the user key and is never proxied through a Lumeo server. localhost and 127.0.0.1 are used only when the user runs a self-hosted LibreTranslate instance. No host is accessed unless the user presses Start.
 ```
 
 - **"Are you using remote code?" → No.** Justification: "No. All JavaScript, the AudioWorklet processor, and every
@@ -182,7 +182,7 @@ When asked "What types of user data?":
 - Location → **NO**
 - Web history → **NO**
 - User activity → **NO** (Lumeo does not log clicks, scroll, mouse, keystrokes, or network activity)
-- Website content → **YES** (the caption text or audio of the video the user chose to translate is sent to the selected AI provider for translation, then discarded)
+- Website content → **YES** (the selected provider receives subtitle text for translation or video audio for dubbing or speech-to-text, including Google Gemini when chosen for transcription)
 
 The same categories are used in the Microsoft Edge Partner Center data-usage form.
 
